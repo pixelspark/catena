@@ -43,7 +43,8 @@ class Database {
 
 	func perform(_ sql: String) -> Fallible<Result> {
 		return self.mutex.locked { () -> Fallible<Result> in
-			Swift.print("SQL: \(sql)")
+			Swift.print("[SQL] \(sql)")
+
 			var resultSet: OpaquePointer? = nil
 			if sqlite3_prepare_v2(self.db, sql.cString(using: .utf8), -1, &resultSet, nil) == SQLITE_OK {
 				// Time to execute

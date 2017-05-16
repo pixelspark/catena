@@ -2,6 +2,10 @@ import Foundation
 struct SQLPayload {
 	let statement: String
 
+	init(data: Data) {
+		self.statement = String(data: data, encoding: .utf8) ?? ""
+	}
+
 	init(statement: String) {
 		self.statement = statement
 	}
@@ -17,6 +21,12 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 	let payload: SQLPayload
 	var nonce: UInt = 0
 	var signature: Hash? = nil
+
+	init(index: UInt, previous: Hash, payload: Data) {
+		self.index = index
+		self.previous = previous
+		self.payload = SQLPayload(data: payload)
+	}
 
 	init(index: UInt, previous: Hash, payload: SQLPayload) {
 		self.index = index
@@ -58,7 +68,7 @@ class SQLLedger: Ledger<SQLBlock> {
 
 				case .failure(let e):
 					// Some error occurred, roll back the whole block
-					print("Block #\(block.index) failed: \(e)")
+					print("[SQL] Block #\(block.index) failed: \(e)")
 					switch self.database.perform("ROLLBACK") {
 					case .success(_):
 						// All OK, failed block is ignored but added to history

@@ -44,6 +44,12 @@
       "version": "1.7.5"
     },
     {
+      "package": "KituraRequest",
+      "reason": null,
+      "repositoryURL": "https://github.com/IBM-Swift/Kitura-Request.git",
+      "version": "0.8.0"
+    },
+    {
       "package": "LoggerAPI",
       "reason": null,
       "repositoryURL": "https://github.com/IBM-Swift/LoggerAPI.git",
@@ -60,6 +66,12 @@
       "reason": null,
       "repositoryURL": "https://github.com/IBM-Swift/BlueSocket.git",
       "version": "0.12.47"
+    },
+    {
+      "package": "SwiftParser",
+      "reason": null,
+      "repositoryURL": "https://github.com/dparnell/swift-parser-generator.git",
+      "version": "1.0.1"
     },
     {
       "package": "SwiftyJSON",
