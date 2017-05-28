@@ -35,12 +35,12 @@ _ = database.perform("DROP TABLE IF EXISTS test")
 _ = database.perform("CREATE TABLE test (origin TEXT, x INT)")
 
 let seedValue = seedOption.value ?? ""
-let genesisPayload = SQLPayload(transactions: [
-	SQLTransaction(statement: "SELECT '\(seedValue)';")
-])
+let genesisTransaction = try! SQLTransaction(statement: "SELECT '\(seedValue)';")
+print("Genesis transaction is \(genesisTransaction.root.sql)")
+let genesisPayload = SQLPayload(transactions: [genesisTransaction])
 
 var genesisBlock = SQLBlock(index: 0, previous: Hash.zeroHash, payload: genesisPayload)
-genesisBlock.mine(difficulty: 14)
+genesisBlock.mine(difficulty: 10)
 print("Genesis block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
 
 var ledger = SQLLedger(genesis: genesisBlock, database: database)
@@ -64,12 +64,17 @@ node.miner.enabled = mineOption.value
 node.start()
 
 print("Start submitting demo blocks")
-var i = 0
-while true {
-	i += 1
-	let q = "INSERT INTO test (origin, x) VALUES ('\(node.uuid.uuidString)', \(i))"
-	let payload = SQLPayload(transactions: [SQLTransaction(statement: q)])
-	print("Submit \(q)")
-	node.submit(payload: payload.data)
-	sleep(10)
+do {
+	var i = 0
+	while true {
+		i += 1
+		let q = "INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));"
+		let payload = SQLPayload(transactions: [try SQLTransaction(statement: q)])
+		print("Submit \(q)")
+		node.submit(payload: payload.data)
+		sleep(10)
+	}
+}
+catch {
+	Swift.print("\(error.localizedDescription)")
 }

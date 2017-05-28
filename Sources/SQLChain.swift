@@ -55,6 +55,12 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 	}
 }
 
+extension SQLStatement {
+	var backendSQL: String {
+		return self.sql
+	}
+}
+
 class SQLLedger: Ledger<SQLBlock> {
 	let database: Database
 
@@ -72,7 +78,7 @@ class SQLLedger: Ledger<SQLBlock> {
 					let transactionSavepointName = "tr-\(transaction.identifier.stringValue)"
 					switch self.database.perform("SAVEPOINT '\(transactionSavepointName)'") {
 					case .success(_):
-						let query = transaction.query
+						let query = transaction.root.backendSQL
 
 						switch self.database.perform(query) {
 						case .success(_):

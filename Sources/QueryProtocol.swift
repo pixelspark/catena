@@ -37,6 +37,12 @@ fileprivate extension Data {
 	}
 }
 
+enum PQSeverity: String {
+	case error = "ERROR"
+	case fatal = "FATAL"
+	case info = "INFO"
+}
+
 struct PQField {
 	var name: String
 	var tableId: Int32 = 0
@@ -225,7 +231,8 @@ final class QueryClientConnection {
 			if type == CChar(Character("Q").codePoint) {
 				// Query
 				if let len = self.readInt32(), let queryData = try self.read(length: len - UInt32(4)) {
-					return String(data: queryData, encoding: .utf8)
+					let trimmed = queryData.subdata(in: 0..<(queryData.endIndex.advanced(by: -1)))
+					return String(data: trimmed, encoding: .utf8)
 				}
 				else {
 					return nil
@@ -266,12 +273,12 @@ final class QueryClientConnection {
 		try self.socket.write(from: packet)
 	}
 
-	func send(error: String, severity: String = "ERROR", code: String = "42000") throws {
+	func send(error: String, severity: PQSeverity = .error, code: String = "42000") throws {
 		assert(self.state == .querying, "not querying!")
 
 		var buf = Data()
 		buf.append(UInt8(Character("S").codePoint))
-		let sd = severity.data(using: .utf8)!
+		let sd = severity.rawValue.data(using: .utf8)!
 		buf.append(sd)
 		buf.append(0)
 
@@ -283,6 +290,9 @@ final class QueryClientConnection {
 		buf.append(UInt8(Character("M").codePoint))
 		let md = error.data(using: .utf8)!
 		buf.append(md)
+		buf.append(0)
+
+		// Message terminator
 		buf.append(0)
 
 

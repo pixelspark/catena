@@ -65,9 +65,12 @@ class Miner<BlockType: Block> {
 	private func mine() -> BlockType? {
 		var stop = self.mutex.locked { return !self.enabled }
 
+		var block: BlockType? = nil
+		var currentPayload: Data? = nil
+
 		while !stop {
 			let b = autoreleasepool { () -> BlockType? in
-				var block: BlockType? = nil
+
 				var nonce: UInt = 0
 				var base: BlockType? = nil
 				var difficulty: Int = 0
@@ -78,7 +81,15 @@ class Miner<BlockType: Block> {
 						if let base = base {
 							self.counter += 1
 							if let payload = self.queue.first {
-								block = try! BlockType(index: base.index + 1, previous: base.signature!, payload: payload)
+								if block == nil || currentPayload != payload {
+									currentPayload = payload
+									block = try! BlockType(index: base.index + 1, previous: base.signature!, payload: payload)
+								}
+								else {
+									block!.index = base.index + 1
+									block!.previous = base.signature!
+								}
+
 								difficulty = n.ledger.longest.difficulty
 								nonce = self.counter
 							}

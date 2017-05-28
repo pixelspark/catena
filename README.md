@@ -61,7 +61,15 @@ between Catena and 'regular' database systems:
 
 ### Which SQL features are supported by Catena?
 
-TBD.
+Catena supports a limited subset of SQL (Catena implements its own SQL parser to sanitize and canonicalize SQL queries).
+Currently, the following types of statements are supported:
+
+* INSERT INTO table (x, y, z) VALUES ('text', 1337);
+* SELECT x, y FROM table;
+
+Column and table names are case-insensitive, must start with an alphabetic (a-Z) character, and may subsequently contain numbers and underscores. SQL keywords (such as 'SELECT') are case-insensitive. All statements must end with a semicolon. 
+
+In the future, the Catena parser will be expanded to support more types of statements.
 
 ### What kind of blockchain is implemented by Catena?
 
