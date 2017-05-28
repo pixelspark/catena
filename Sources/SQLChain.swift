@@ -1,17 +1,29 @@
 import Foundation
 struct SQLPayload {
-	let statement: String
+	var transactions: [SQLTransaction]
 
-	init(data: Data) {
-		self.statement = String(data: data, encoding: .utf8) ?? ""
+	enum SQLPayloadError: Error {
+		case formatError
 	}
 
-	init(statement: String) {
-		self.statement = statement
+	init(data: Data) throws {
+		if let arr = try JSONSerialization.jsonObject(with: data, options: []) as? [Any] {
+			self.transactions = try arr.map { item in
+				return try SQLTransaction(data: item)
+			}
+		}
+		else {
+			throw SQLPayloadError.formatError
+		}
+	}
+
+	init(transactions: [SQLTransaction] = []) {
+		self.transactions = transactions
 	}
 
 	var data: Data {
-		return self.statement.data(using: .utf8)!
+		let d = self.transactions.map { $0.data }
+		return try! JSONSerialization.data(withJSONObject: d, options: [])
 	}
 }
 
@@ -22,10 +34,10 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 	var nonce: UInt = 0
 	var signature: Hash? = nil
 
-	init(index: UInt, previous: Hash, payload: Data) {
+	init(index: UInt, previous: Hash, payload: Data) throws {
 		self.index = index
 		self.previous = previous
-		self.payload = SQLPayload(data: payload)
+		self.payload = try SQLPayload(data: payload)
 	}
 
 	init(index: UInt, previous: Hash, payload: SQLPayload) {
@@ -53,30 +65,50 @@ class SQLLedger: Ledger<SQLBlock> {
 
 	override func didAppend(block: SQLBlock) {
 		self.mutex.locked {
-			switch self.database.perform("BEGIN TRANSACTION") {
+			let blockSavepointName = "block-\(block.signature!.stringValue)"
+			switch self.database.perform("SAVEPOINT '\(blockSavepointName)' ") {
 			case .success(_):
-				switch self.database.perform(block.payload.statement) {
-				case .success(_):
-					// statement successfully executed, commit
-					switch self.database.perform("COMMIT") {
+				for transaction in block.payload.transactions {
+					let transactionSavepointName = "tr-\(transaction.identifier.stringValue)"
+					switch self.database.perform("SAVEPOINT '\(transactionSavepointName)'") {
 					case .success(_):
-						// All OK
-						return
+						let query = transaction.query
+
+						switch self.database.perform(query) {
+						case .success(_):
+							// statement successfully executed, commit
+							switch self.database.perform("RELEASE '\(transactionSavepointName)'") {
+							case .success(_):
+								break
+
+							case .failure(let e):
+								fatalError("Commitment issues: \(e)")
+							}
+
+						case .failure(let e):
+							// Some error occurred, roll back the whole block
+							print("[SQL] Transaction \(transaction.identifier.stringValue) in block #\(block.index) failed: \(e)")
+							switch self.database.perform("ROLLBACK TO SAVEPOINT '\(transactionSavepointName)'") {
+							case .success(_):
+								break
+
+							case .failure(let e):
+								fatalError("Rollback issues: \(e)")
+							}
+						}
+
 					case .failure(let e):
 						fatalError("Commitment issues: \(e)")
 					}
+				}
 
+				// Commit block
+				switch self.database.perform("RELEASE SAVEPOINT '\(blockSavepointName)'") {
+				case .success(_):
+					// All OK
+					return
 				case .failure(let e):
-					// Some error occurred, roll back the whole block
-					print("[SQL] Block #\(block.index) failed: \(e)")
-					switch self.database.perform("ROLLBACK") {
-					case .success(_):
-						// All OK, failed block is ignored but added to history
-						return
-
-					case .failure(let e):
-						fatalError("Rollback issues: \(e)")
-					}
+					fatalError("Commitment issues: \(e)")
 				}
 
 			case .failure(let e):

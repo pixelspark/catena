@@ -1,13 +1,77 @@
 import Foundation
-import CSQLite
+
+#if os(Linux)
+	import CSQLiteLinux
+#else
+	import CSQLite
+#endif
+
+enum ResultState {
+	case row
+	case done
+	case error(String)
+}
 
 class Result {
+	private(set) var state: ResultState
 	let database: Database
 	private let resultset: OpaquePointer
 
-	init(database: Database, resultset: OpaquePointer) {
+	init(database: Database, resultset: OpaquePointer, rows: Bool) {
 		self.database = database
 		self.resultset = resultset
+		self.state = rows ? .row : .done
+	}
+
+	var columns: [String] {
+		let n = sqlite3_column_count(resultset)
+
+		var cns: [String] = []
+		for i in 0..<n {
+			let name = String(cString: sqlite3_column_name(self.resultset, i))
+			cns.append(name)
+		}
+
+		return cns
+	}
+
+	var values: [String] {
+		let n = sqlite3_column_count(resultset)
+
+		var cns: [String] = []
+		for i in 0..<n {
+			let name = String(cString: sqlite3_column_text(self.resultset, i))
+			cns.append(name)
+		}
+
+		return cns
+	}
+
+	@discardableResult func step() -> ResultState {
+		switch self.state {
+		case .row:
+			switch sqlite3_step(self.resultset) {
+			case SQLITE_DONE:
+				self.state = .done
+
+			case SQLITE_ROW:
+				self.state = .row
+
+			case SQLITE_BUSY:
+				self.state = .row
+
+			case SQLITE_ERROR:
+				self.state = .error(database.lastError)
+
+			default:
+				self.state = .error("Unknown error code")
+			}
+
+		case .done, .error(_):
+			break
+		}
+
+		return self.state
 	}
 
 	deinit {
@@ -37,7 +101,7 @@ class Database {
 		}
 	}
 
-	private var lastError: String {
+	fileprivate var lastError: String {
 		return String(cString: sqlite3_errmsg(self.db))
 	}
 
@@ -46,18 +110,23 @@ class Database {
 			Swift.print("[SQL] \(sql)")
 
 			var resultSet: OpaquePointer? = nil
-			if sqlite3_prepare_v2(self.db, sql.cString(using: .utf8), -1, &resultSet, nil) == SQLITE_OK {
-				// Time to execute
-				switch sqlite3_step(resultSet) {
-				case SQLITE_DONE, SQLITE_ROW:
-					return .success(Result(database: self, resultset: resultSet!))
+			return sql.withCString { cString -> Fallible<Result>  in
+				if sqlite3_prepare_v2(self.db, cString, -1, &resultSet, nil) == SQLITE_OK {
+					// Time to execute
+					switch sqlite3_step(resultSet) {
+					case SQLITE_DONE:
+						return .success(Result(database: self, resultset: resultSet!, rows: false))
 
-				default:
+					case SQLITE_ROW:
+						return .success(Result(database: self, resultset: resultSet!, rows: true))
+
+					default:
+						return .failure(self.lastError)
+					}
+				}
+				else {
 					return .failure(self.lastError)
 				}
-			}
-			else {
-				return .failure(self.lastError)
 			}
 		}
 	}

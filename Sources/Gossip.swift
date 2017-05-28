@@ -25,6 +25,7 @@ class Server<BlockType: Block> {
 		router.post("/", handler: self.handleIndex)
 		router.get("/", handler: self.handleIndex)
 		router.get("/orphans", handler: self.handleGetOrphans)
+		router.get("/head", handler: self.handleGetLast)
 		router.get("/block/:hash", handler: self.handleGetBlock)
 		Kitura.addHTTPServer(onPort: port, with: router)
 	}
@@ -117,6 +118,30 @@ class Server<BlockType: Block> {
 		])
 		next()
 	}
+
+	private func handleGetLast(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+		let chain = self.node!.ledger.longest
+		var b: BlockType? = chain.highest
+		var data: [[String: Any]] = []
+		for _ in 0..<10 {
+			if let block = b {
+				data.append([
+					"index": block.index,
+					"hash": block.signature!.stringValue
+				])
+				b = chain.blocks[block.previous]
+			}
+			else {
+				break
+			}
+		}
+
+		response.send(json: [
+			"status": "ok",
+			"blocks": data
+		])
+		next()
+	}
 }
 
 public class Peer<BlockType: Block>: Hashable, CustomDebugStringConvertible {
@@ -191,10 +216,15 @@ public class Peer<BlockType: Block>: Hashable, CustomDebugStringConvertible {
 					let payloadString = data["payload"] as? String,
 					let nonce = data["nonce"] as? UInt,
 					let payload = Data(base64Encoded: payloadString) {
-					var block = BlockType(index: index, previous: previousHash, payload: payload)
-					block.signature = hash
-					block.nonce = nonce
-					return callback(.success(block))
+					do {
+						var block = try BlockType(index: index, previous: previousHash, payload: payload)
+						block.signature = hash
+						block.nonce = nonce
+						return callback(.success(block))
+					}
+					catch {
+						return callback(.failure(error.localizedDescription))
+					}
 				}
 				else {
 					callback(.failure("invalid format"))

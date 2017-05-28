@@ -41,13 +41,13 @@
       "package": "Kitura-net",
       "reason": null,
       "repositoryURL": "https://github.com/IBM-Swift/Kitura-net.git",
-      "version": "1.7.5"
+      "version": "1.7.6"
     },
     {
       "package": "KituraRequest",
       "reason": null,
       "repositoryURL": "https://github.com/IBM-Swift/Kitura-Request.git",
-      "version": "0.8.0"
+      "version": "0.8.1"
     },
     {
       "package": "LoggerAPI",
@@ -59,13 +59,13 @@
       "package": "SSLService",
       "reason": null,
       "repositoryURL": "https://github.com/IBM-Swift/BlueSSLService.git",
-      "version": "0.12.33"
+      "version": "0.12.35"
     },
     {
       "package": "Socket",
       "reason": null,
       "repositoryURL": "https://github.com/IBM-Swift/BlueSocket.git",
-      "version": "0.12.47"
+      "version": "0.12.50"
     },
     {
       "package": "SwiftParser",

@@ -1,15 +1,23 @@
 import Foundation
 import Kitura
 
-fileprivate class Miner<BlockType: Block> {
+internal func arc4random <T: ExpressibleByIntegerLiteral> (_ type: T.Type) -> T {
+	var r: T = 0
+	arc4random_buf(&r, MemoryLayout<T>.size)
+	return r
+}
+
+class Miner<BlockType: Block> {
 	private weak var node: Node<BlockType>?
 	private var queue: [Data] = []
 	private let mutex = Mutex()
 	private var counter: UInt = 0
 	private var mining = false
+	public var enabled = true
 
 	init(node: Node<BlockType>) {
 		self.node = node
+		self.counter = arc4random(UInt.self)
 	}
 
 	func submit(payload: Data) {
@@ -20,7 +28,12 @@ fileprivate class Miner<BlockType: Block> {
 	}
 
 	private func start() {
-		let shouldStart = self.mutex.locked { () -> Bool in 
+		let shouldStart = self.mutex.locked { () -> Bool in
+			if !self.enabled {
+				Swift.print("Miner is not enabled!")
+				return false
+			}
+
 			if !self.mining {
 				self.mining = true
 				return true
@@ -50,7 +63,8 @@ fileprivate class Miner<BlockType: Block> {
 	}
 
 	private func mine() -> BlockType? {
-		var stop = false
+		var stop = self.mutex.locked { return !self.enabled }
+
 		while !stop {
 			let b = autoreleasepool { () -> BlockType? in
 				var block: BlockType? = nil
@@ -64,7 +78,7 @@ fileprivate class Miner<BlockType: Block> {
 						if let base = base {
 							self.counter += 1
 							if let payload = self.queue.first {
-								block = BlockType(index: base.index + 1, previous: base.signature!, payload: payload)
+								block = try! BlockType(index: base.index + 1, previous: base.signature!, payload: payload)
 								difficulty = n.ledger.longest.difficulty
 								nonce = self.counter
 							}
@@ -122,8 +136,8 @@ class Node<BlockType: Block> {
 		let peer: Peer<BlockType>
 	}
 
-	var server: Server<BlockType>! = nil
-	fileprivate var miner: Miner<BlockType>! = nil
+	private(set) var server: Server<BlockType>! = nil
+	private(set) var miner: Miner<BlockType>! = nil
 	let ledger: Ledger<BlockType>
 	let uuid: UUID
 
@@ -211,7 +225,9 @@ class Node<BlockType: Block> {
 							_ = self.ledger.receive(block: block)
 							if self.ledger.orphansByPreviousHash[block.previous] != nil && self.ledger.orphansByHash[block.previous] == nil && self.ledger.longest.blocks[block.previous] == nil {
 								// Ledger is looking for the previous block for this block, go get it from the peer we got this from
-								self.fetch(candidate: Candidate(hash: block.previous, peer: candidate.peer))
+								self.workerQueue.async {
+									self.fetch(candidate: Candidate(hash: block.previous, peer: candidate.peer))
+								}
 							}
 						}
 					}

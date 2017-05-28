@@ -105,7 +105,7 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	var signature: Hash? { get set }
 	var payloadData: Data { get }
 
-	init(index: UInt, previous: Hash, payload: Data)
+	init(index: UInt, previous: Hash, payload: Data) throws
 }
 
 func ==<T: Block>(lhs: T, rhs: T) -> Bool {
@@ -247,7 +247,7 @@ class Ledger<BlockType: Block>: CustomDebugStringConvertible {
 					return self.receive(block: block, depth: 0)
 				}
 				else {
-					if (block.index + depth) > (self.longest.highest.index + spliceLimit), let orphan = self.orphansByHash[block.previous] {
+					if (block.index + depth) >= (self.longest.highest.index + spliceLimit), let orphan = self.orphansByHash[block.previous] {
 						if self.receive(block: orphan, depth: depth + 1) {
 							return true
 						}
