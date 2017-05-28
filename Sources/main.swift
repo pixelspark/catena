@@ -18,12 +18,12 @@ do {
 }
 catch {
 	cli.printUsage(error)
-	exit(EX_USAGE)
+	exit(64) /* EX_USAGE */
 }
 
 if helpOption.wasSet {
 	cli.printUsage()
-	exit(EX_OK)
+	exit(0)
 }
 
 let database = Database()

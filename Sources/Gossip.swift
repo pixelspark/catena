@@ -3,10 +3,10 @@ import Kitura
 import KituraRequest
 
 extension Block {
-	var json: [String: Any?] {
+	var json: [String: Any] {
 		return [
 			"nonce": self.nonce,
-			"hash": self.signature?.stringValue,
+			"hash": self.signature?.stringValue ?? "",
 			"height": self.index,
 			"size": self.signedData.count
 		]

@@ -1,5 +1,6 @@
 import Foundation
 import Kitura
+import Dispatch
 
 class Miner<BlockType: Block> {
 	private weak var node: Node<BlockType>?

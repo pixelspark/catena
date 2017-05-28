@@ -1,5 +1,6 @@
 import Foundation
 import Socket
+import Dispatch
 
 fileprivate extension UnsignedInteger {
 	init(_ bytes: [UInt8]) {

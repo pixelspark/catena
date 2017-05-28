@@ -7,7 +7,11 @@ public class Mutex {
 	public init() {
 		var attr: pthread_mutexattr_t = pthread_mutexattr_t()
 		pthread_mutexattr_init(&attr)
-		pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)
+		#if os(Linux)
+			pthread_mutexattr_settype(&attr, Int32(PTHREAD_MUTEX_RECURSIVE))		
+		#else
+			pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)
+		#endif
 
 		let err = pthread_mutex_init(&self.mutex, &attr)
 		pthread_mutexattr_destroy(&attr)
@@ -100,3 +104,9 @@ extension Data {
 		return Data(bytes: Digest(using: .sha256).update(data: self)!.final())
 	}
 }
+
+#if os(Linux)
+@discardableResult internal func autoreleasepool<T>(_ block: () throws -> (T)) rethrows -> T {
+	return try block()
+}
+#endif
