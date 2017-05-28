@@ -3,6 +3,9 @@
 Catena is a blockchain that is based on SQL. 
 
 ## Building
+
+### macOS
+
 Catena builds on macOS. You need a recent version of XCode (>=8.3.2) on your system. Use the following commands to clone
 the Catena repository and build in debug configuration:
 
@@ -18,7 +21,19 @@ It is also possible to generate an XCode project and build Catena from it:
 swift package generate-xcodeproj
 ````
 
-Building on Linux should be possible (all dependencies are supported on Linux) but is untested.
+### Linux
+
+Building on Linux should be possible (all dependencies are supported on Linux). First ensure Swift 3.1 is installed. Then
+ensure clang and required libraries are present:
+
+````
+apt install clang build-essential libsqlite3-dev libcurl4-openssl-dev openssl libssl-dev
+git clone https://github.com/pixelspark/catena.git catena
+cd catena
+swift build
+````
+
+The above was tested on Debian 8 (Jessie) using the Ubuntu 14.04 release of Swift 3.1.
 
 ## Running
 
