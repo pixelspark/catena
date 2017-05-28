@@ -1,12 +1,6 @@
 import Foundation
 import Kitura
 
-internal func arc4random <T: ExpressibleByIntegerLiteral> (_ type: T.Type) -> T {
-	var r: T = 0
-	arc4random_buf(&r, MemoryLayout<T>.size)
-	return r
-}
-
 class Miner<BlockType: Block> {
 	private weak var node: Node<BlockType>?
 	private var queue: [Data] = []
@@ -17,7 +11,7 @@ class Miner<BlockType: Block> {
 
 	init(node: Node<BlockType>) {
 		self.node = node
-		self.counter = arc4random(UInt.self)
+		self.counter = random(UInt.self)
 	}
 
 	func submit(payload: Data) {

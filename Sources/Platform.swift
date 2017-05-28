@@ -88,6 +88,13 @@ enum Fallible<T> {
 	case failure(String)
 }
 
+internal func random<T: ExpressibleByIntegerLiteral> (_ type: T.Type) -> T {
+	var r: T = 0
+	let bytes = try! Random.generate(byteCount: MemoryLayout<T>.size)
+	memcpy(&r, bytes, MemoryLayout<T>.size)
+	return r
+}
+
 extension Data {
 	var sha256: Data {
 		return Data(bytes: Digest(using: .sha256).update(data: self)!.final())
