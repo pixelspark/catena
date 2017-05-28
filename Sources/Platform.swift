@@ -1,5 +1,5 @@
 import Foundation
-import CommonCrypto
+import Cryptor
 
 public class Mutex {
 	private var mutex: pthread_mutex_t = pthread_mutex_t()
@@ -90,10 +90,6 @@ enum Fallible<T> {
 
 extension Data {
 	var sha256: Data {
-		var hash = [UInt8](repeating: 0,  count: Int(CC_SHA256_DIGEST_LENGTH))
-		self.withUnsafeBytes {
-			_ = CC_SHA256($0, CC_LONG(self.count), &hash)
-		}
-		return Data(bytes: hash)
+		return Data(bytes: Digest(using: .sha256).update(data: self)!.final())
 	}
 }

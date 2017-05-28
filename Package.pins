@@ -22,8 +22,14 @@
     {
       "package": "CommonCrypto",
       "reason": null,
-      "repositoryURL": "https://github.com/venj/CommonCrypto.git",
-      "version": "0.3.0"
+      "repositoryURL": "https://github.com/IBM-Swift/CommonCrypto.git",
+      "version": "0.1.4"
+    },
+    {
+      "package": "Cryptor",
+      "reason": null,
+      "repositoryURL": "https://github.com/IBM-Swift/BlueCryptor.git",
+      "version": "0.8.13"
     },
     {
       "package": "Kitura",

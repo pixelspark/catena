@@ -1,5 +1,5 @@
 import Foundation
-import CommonCrypto
+import Cryptor
 
 extension Data {
 	var hash: Hash {
@@ -49,11 +49,11 @@ public struct Hash: Equatable, Hashable, CustomDebugStringConvertible {
 	let hash: Data
 
 	static var zeroHash: Hash {
-		return Hash(Data(bytes: [UInt8](repeating: 0,  count: Int(CC_SHA256_DIGEST_LENGTH))))
+		return Hash(Data(bytes: [UInt8](repeating: 0,  count: Int(32))))
 	}
 
 	init?(string: String) {
-		if let d = string.hexDecoded, d.count == Int(CC_SHA256_DIGEST_LENGTH) {
+		if let d = string.hexDecoded, d.count == Int(32) {
 			self.hash = d
 		}
 		else {
@@ -62,7 +62,7 @@ public struct Hash: Equatable, Hashable, CustomDebugStringConvertible {
 	}
 
 	init(_ hash: Data) {
-		assert(hash.count == Int(CC_SHA256_DIGEST_LENGTH))
+		assert(hash.count == Int(32))
 		self.hash = hash
 	}
 
