@@ -1,6 +1,7 @@
 import Foundation
 import Kitura
 import Dispatch
+import LoggerAPI
 
 class Miner<BlockType: Block> {
 	private weak var node: Node<BlockType>?
@@ -25,7 +26,7 @@ class Miner<BlockType: Block> {
 	private func start() {
 		let shouldStart = self.mutex.locked { () -> Bool in
 			if !self.enabled {
-				Swift.print("Miner is not enabled!")
+				Log.info("[Miner] mining is not enabled")
 				return false
 			}
 
@@ -189,6 +190,22 @@ class Node<BlockType: Block> {
 
 	func mined(block: BlockType) {
 		_ = self.ledger.receive(block: block)
+
+		// Send our peers the good news!
+		self.mutex.locked {
+			for (peer, status) in self.peers {
+				switch status {
+				case .queried, .new:
+					self.workerQueue.async {
+						Log.debug("[Node] posting mined block \(block.index) to peer \(peer)")
+						peer.post(block: block)
+					}
+
+				case .failed(error: _), .ignored, .querying:
+					break
+				}
+			}
+		}
 	}
 
 	private func tick() {
@@ -196,7 +213,7 @@ class Node<BlockType: Block> {
 			// Do we need to fetch any blocks?
 			if let candidate = self.blockQueue.first {
 				self.blockQueue.remove(at: 0)
-				Swift.print("[Node] fetch candidate \(candidate)")
+				Log.debug("[Node] fetch candidate \(candidate)")
 				self.fetch(candidate: candidate)
 			}
 
@@ -226,7 +243,7 @@ class Node<BlockType: Block> {
 				switch result {
 				case .success(let block):
 					if block.isSignatureValid {
-						Swift.print("[Node] fetch returned valid block: \(block)")
+						Log.info("[Node] fetch returned valid block: \(block)")
 						self.ledger.mutex.locked {
 							_ = self.ledger.receive(block: block)
 							if self.ledger.orphansByPreviousHash[block.previous] != nil && self.ledger.orphansByHash[block.previous] == nil && self.ledger.longest.blocks[block.previous] == nil {
@@ -238,14 +255,14 @@ class Node<BlockType: Block> {
 						}
 					}
 					else {
-						Swift.print("[Node] fetch returned invalid block; setting peer invalid")
+						Log.warning("[Node] fetch returned invalid block; setting peer invalid")
 						self.mutex.locked {
 							self.peers[candidate.peer] = .failed(error: "invalid block")
 						}
 					}
 
 				case .failure(let e):
-					Swift.print("[Node] fetch failed: \(e)")
+					Log.warning("[Node] fetch failed: \(e)")
 				}
 			}
 		}
@@ -290,7 +307,7 @@ class Node<BlockType: Block> {
 										self.mutex.locked {
 											let candidate = Candidate(hash: index.highest, peer: peer)
 											if !self.blockQueue.contains(candidate) && self.ledger.orphansByHash[candidate.hash] == nil {
-												Swift.print("[Node] Peer \(peer) has a chain that is \(index.height - self.ledger.longest.highest.index) blocks ahead; pursuing chain")
+												Log.info("[Node] Peer \(peer) has a chain that is \(index.height - self.ledger.longest.highest.index) blocks ahead; pursuing chain")
 												self.blockQueue.append(candidate)
 											}
 										}

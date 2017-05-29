@@ -1,19 +1,41 @@
 import Foundation
 import Kitura
 import KituraRequest
+import LoggerAPI
 
 extension Block {
 	var json: [String: Any] {
 		return [
+			"hash": self.signature!.stringValue,
+			"index": self.index,
 			"nonce": self.nonce,
-			"hash": self.signature?.stringValue ?? "",
-			"height": self.index,
-			"size": self.signedData.count
+			"payload": self.payloadData.base64EncodedString(),
+			"previous": self.previous.stringValue
 		]
+	}
+
+	static func read(json: [String: Any]) throws -> Self {
+		if let nonce = json["nonce"] as? UInt,
+			let signature = json["hash"] as? String,
+			let height = json["index"] as? UInt,
+			let previous = json["previous"] as? String,
+			let payloadBase64 = json["payload"] as? String,
+			let payload = Data(base64Encoded: payloadBase64),
+			let previousHash = Hash(string: previous),
+			let signatureHash = Hash(string: signature) {
+				var b = try Self.init(index: height, previous: previousHash, payload: payload)
+				b.nonce = nonce
+				b.signature = signatureHash
+				return b
+			}
+			else {
+				throw BlockError.formatError
+			}
 	}
 }
 
 class Server<BlockType: Block> {
+	private let version = 1
 	let router = Router()
 	let port: Int
 	weak var node: Node<BlockType>?
@@ -22,11 +44,16 @@ class Server<BlockType: Block> {
 		self.node = node
 		self.port = port
 
+		// Part of API used between nodes
 		router.post("/", handler: self.handleIndex)
 		router.get("/", handler: self.handleIndex)
-		router.get("/orphans", handler: self.handleGetOrphans)
-		router.get("/head", handler: self.handleGetLast)
+		router.post("/block", handler: self.handlePostBlock)
 		router.get("/block/:hash", handler: self.handleGetBlock)
+
+		// Not part of the API used between nodes
+		router.get("/info/orphans", handler: self.handleGetOrphans)
+		router.get("/info/head", handler: self.handleGetLast)
+
 		Kitura.addHTTPServer(onPort: port, with: router)
 	}
 
@@ -36,7 +63,7 @@ class Server<BlockType: Block> {
 			var data = Data(capacity: 4096)
 			do {
 				if try request.read(into: &data) > 0 {
-					if	let params = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any?],
+					if	let params = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
 						let _ = params["uuid"] as? String,
 						let port = params["port"] as? Int {
 
@@ -66,7 +93,7 @@ class Server<BlockType: Block> {
 		}
 
 		response.send(json: [
-			"version": 1,
+			"version": self.version,
 			"uuid": self.node!.uuid.uuidString,
 
 			"longest": self.node!.ledger.mutex.locked { return [
@@ -79,6 +106,41 @@ class Server<BlockType: Block> {
 		next()
 	}
 
+	private func handlePostBlock(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+		assert(request.method == .post, "Must be post")
+
+		var data = Data(capacity: 4096)
+		do {
+			if try request.read(into: &data) > 0 {
+				if let params = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+					let block = try BlockType.read(json: params)
+					self.node?.ledger.mutex.locked {
+						Log.info("[Server] received post: \(block)")
+						_ = self.node?.ledger.receive(block: block)
+					}
+
+					response.send(json: [
+						"version": self.version
+					])
+				}
+				else {
+					_ = response.send(status: .badRequest)
+					return
+				}
+			}
+			else {
+				_ = response.send(status: .badRequest)
+				return
+			}
+		}
+		catch {
+			_ = response.send(status: .badRequest)
+			return
+		}
+
+		next()
+	}
+
 	private func handleGetBlock(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
 		if let hashString = request.parameters["hash"], let hash = Hash(string: hashString) {
 			if let ledger = self.node?.ledger {
@@ -87,13 +149,7 @@ class Server<BlockType: Block> {
 				}
 
 				if let b = block {
-					response.send(json: [
-						"hash": b.signature!.stringValue,
-						"index": b.index,
-						"nonce": b.nonce,
-						"payload": b.payloadData.base64EncodedString(),
-						"previous": b.previous.stringValue
-					])
+					response.send(json: b.json)
 
 					next()
 				}
@@ -172,7 +228,7 @@ public class Peer<BlockType: Block>: Hashable, CustomDebugStringConvertible {
 		return url.hashValue
 	}
 
-	private func call(path: String, parameters: [String: Any]? = nil, callback: @escaping (Fallible<[String: Any?]>) -> ()) {
+	private func call(path: String, parameters: [String: Any]? = nil, callback: @escaping (Fallible<[String: Any]>) -> ()) {
 		let u = self.url.appendingPathComponent(path).absoluteString
 		let request = KituraRequest.request(parameters != nil ? .post : .get, u, parameters: parameters, encoding: JSONEncoding(options: []))
 
@@ -185,7 +241,7 @@ public class Peer<BlockType: Block>: Hashable, CustomDebugStringConvertible {
 				if let d = data {
 					do {
 						let answer = try JSONSerialization.jsonObject(with: d, options: [])
-						if let answer = answer as? [String: Any?] {
+						if let answer = answer as? [String: Any] {
 							return callback(.success(answer))
 						}
 						else {
@@ -210,28 +266,28 @@ public class Peer<BlockType: Block>: Hashable, CustomDebugStringConvertible {
 		self.call(path: "/block/\(hash.stringValue)") { result in
 			switch result {
 			case .success(let data):
-				if let index = data["index"] as? UInt,
-					let previousHashString = data["previous"] as? String,
-					let previousHash = Hash(string: previousHashString),
-					let payloadString = data["payload"] as? String,
-					let nonce = data["nonce"] as? UInt,
-					let payload = Data(base64Encoded: payloadString) {
-					do {
-						var block = try BlockType(index: index, previous: previousHash, payload: payload)
-						block.signature = hash
-						block.nonce = nonce
-						return callback(.success(block))
-					}
-					catch {
-						return callback(.failure(error.localizedDescription))
-					}
+				do {
+					let block = try BlockType.read(json: data)
+					return callback(.success(block))
 				}
-				else {
-					callback(.failure("invalid format"))
+				catch {
+					return callback(.failure(error.localizedDescription))
 				}
 
 			case .failure(let e):
 				callback(.failure(e))
+			}
+		}
+	}
+
+	func post(block: BlockType) {
+		self.call(path: "/block", parameters: block.json) { result in
+			switch result {
+			case .success(_):
+				break
+
+			case .failure(let e):
+				Log.warning("[Peer] Post block failed to peer \(self): \(e)")
 			}
 		}
 	}
@@ -253,7 +309,7 @@ public class Peer<BlockType: Block>: Hashable, CustomDebugStringConvertible {
 					let longest = answer["longest"] as? [String: Any?],
 					let genesis = longest["genesis"] as? [String: Any?],
 					let highest = longest["highest"] as? [String: Any?],
-					let height = highest["height"] as? UInt,
+					let height = highest["index"] as? UInt,
 					let genesisHashString = genesis["hash"] as? String,
 					let genesisHash = Hash(string: genesisHashString),
 					let highestHashString = highest["hash"] as? String,

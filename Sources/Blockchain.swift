@@ -1,5 +1,6 @@
 import Foundation
 import Cryptor
+import LoggerAPI
 
 extension Data {
 	var hash: Hash {
@@ -96,6 +97,16 @@ public struct Hash: Equatable, Hashable, CustomDebugStringConvertible {
 
 public func == (lhs: Hash, rhs: Hash) -> Bool {
 	return lhs.hash == rhs.hash
+}
+
+enum BlockError: Error {
+	case formatError
+
+	var localizedDescription: String {
+		switch self {
+		case .formatError: return "format error"
+		}
+	}
 }
 
 public protocol Block: CustomDebugStringConvertible, Equatable {
@@ -242,7 +253,7 @@ class Ledger<BlockType: Block>: CustomDebugStringConvertible {
 				}
 				else if depth > spliceLimit, (block.index + depth) > (self.longest.highest.index + spliceLimit), let existingPrevious = self.longest.blocks[block.previous] {
 					// We have `depth` blocks following and we can fast-forward to this block by splicing here!
-					Swift.print("We have \(depth) blocks waiting, can splice at \(existingPrevious.index) to get at \(block.index+depth) (we are at \(self.longest.highest.index))")
+					Log.info("[Ledger] We have \(depth) blocks waiting, can splice at \(existingPrevious.index) to get at \(block.index+depth) (we are at \(self.longest.highest.index))")
 					self.longest.unwind(to: existingPrevious)
 					return self.receive(block: block, depth: 0)
 				}

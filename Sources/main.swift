@@ -1,6 +1,8 @@
 import Foundation
 import Kitura
 import CommandLineKit
+import LoggerAPI
+import HeliumLogger
 
 let databaseFileOption = StringOption(shortFlag: "d", longFlag: "database", required: false, helpMessage: "Backing database file (default: catena.sqlite)")
 let seedOption = StringOption(shortFlag: "s", longFlag: "seed", required: false, helpMessage: "Genesis block seed string (default: empty)")
@@ -9,9 +11,10 @@ let netPortOption = IntOption(shortFlag: "p", longFlag: "gossip-port", helpMessa
 let queryPortOption = IntOption(shortFlag: "q", longFlag: "query-port", helpMessage: "Listen port for query communications (default: networking port + 1)")
 let peersOption = MultiStringOption(shortFlag: "j", helpMessage: "Peer to connect to ('hostname:port' or just 'hostname')")
 let mineOption = BoolOption(shortFlag: "m", longFlag: "mine", helpMessage: "Enable mining of blocks")
+let logOption = IntOption(longFlag: "log", helpMessage: "The log level (default: 1)")
 
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption)
 
 do {
 	try cli.parse()
@@ -21,10 +24,18 @@ catch {
 	exit(64) /* EX_USAGE */
 }
 
+// Print usage
 if helpOption.wasSet {
 	cli.printUsage()
 	exit(0)
 }
+
+// Configure logging
+let logLevel = logOption.value ?? LoggerMessageType.verbose.rawValue
+let logger = HeliumLogger(LoggerMessageType.init(rawValue: logLevel)!)
+logger.details = false
+
+Log.logger = logger
 
 let database = Database()
 if !database.open(databaseFileOption.value ?? "catena.sqlite") {
@@ -36,12 +47,12 @@ _ = database.perform("CREATE TABLE test (origin TEXT, x INT)")
 
 let seedValue = seedOption.value ?? ""
 let genesisTransaction = try! SQLTransaction(statement: "SELECT '\(seedValue)';")
-print("Genesis transaction is \(genesisTransaction.root.sql)")
+Log.debug("Genesis transaction is \(genesisTransaction.root.sql)")
 let genesisPayload = SQLPayload(transactions: [genesisTransaction])
 
 var genesisBlock = SQLBlock(index: 0, previous: Hash.zeroHash, payload: genesisPayload)
 genesisBlock.mine(difficulty: 10)
-print("Genesis block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
+Log.info("Genesis block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
 
 var ledger = SQLLedger(genesis: genesisBlock, database: database)
 let netPort = netPortOption.value ?? 8338
@@ -63,18 +74,18 @@ queryServerV4.run()
 node.miner.enabled = mineOption.value
 node.start()
 
-print("Start submitting demo blocks")
+Log.info("Start submitting demo blocks")
 do {
 	var i = 0
 	while true {
 		i += 1
 		let q = "INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));"
 		let payload = SQLPayload(transactions: [try SQLTransaction(statement: q)])
-		print("Submit \(q)")
+		Log.info("Submit \(q)")
 		node.submit(payload: payload.data)
 		sleep(10)
 	}
 }
 catch {
-	Swift.print("\(error.localizedDescription)")
+	Log.error("\(error.localizedDescription)")
 }

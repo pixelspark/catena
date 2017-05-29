@@ -1,4 +1,5 @@
 import Foundation
+import LoggerAPI
 
 #if os(Linux)
 	import CSQLiteLinux
@@ -107,7 +108,7 @@ class Database {
 
 	func perform(_ sql: String) -> Fallible<Result> {
 		return self.mutex.locked { () -> Fallible<Result> in
-			Swift.print("[SQL] \(sql)")
+			Log.debug("[SQL] \(sql)")
 
 			var resultSet: OpaquePointer? = nil
 			return sql.withCString { cString -> Fallible<Result>  in

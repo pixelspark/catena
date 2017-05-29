@@ -1,5 +1,6 @@
 import Foundation
 import SwiftParser
+import LoggerAPI
 
 class SQLTransaction {
 	let root: SQLStatement
@@ -12,8 +13,8 @@ class SQLTransaction {
 	init(statement: String) throws {
 		let parser = SQLParser()
 		if !parser.parse(statement) {
-			Swift.print("PARSING FAILED: \(statement)")
-			Swift.print(parser.debugDescription)
+			Log.debug("[SQLTransaction] Parsing failed: \(statement)")
+			Log.debug(parser.debugDescription)
 			throw SQLTransactionError.syntaxError
 		}
 
