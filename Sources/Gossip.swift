@@ -15,16 +15,16 @@ extension Block {
 	}
 
 	static func read(json: [String: Any]) throws -> Self {
-		if let nonce = json["nonce"] as? UInt,
+		if let nonce = json["nonce"] as? Int,
 			let signature = json["hash"] as? String,
-			let height = json["index"] as? UInt,
+			let height = json["index"] as? Int,
 			let previous = json["previous"] as? String,
 			let payloadBase64 = json["payload"] as? String,
 			let payload = Data(base64Encoded: payloadBase64),
 			let previousHash = Hash(string: previous),
 			let signatureHash = Hash(string: signature) {
-				var b = try Self.init(index: height, previous: previousHash, payload: payload)
-				b.nonce = nonce
+				var b = try Self.init(index: UInt(height), previous: previousHash, payload: payload)
+				b.nonce = UInt(nonce)
 				b.signature = signatureHash
 				return b
 			}

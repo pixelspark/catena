@@ -13,7 +13,7 @@ class Miner<BlockType: Block> {
 
 	init(node: Node<BlockType>) {
 		self.node = node
-		self.counter = random(UInt.self)
+		self.counter = UInt(abs(random(Int.self)))
 	}
 
 	func submit(payload: Data) {
