@@ -1,6 +1,13 @@
-# Catena - An SQL-based blockchain
+# Catena - SQL on a blockchain
 
-Catena is a blockchain that is based on SQL. 
+Catena is a distributed database based on a blockchain, accessible using SQL. 
+
+A Catena blockchain contains SQL transactions that, when executed in order, lead to the agreed-upon state of the database.
+The transactions are automatically replicated to, validated by, and replayed on participating clients. A Catena database 
+can be connected to by client applications using the PostgreSQL wire protocol (pq). 
+
+Only SQL statements that modify data or structure are included in the blockchain. This is very similar to replication logs
+used by e.g. MySQL ('binlog').
 
 ## Building
 
@@ -50,10 +57,12 @@ To start two peers locally, use the following:
 ./.build/debug/Catena -p 8340 -j 127.0.0.1:8338
 ````
 
-Catena provides an HTTP interface on port 8338 (default), which is used for communicating between peers. The (private) 
-SQL interface is available on port 8334 (by default). If you set a different HTTP port (using the '-p'  command line
-switch), the SQL interface will assume that port+1. You can connect to the SQL interface using the PostgreSQL command
-line client:
+Catena provides an HTTP interface on port 8338 (default), which can be used for introspecting the blockchain. It also
+provides a WebSocket service which is used for communication between peers. 
+
+The (private)  SQL interface is available 
+on port 8334 (by default). If you set a different HTTP port (using the '-p' command line switch), the SQL interface 
+will assume that port+1. You can connect to the SQL interface using the PostgreSQL command line client:
 
 ````
 psql -h localhost -p 8334
@@ -94,14 +103,11 @@ Bitcoin, Ethereum etc.
 
 ### How does a Catena node talk to other nodes?
 
-Catena nodes expose an HTTP interface. A node periodically connects to the HTTP interface of all other nodes it knows 
-about (initially specified from the command line) to fetch block information and exchange peers. 
+Catena nodes expose an HTTP/WebSocket interface. A node connects to the WebSocket interface of all other nodes it knows
+about (initially specified from the command line) to fetch block information and exchange peers. In order for two nodes
+to be able to communicate, at least one must be able to accept incoming connections (i.e. not be behind NAT or firewall).
 
 ### What is the consistency model for Catena?
-
-A Catena blockchain contains SQL statements that, when executed in order, lead to the agreed-upon state of the database. 
-Only SQL statements that modify data or structure are included in the blockchain. This is very similar to replication logs
-used by e.g. MySQL ('binlog').
 
 SQL statements are grouped in transactions, which become part of a block. Once a block as been accepted in the blockchain and
 is succeeded by a sufficient number of newer blocks, the block has become an immutable part of the blockchain ledger.

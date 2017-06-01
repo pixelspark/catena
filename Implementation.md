@@ -40,7 +40,7 @@ Requests the peer on the other side to return a summary of their current view on
 no additional payload data.
 
 
-## index (Reply)
+### index (Reply)
 
 Response that contains a summary of the peer's view on the chain ('index'). The payload includes the following keys:
 
@@ -49,17 +49,17 @@ Response that contains a summary of the peer's view on the chain ('index'). The 
 * "highest" (String): the hash of the highest block on the longest chain
 * "height" (Integer): the height (index) of the highest block on the longest chain
 
-## fetch (Request)
+### fetch (Request)
 
 Request a block from the other peer with a certain signature hash.
 
-## block (Request/Reply)
+### block (Request/Reply)
 
 Sends a block to the peer on the other side. The message may be in response to a "fetch" request (in which case this must
 be the requested block and it's signature must match the one requested) or it may be unsolicited (i.e. sent as request),
 in which case this is a new block (e.g. mined by the sending peer) proposed for consideration by the receiving peer.
 
-## error (Reply)
+### error (Reply)
 
 Sent in reply to requests that couldn't be fulfilled. Fields:
 
