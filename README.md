@@ -30,8 +30,11 @@ swift package generate-xcodeproj
 
 ### Linux
 
-Building on Linux should be possible (all dependencies are supported on Linux). First ensure Swift 3.1 is installed. Then
-ensure clang and required libraries are present:
+Building on Linux is currently not possible, due to the fact that there is no cross-platform WebSocket client
+implementation (the current implementation uses Starscream). In the future, we might be able to switch to whatever
+comes out of the Swift Server APIs workgroup (which intends to provide cross-platform WebSocket client suport.)
+
+To try and compily anyway, first ensure Swift 3.1 is installed. Then ensure clang and required libraries are present:
 
 ````
 apt install clang build-essential libsqlite3-dev libcurl4-openssl-dev openssl libssl-dev
