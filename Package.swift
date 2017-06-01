@@ -12,6 +12,8 @@ let package = Package(
 		.Package(url: "https://github.com/IBM-Swift/BlueCryptor.git", majorVersion: 0),
 		.Package(url: "https://github.com/pixelspark/swift-parser-generator.git", majorVersion: 1),
 		.Package(url: "https://github.com/IBM-Swift/HeliumLogger.git", majorVersion: 1),
+		.Package(url: "https://github.com/IBM-Swift/Kitura-WebSocket", majorVersion: 0, minor: 8),
+		.Package(url: "https://github.com/daltoniam/Starscream.git", majorVersion: 2),
 		//.Package(url: "https://github.com/IBM-Swift/BlueSocket", majorVersion: 0, minor: 12)
 	]
 )

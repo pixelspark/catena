@@ -109,7 +109,7 @@ enum BlockError: Error {
 	}
 }
 
-public protocol Block: CustomDebugStringConvertible, Equatable {
+public protocol Block: CustomDebugStringConvertible {
 	var index: UInt { get set }
 	var previous: Hash { get set }
 	var nonce: UInt { get set }
@@ -117,10 +117,6 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	var payloadData: Data { get }
 
 	init(index: UInt, previous: Hash, payload: Data) throws
-}
-
-func ==<T: Block>(lhs: T, rhs: T) -> Bool {
-	return lhs.signedData == rhs.signedData
 }
 
 extension Data {
@@ -156,15 +152,6 @@ extension Block {
 		}
 
 		return data
-
-		/*let md = NSMutableData()
-		var index = self.index
-		var nonce = self.nonce
-		md.append(&index, length: MemoryLayout<UInt>.size)
-		md.append(&nonce, length: MemoryLayout<UInt>.size)
-		md.append(previous.hash)
-		md.append(self.payloadData)
-		return md as Data*/
 	}
 
 	/** Mine this block (note: use this only for the genesis block, Miner provides threaded mining) */
@@ -178,6 +165,10 @@ extension Block {
 			}
 		}
 	}
+}
+
+public func ==(lhs: Block, rhs: Block) -> Bool {
+	return rhs.signedData == lhs.signedData
 }
 
 class Blockchain<BlockType: Block>: CustomDebugStringConvertible {
@@ -202,8 +193,13 @@ class Blockchain<BlockType: Block>: CustomDebugStringConvertible {
 	}
 
 	func unwind(to: BlockType) {
-		while highest != to {
+		if self.blocks[to.signature!] == nil {
+			fatalError("Cannot unwind to a block that is not in the chain: \(to.signature!.stringValue)")
+		}
+
+		while !(highest == to) {
 			if let previous = blocks[highest.previous] {
+				blocks.removeValue(forKey: highest.signature!)
 				highest = previous
 			}
 			else {
@@ -233,42 +229,83 @@ class Ledger<BlockType: Block>: CustomDebugStringConvertible {
 
 	let spliceLimit: UInt = 1
 
-	func receive(block: BlockType, depth: UInt = 0) -> Bool {
+	func receive(block: BlockType) -> Bool {
+		Log.info("[Ledger] receive block #\(block.index) \(block.signature!.stringValue)")
 		return self.mutex.locked { () -> Bool in
-			// TODO: if block.index >> longest.highest.index, we should investigate switching to a different chain
-
 			if block.isSignatureValid {
+				// Were we waiting for this block?
+				var block = block
+				while let next = self.orphansByPreviousHash[block.signature!] {
+					self.orphansByHash[block.signature!] = block
+					self.orphansByPreviousHash[block.previous] = block
+					block = next
+				}
+
+				// This block can simply be appended to the chain
 				if self.longest.append(block: block) {
-					// This block fits right at the top of our chain
 					self.didAppend(block: block)
-
-					// Can we adopt an orphan?
-					if let adoptable = self.orphansByPreviousHash[block.signature!] {
-						self.orphansByPreviousHash[block.signature!] = nil
-						self.orphansByHash[adoptable.signature!] = nil
-						_ = self.receive(block: adoptable, depth: 0)
-					}
-
+					Log.info("[Ledger] can append directly")
 					return true
 				}
-				else if depth > spliceLimit, (block.index + depth) > (self.longest.highest.index + spliceLimit), let existingPrevious = self.longest.blocks[block.previous] {
-					// We have `depth` blocks following and we can fast-forward to this block by splicing here!
-					Log.info("[Ledger] We have \(depth) blocks waiting, can splice at \(existingPrevious.index) to get at \(block.index+depth) (we are at \(self.longest.highest.index))")
-					self.longest.unwind(to: existingPrevious)
-					return self.receive(block: block, depth: 0)
-				}
 				else {
-					if (block.index + depth) >= (self.longest.highest.index + spliceLimit), let orphan = self.orphansByHash[block.previous] {
-						if self.receive(block: orphan, depth: depth + 1) {
-							return true
+					// Block cannot be directly appended. 
+					if block.index > self.longest.highest.index {
+						// The block is newer
+						var root: BlockType? = block
+						var stack: [BlockType] = []
+						while true {
+							if let r = root {
+								if self.longest.blocks[r.previous] == nil {
+									if let prev = self.orphansByHash[r.previous] {
+										root = prev
+										stack.append(r)
+									}
+									else {
+										// We don't have an intermediate block. Save head block as orphan
+										self.orphansByHash[block.signature!] = block
+										self.orphansByPreviousHash[block.previous] = block
+										Log.info("[Ledger] missing intermediate block: \(r.index-1) with hash \(r.previous.stringValue)")
+										return false
+									}
+								}
+								else {
+									// Root has previous in chain
+									stack.append(r)
+									break
+								}
+							}
+							else {
+								break
+							}
+						}
+
+						// We found a root earlier in the chain. Unwind to the root and apply all blocks
+						if let r = root {
+							if let splice = self.longest.blocks[r.previous] {
+								Log.info("[Ledger] splicing to \(r.index), then fast-forwarding to \(block.index)")
+								self.longest.unwind(to: splice)
+								Log.info("[Ledger] head is now at \(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)")
+								for b in stack.reversed() {
+									Log.info("[Ledger] appending \(b.index) \(b.signature!.stringValue)")
+									if !self.longest.append(block: b) {
+										fatalError("this block should be appendable!")
+									}
+									self.didAppend(block: b)
+								}
+								return true
+							}
+							else {
+								Log.info("[Ledger] splicing not possible for root=\(r.signature!), which requires \(r.previous) to be in cahin")
+								return false
+							}
 						}
 						else {
-							self.orphansByHash[block.signature!] = block
-							self.orphansByPreviousHash[block.previous] = block
+							Log.info("[Ledger] splicing not possible (no root)")
 							return false
 						}
 					}
 					else {
+						// The block is older, but it may be of use later. Save as orphan
 						self.orphansByHash[block.signature!] = block
 						self.orphansByPreviousHash[block.previous] = block
 						return false

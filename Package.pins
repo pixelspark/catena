@@ -50,6 +50,12 @@
       "version": "1.7.0"
     },
     {
+      "package": "Kitura-WebSocket",
+      "reason": null,
+      "repositoryURL": "https://github.com/IBM-Swift/Kitura-WebSocket",
+      "version": "0.8.2"
+    },
+    {
       "package": "Kitura-net",
       "reason": null,
       "repositoryURL": "https://github.com/IBM-Swift/Kitura-net.git",
@@ -78,6 +84,12 @@
       "reason": null,
       "repositoryURL": "https://github.com/IBM-Swift/BlueSocket.git",
       "version": "0.12.50"
+    },
+    {
+      "package": "Starscream",
+      "reason": null,
+      "repositoryURL": "https://github.com/daltoniam/Starscream.git",
+      "version": "2.0.4"
     },
     {
       "package": "SwiftParser",

@@ -60,8 +60,8 @@ let node = Node<SQLBlock>(ledger: ledger, port: netPort)
 
 // Add peers from command line
 for p in peersOption.value ?? [] {
-	if var u = URL(string: "http://\(p)") {
-		node.add(peer: Peer<SQLBlock>(URL: u))
+	if var u = URL(string: "ws://\(p)/") {
+		node.add(peer: u)
 	}
 }
 

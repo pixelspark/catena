@@ -2,8 +2,10 @@ import Foundation
 import Kitura
 import KituraRequest
 import LoggerAPI
+import KituraWebSocket
+import Starscream
 
-extension Block {
+internal extension Block {
 	var json: [String: Any] {
 		return [
 			"hash": self.signature!.stringValue,
@@ -34,64 +36,92 @@ extension Block {
 	}
 }
 
-class Server<BlockType: Block> {
+class Server<BlockType: Block>: WebSocketService {
 	private let version = 1
 	let router = Router()
 	let port: Int
+	private let mutex = Mutex()
+	private var gossipConnections = [String: PeerIncomingConnection]()
 	weak var node: Node<BlockType>?
 
 	init(node: Node<BlockType>, port: Int) {
 		self.node = node
 		self.port = port
 
-		// Part of API used between nodes
-		router.post("/", handler: self.handleIndex)
-		router.get("/", handler: self.handleIndex)
-		router.post("/block", handler: self.handlePostBlock)
-		router.get("/block/:hash", handler: self.handleGetBlock)
+		WebSocket.register(service: self, onPath: "/")
 
 		// Not part of the API used between nodes
-		router.get("/info/orphans", handler: self.handleGetOrphans)
-		router.get("/info/head", handler: self.handleGetLast)
+		router.get("/", handler: self.handleIndex)
+		router.get("/api/block/:hash", handler: self.handleGetBlock)
+		router.get("/api/orphans", handler: self.handleGetOrphans)
+		router.get("/api/head", handler: self.handleGetLast)
 
 		Kitura.addHTTPServer(onPort: port, with: router)
 	}
 
-	/** Other peers will GET this, or POST with a JSON object containing their own UUID (string) and port (number). */
-	private func handleIndex(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		if request.method == .post {
-			var data = Data(capacity: 4096)
-			do {
-				if try request.read(into: &data) > 0 {
-					if	let params = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-						let _ = params["uuid"] as? String,
-						let port = params["port"] as? Int {
+	func connected(connection: WebSocketConnection) {
+		Log.info("[Server] gossip connected \(connection.id)")
+		let pic = PeerIncomingConnection(connection: connection)
 
-						// Tell node that we have made contact with a new peer
-						var uc = URLComponents()
-						uc.scheme = "http"
-						uc.host = request.remoteAddress
-						uc.port = port
-						if let u = uc.url {
-							self.node?.add(peer: Peer(URL: u))
-						}
-					}
-					else {
-						_ = response.send(status: .badRequest)
-						return
-					}
-				}
-				else {
-					_ = response.send(status: .badRequest)
-					return
-				}
-			}
-			catch {
-				_ = response.send(status: .badRequest)
-				return
-			}
+		self.mutex.locked {
+			self.gossipConnections[connection.id] = pic
 		}
 
+		self.node?.add(peer: pic)
+	}
+
+	func disconnected(connection: WebSocketConnection, reason: WebSocketCloseReasonCode) {
+		Log.info("[Server] disconnected gossip \(connection.id); reason=\(reason)")
+		self.mutex.locked {
+			self.gossipConnections.removeValue(forKey: connection.id)
+		}
+	}
+
+	func received(message: Data, from: WebSocketConnection) {
+		do {
+			if let d = try JSONSerialization.jsonObject(with: message, options: []) as? [Any] {
+				try self.handleGossip(data: d, from: from)
+			}
+			else {
+				Log.error("[Gossip] Invalid format")
+			}
+		}
+		catch {
+			Log.error("[Gossip] Invalid: \(error.localizedDescription)")
+		}
+	}
+
+	func received(message: String, from: WebSocketConnection) {
+		do {
+			if let d = try JSONSerialization.jsonObject(with: message.data(using: .utf8)!, options: []) as? [Any] {
+				try self.handleGossip(data: d, from: from)
+			}
+			else {
+				Log.error("[Gossip] Invalid format")
+			}
+		}
+		catch {
+			Log.error("[Gossip] Invalid: \(error.localizedDescription)")
+		}
+	}
+
+	func handleGossip(data: [Any], from: WebSocketConnection) throws {
+		Log.info("[Gossip] received \(data)")
+
+		self.mutex.locked {
+			if let pic = self.gossipConnections[from.id] {
+				DispatchQueue.global().async {
+					pic.receive(data: data)
+				}
+			}
+			else {
+				Log.error("[Server] received gossip data for non-connection: \(from.id)")
+			}
+		}
+	}
+
+	/** Other peers will GET this, or POST with a JSON object containing their own UUID (string) and port (number). */
+	private func handleIndex(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
 		response.send(json: [
 			"version": self.version,
 			"uuid": self.node!.uuid.uuidString,
@@ -101,43 +131,26 @@ class Server<BlockType: Block> {
 				"genesis": self.node!.ledger.longest.genesis.json
 			]},
 
-			"peers": Array(self.node!.validPeers.flatMap { return $0.url.absoluteString })
-		])
-		next()
-	}
-
-	private func handlePostBlock(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		assert(request.method == .post, "Must be post")
-
-		var data = Data(capacity: 4096)
-		do {
-			if try request.read(into: &data) > 0 {
-				if let params = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-					let block = try BlockType.read(json: params)
-					self.node?.ledger.mutex.locked {
-						Log.info("[Server] received post: \(block)")
-						_ = self.node?.ledger.receive(block: block)
+			"peers": self.node!.peers.map { (url, p) -> [String: Any] in
+				return p.mutex.locked {
+					let desc: String
+					switch p.state {
+					case .new: desc = "new"
+					case .connected(_): desc = "connected"
+					case .connecting(_): desc = "connecting"
+					case .failed(error: let e): desc = "error(\(e))"
+					case .ignored(reason: let e): desc = "ignored(\(e))"
+					case .queried(_): desc = "queried"
+					case .querying(_): desc = "querying"
 					}
 
-					response.send(json: [
-						"version": self.version
-					])
-				}
-				else {
-					_ = response.send(status: .badRequest)
-					return
+					return [
+						"url": url.absoluteString,
+						"state": desc
+					]
 				}
 			}
-			else {
-				_ = response.send(status: .badRequest)
-				return
-			}
-		}
-		catch {
-			_ = response.send(status: .badRequest)
-			return
-		}
-
+		])
 		next()
 	}
 
@@ -200,131 +213,422 @@ class Server<BlockType: Block> {
 	}
 }
 
-public class Peer<BlockType: Block>: Hashable, CustomDebugStringConvertible {
-	struct Index {
-		let version: Int
-		let uuid: UUID
+public enum Gossip {
+	static let version = 1
+
+	public struct Index {
 		let genesis: Hash
-		let peers: [String]
+		let peers: [URL]
 		let highest: Hash
 		let height: UInt
-	}
 
-	let url: URL
+		init(genesis: Hash, peers: [URL], highest: Hash, height: UInt) {
+			self.genesis = genesis
+			self.peers = peers
+			self.highest = highest
+			self.height = height
+		}
 
-	public static func ==(lhs: Peer<BlockType>, rhs: Peer<BlockType>) -> Bool {
-		return lhs.url == rhs.url
-	}
-
-	public var debugDescription: String {
-		return "Peer \(self.url.absoluteString)"
-	}
-
-	public init(URL: URL) {
-		self.url = URL
-	}
-
-	public var hashValue: Int {
-		return url.hashValue
-	}
-
-	private func call(path: String, parameters: [String: Any]? = nil, callback: @escaping (Fallible<[String: Any]>) -> ()) {
-		let u = self.url.appendingPathComponent(path).absoluteString
-		let request = KituraRequest.request(parameters != nil ? .post : .get, u, parameters: parameters, encoding: JSONEncoding(options: []))
-
-		request.response { request, response, data, error in
-			if let e = error {
-				return callback(.failure(e.localizedDescription))
+		init?(json: [String: Any]) {
+			if
+				let genesisHash = json["genesis"] as? String,
+				let highestHash = json["highest"] as? String,
+				let genesis = Hash(string: genesisHash),
+				let highest = Hash(string: highestHash),
+				let height = json["height"] as? Int,
+				let peers = json["peers"] as? [String]
+			{
+				self.genesis = genesis
+				self.highest = highest
+				self.height = UInt(height)
+				self.peers = peers.flatMap { return URL(string: $0) }
 			}
+			else {
+				return nil
+			}
+		}
 
-			if let r = response, r.statusCode == .OK {
-				if let d = data {
-					do {
-						let answer = try JSONSerialization.jsonObject(with: d, options: [])
-						if let answer = answer as? [String: Any] {
-							return callback(.success(answer))
+		var json: [String: Any] {
+			return [
+				"highest": self.highest.stringValue,
+				"height": self.height,
+				"genesis": self.genesis.stringValue,
+				"peers": self.peers.flatMap { $0.absoluteString }
+			]
+		}
+	}
+
+	case query // -> index
+	case index(Index)
+	case block([String: Any]) // no reply
+	case fetch(Hash) // -> block
+	case error(String)
+
+	static let actionKey = "t"
+
+	init?(json: [String: Any]) {
+		if let q = json[Gossip.actionKey] as? String {
+			if q == "query" {
+				self = .query
+			}
+			else if q == "block", let blockData = json["block"] as? [String: Any] {
+				self = .block(blockData)
+			}
+			else if q == "fetch", let hash = json["hash"] as? String, let hashValue = Hash(string: hash) {
+				self = .fetch(hashValue)
+			}
+			else if q == "index", let idx = json["index"] as? [String: Any], let index = Index(json: idx) {
+				self = .index(index)
+			}
+			else if q == "error", let message = json["message"] as? String {
+				self = .error(message)
+			}
+			else {
+				return nil
+			}
+		}
+		else {
+			return nil
+		}
+	}
+
+	var json: [String: Any] {
+		switch self {
+		case .query:
+			return [Gossip.actionKey: "query"]
+
+		case .block(let b):
+			return [Gossip.actionKey: "block", "block": b]
+
+		case .index(let i):
+			return [Gossip.actionKey: "index", "index": i.json]
+
+		case .fetch(let h):
+			return [Gossip.actionKey: "fetch", "hash": h.stringValue]
+
+		case .error(let m):
+			return [Gossip.actionKey: "error", "message": m]
+		}
+	}
+}
+
+public class PeerConnection {
+	public typealias Callback = (Gossip) -> ()
+	public let mutex = Mutex()
+	private var counter = 0
+	private var callbacks: [Int: Callback] = [:]
+	public weak var delegate: PeerConnectionDelegate?
+
+	fileprivate init(isIncoming: Bool) {
+		self.counter = isIncoming ? 1 : 0
+	}
+
+	public func receive(data: [Any]) {
+		if data.count == 2, let counter = data[0] as? Int, let gossipData = data[1] as? [String: Any] {
+			if let g = Gossip(json: gossipData) {
+				self.mutex.locked {
+					if counter != 0, let cb = callbacks[counter] {
+						self.callbacks.removeValue(forKey: counter)
+						DispatchQueue.global().async {
+							cb(g)
+						}
+					}
+					else {
+						// Unsolicited
+						Log.debug("[Gossip] Get \(counter): \(g)")
+						if let d = self.delegate {
+							DispatchQueue.global().async {
+								d.peer(connection: self, requests: g, counter: counter)
+							}
 						}
 						else {
-							return callback(.failure("invalid JSON structure"))
+							Log.error("[Server] cannot handle gossip \(counter): no delegate")
 						}
 					}
-					catch {
-						return callback(.failure(error.localizedDescription))
-					}
-				}
-				else {
-					return callback(.success([:]))
 				}
 			}
 			else {
-				return callback(.failure("HTTP status code \(response?.httpStatusCode.rawValue ?? 0)"))
+				Log.warning("[Gossip] Receive unknown gossip: \(gossipData)")
+			}
+		}
+		else {
+			Log.warning("[Gossip] Receive malformed: \(data)")
+		}
+	}
+
+	public final func reply(counter: Int, gossip: Gossip) throws {
+		try self.mutex.locked {
+			let d = try JSONSerialization.data(withJSONObject: [counter, gossip.json], options: [])
+			try self.send(data: d)
+		}
+	}
+
+	public final func request(gossip: Gossip, callback: Callback? = nil) throws {
+		let c = self.mutex.locked { () -> Int in
+			counter += 2
+			if let c = callback {
+				self.callbacks[counter] = c
+			}
+			return counter
+		}
+
+		try self.mutex.locked {
+			let d = try JSONSerialization.data(withJSONObject: [c, gossip.json], options: [])
+			try self.send(data: d)
+		}
+	}
+
+	public func send(data: Data) throws {
+		fatalError("Should be subclassed")
+	}
+}
+
+public class PeerIncomingConnection: PeerConnection {
+	let connection: WebSocketConnection
+
+	init(connection: WebSocketConnection) {
+		self.connection = connection
+		super.init(isIncoming: true)
+	}
+
+	deinit {
+		self.connection.close()
+	}
+
+	func close() {
+		self.connection.close()
+	}
+
+	public override func send(data: Data) throws {
+		self.connection.send(message: data)
+	}
+}
+
+public protocol PeerConnectionDelegate: class {
+	func peer(connected: PeerOutgoingConnection)
+	func peer(disconnected: PeerOutgoingConnection)
+	func peer(connection: PeerConnection, requests: Gossip, counter: Int)
+}
+
+public class PeerOutgoingConnection: PeerConnection, WebSocketDelegate {
+	let connection: Starscream.WebSocket
+
+	init(connection: Starscream.WebSocket) {
+		self.connection = connection
+		connection.timeout = 10
+
+		super.init(isIncoming: false)
+		connection.delegate = self
+		connection.callbackQueue = DispatchQueue.global(qos: .background)
+	}
+
+	deinit {
+		Log.info("[Gossip] deinit outgoing \(self)")
+		self.delegate?.peer(disconnected: self)
+	}
+
+	public override func send(data: Data) throws {
+		self.connection.write(data: data)
+	}
+
+	public func websocketDidConnect(socket: Starscream.WebSocket) {
+		Log.info("[Gossip] Connected outgoing to \(socket.currentURL)")
+		self.delegate?.peer(connected: self)
+	}
+
+	public func websocketDidReceiveData(socket: Starscream.WebSocket, data: Data) {
+		do {
+			if let obj = try JSONSerialization.jsonObject(with: data, options: []) as? [Any] {
+				self.receive(data: obj)
+			}
+			else {
+				Log.error("[Gossip] Outgoing socket received malformed data")
+			}
+		}
+		catch {
+			Log.error("[Gossip] Outgoing socket received malformed data: \(error)")
+		}
+	}
+
+	public func websocketDidDisconnect(socket: Starscream.WebSocket, error: NSError?) {
+		Log.info("[Gossip] Disconnected outgoing to \(socket.currentURL) \(error?.localizedDescription ?? "unknown error")")
+		self.delegate?.peer(disconnected: self)
+	}
+
+	public func websocketDidReceiveMessage(socket: Starscream.WebSocket, text: String) {
+		self.websocketDidReceiveData(socket: socket, data: text.data(using: .utf8)!)
+	}
+}
+
+public class Peer<BlockType: Block>: PeerConnectionDelegate {
+	let url: URL
+	private(set) var state: PeerState
+	weak var node: Node<BlockType>?
+	public let mutex = Mutex()
+
+	public var connection: PeerConnection? {
+		return self.state.connection
+	}
+
+	init(url: URL, state: PeerState, delegate: Node<BlockType>) {
+		self.url = url
+		self.state = state
+		self.node = delegate
+	}
+
+	public func advance() {
+		self.mutex.locked {
+			Log.debug("Advance peer \(url) from state \(self.state)")
+			do {
+				if let n = node {
+					switch self.state {
+					case .new, .failed(_):
+						let ws = Starscream.WebSocket(url: url)
+						ws.headers["X-UUID"] = n.uuid.uuidString
+						ws.headers["X-Port"] = String(n.server.port)
+						ws.headers["X-Version"] = String(Gossip.version)
+						let pic = PeerOutgoingConnection(connection: ws)
+						pic.delegate = self
+						Log.info("[Peer] connect outgoing \(url)")
+						ws.connect()
+						self.state = .connecting(pic)
+
+					case .connected(_), .queried(_):
+						try self.query()
+
+					default:
+						// Do nothing
+						break
+					}
+				}
+			}
+			catch {
+				self.state = .failed(error: "advance error: \(error.localizedDescription)")
 			}
 		}
 	}
 
-	func fetch(hash: Hash, callback: @escaping (Fallible<BlockType>) -> ()) {
-		self.call(path: "/block/\(hash.stringValue)") { result in
-			switch result {
-			case .success(let data):
+	public func fail(error: String) {
+		self.mutex.locked {
+			self.state = .failed(error: error)
+		}
+	}
+
+	private func query() throws {
+		if let n = self.node, let c = self.state.connection {
+			self.mutex.locked {
+				self.state = .querying(c)
+			}
+
+			try c.request(gossip: .query) { reply in
+				self.mutex.locked {
+					if case .index(let index) = reply {
+						Log.info("[Peer] Receive index reply: \(index)")
+						// Update peer status
+						if index.genesis != n.ledger.longest.genesis.signature! {
+							// Peer believes in another genesis, ignore him
+							self.state = .ignored(reason: "believes in other genesis")
+						}
+						else {
+							self.state = .queried(c)
+						}
+
+						// New peers?
+						for p in index.peers {
+							n.add(peer: p)
+						}
+
+						n.receive(candidate: Candidate(hash: index.highest, height: index.height, peer: self.url))
+					}
+					else {
+						self.state = .failed(error: "Invalid reply received to query request")
+					}
+				}
+			}
+		}
+	}
+
+	public func peer(connection: PeerConnection, requests gossip: Gossip, counter: Int) {
+		do {
+			switch gossip {
+			case .block(let blockData):
 				do {
-					let block = try BlockType.read(json: data)
-					return callback(.success(block))
+					let b = try BlockType.read(json: blockData)
+					self.node?.receive(block: b)
 				}
 				catch {
-					return callback(.failure(error.localizedDescription))
+					self.fail(error: "Received invalid unsolicited block")
 				}
 
-			case .failure(let e):
-				callback(.failure(e))
-			}
-		}
-	}
+			case .fetch(let h):
+				try self.node?.ledger.mutex.locked {
+					if let block = self.node?.ledger.longest.blocks[h] {
+						try connection.reply(counter: counter, gossip: .block(block.json))
+					}
+				}
 
-	func post(block: BlockType) {
-		self.call(path: "/block", parameters: block.json) { result in
-			switch result {
-			case .success(_):
+			case .query:
+				// We received a query from the other end
+				if let n = self.node {
+					let idx = n.ledger.mutex.locked {
+						return Gossip.Index(
+							genesis: n.ledger.longest.genesis.signature!,
+							peers: Array(n.validPeers),
+							highest: n.ledger.longest.highest.signature!,
+							height: n.ledger.longest.highest.index
+						)
+					}
+					try connection.reply(counter: counter, gossip: .index(idx))
+				}
 				break
 
-			case .failure(let e):
-				Log.warning("[Peer] Post block failed to peer \(self): \(e)")
+			default:
+				// These are not requests we handle. Ignore clients that don't play by the rules
+				self.state = .ignored(reason: "peer sent invalid request \(gossip)")
+				break
+			}
+		}
+		catch {
+			Log.error("[Peer] handle Gossip request failed: \(error.localizedDescription)")
+		}
+	}
+
+	public func peer(connected _: PeerOutgoingConnection) {
+		self.mutex.locked {
+			if case .connecting(let c) = self.state {
+				Log.info("[Peer] \(url) connected outgoing")
+				self.state = .connected(c)
+			}
+			else {
+				fatalError("[Peer] \(url) connected while not connecting")
 			}
 		}
 	}
 
-	func ping(from: Node<BlockType>? = nil, callback: @escaping (Fallible<Index>) -> ()) {
-		var p: [String: Any]? = nil
-		if let f = from {
-			p = [
-				"uuid": f.uuid.uuidString,
-				"port": f.server.port
-			]
+	public func peer(disconnected _: PeerOutgoingConnection) {
+		self.mutex.locked {
+			Log.info("[Peer] \(url) disconnected outgoing")
+			self.state = .new
 		}
+	}
+}
 
-		self.call(path: "/", parameters: p) { result in
-			switch result {
-			case .success(let answer):
-				if let version = answer["version"] as? Int,
-					let uuidString = answer["uuid"] as? String, let uuid = UUID(uuidString: uuidString),
-					let longest = answer["longest"] as? [String: Any?],
-					let genesis = longest["genesis"] as? [String: Any?],
-					let highest = longest["highest"] as? [String: Any?],
-					let height = highest["index"] as? UInt,
-					let genesisHashString = genesis["hash"] as? String,
-					let genesisHash = Hash(string: genesisHashString),
-					let highestHashString = highest["hash"] as? String,
-					let highestHash = Hash(string: highestHashString),
-					let peers = answer["peers"] as? [String] {
-					let index = Index(version: version, uuid: uuid, genesis: genesisHash, peers: peers, highest: highestHash, height: height)
-						return callback(.success(index))
-				}
-				else {
-					return callback(.failure("invalid answer"))
-				}
+public enum PeerState {
+	case new // Peer has not yet connected
+	case connecting(PeerConnection)
+	case connected(PeerConnection) // The peer is connected but has not been queried yet
+	case querying(PeerConnection) // The peer is currently being queried
+	case queried(PeerConnection) // The peer has last been queried successfully
+	case ignored(reason: String) // The peer is ourselves or believes in another genesis, ignore it forever
+	case failed(error: String) // Talking to the peer failed for some reason, ignore it for a while
 
-			case .failure(let e):
-				return callback(.failure(e))
-			}
+	var connection: PeerConnection? {
+		switch self {
+		case .connected(let c), .queried(let c), .querying(let c):
+			return c
+
+		case .new, .failed(error: _), .ignored, .connecting(_):
+			return nil
 		}
 	}
 }

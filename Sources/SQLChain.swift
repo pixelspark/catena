@@ -34,6 +34,10 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 	var nonce: UInt = 0
 	var signature: Hash? = nil
 
+	static func ==(lhs: SQLBlock, rhs: SQLBlock) -> Bool {
+		return lhs.signedData == rhs.signedData
+	}
+
 	init(index: UInt, previous: Hash, payload: Data) throws {
 		self.index = index
 		self.previous = previous
