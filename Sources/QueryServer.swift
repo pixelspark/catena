@@ -1,4 +1,5 @@
 import Foundation
+import LoggerAPI
 
 class NodeQueryServer: QueryServer {
 	var node: Node<SQLBlock>
@@ -11,7 +12,7 @@ class NodeQueryServer: QueryServer {
 	override func query(_ query: String, connection: QueryClientConnection) {
 		let ledger = node.ledger as! SQLLedger
 
-		print("EXEC: \(query)")
+		Log.info("[Query] Execute: \(query)")
 
 		do {
 			let transaction = try SQLTransaction(statement: query)

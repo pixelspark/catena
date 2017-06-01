@@ -107,7 +107,7 @@ class Server<BlockType: Block>: WebSocketService {
 	}
 
 	func handleGossip(data: [Any], from: WebSocketConnection) throws {
-		Log.info("[Gossip] received \(data)")
+		Log.debug("[Gossip] received \(data)")
 
 		self.mutex.locked {
 			if let pic = self.gossipConnections[from.id] {
@@ -440,7 +440,6 @@ public class PeerOutgoingConnection: PeerConnection, WebSocketDelegate {
 	}
 
 	deinit {
-		Log.info("[Gossip] deinit outgoing \(self)")
 		self.delegate?.peer(disconnected: self)
 	}
 
@@ -540,7 +539,7 @@ public class Peer<BlockType: Block>: PeerConnectionDelegate {
 			try c.request(gossip: .query) { reply in
 				self.mutex.locked {
 					if case .index(let index) = reply {
-						Log.info("[Peer] Receive index reply: \(index)")
+						Log.debug("[Peer] Receive index reply: \(index)")
 						// Update peer status
 						if index.genesis != n.ledger.longest.genesis.signature! {
 							// Peer believes in another genesis, ignore him

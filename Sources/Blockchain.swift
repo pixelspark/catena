@@ -230,7 +230,7 @@ class Ledger<BlockType: Block>: CustomDebugStringConvertible {
 	let spliceLimit: UInt = 1
 
 	func receive(block: BlockType) -> Bool {
-		Log.info("[Ledger] receive block #\(block.index) \(block.signature!.stringValue)")
+		Log.debug("[Ledger] receive block #\(block.index) \(block.signature!.stringValue)")
 		return self.mutex.locked { () -> Bool in
 			if block.isSignatureValid {
 				// Were we waiting for this block?

@@ -1,6 +1,7 @@
 import Foundation
 import Socket
 import Dispatch
+import LoggerAPI
 
 fileprivate extension UnsignedInteger {
 	init(_ bytes: [UInt8]) {
@@ -364,11 +365,11 @@ final class QueryClientConnection {
 							// Read client version number
 							let majorVersion = msg >> 16
 							let minorVersion = msg & 0xFFFF
-							print("PSQL \(majorVersion).\(minorVersion)")
+							Log.debug("[PSQL] PSQL \(majorVersion).\(minorVersion)")
 
 							// Read parameters
 							if let p = try self.readParameters(length: len - UInt32(8)) {
-								print("Parameters: \(p)")
+								Log.debug("[PSQL] Parameters: \(p)")
 
 								// Send authentication request
 								let buf = Data(bytes: [UInt8(Character("R").codePoint), 0, 0, 0, 8, 0, 0, 0, 3])
@@ -376,7 +377,7 @@ final class QueryClientConnection {
 
 								// Read authentication
 								if let pw = try self.readAuthentication() {
-									print("Password: \(pw)")
+									Log.debug("[PSQL] Password: \(pw)")
 
 									// Send authentication success
 									let buf = Data(bytes: [UInt8(Character("R").codePoint), 0, 0, 0, 8, 0, 0, 0, 0])
@@ -509,12 +510,12 @@ class QueryServer {
 			}
 			catch let error {
 				guard let socketError = error as? Socket.Error else {
-					print("[SocketServer] Unexpected error...")
+					Log.error("[SocketServer] Unexpected error...")
 					return
 				}
 
 				if self.continueRunning {
-					print("[SocketServer] Error reported:\n \(socketError.description)")
+					Log.error("[SocketServer] Error reported:\n \(socketError.description)")
 				}
 			}
 		}
@@ -525,7 +526,7 @@ class QueryServer {
 			try socket.setBlocking(mode: true)
 		}
 		catch {
-			print("Could not set blocking mode: \(error.localizedDescription)")
+			Log.error("Could not set blocking mode: \(error.localizedDescription)")
 		}
 
 		// Add the new socket to the list of connected sockets...

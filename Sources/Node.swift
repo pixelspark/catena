@@ -176,7 +176,7 @@ class Node<BlockType: Block> {
 								let block = try BlockType.read(json: blockData)
 
 								if block.isSignatureValid {
-									Log.info("[Node] fetch returned valid block: \(block)")
+									Log.debug("[Node] fetch returned valid block: \(block)")
 									self.ledger.mutex.locked {
 										_ = self.ledger.receive(block: block)
 										if block.index > 0 &&
