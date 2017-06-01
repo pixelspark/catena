@@ -55,6 +55,7 @@ class Server<BlockType: Block>: WebSocketService {
 		router.get("/api/block/:hash", handler: self.handleGetBlock)
 		router.get("/api/orphans", handler: self.handleGetOrphans)
 		router.get("/api/head", handler: self.handleGetLast)
+		router.get("/api/journal", handler: self.handleGetJournal)
 
 		Kitura.addHTTPServer(onPort: port, with: router)
 	}
@@ -208,6 +209,22 @@ class Server<BlockType: Block>: WebSocketService {
 		response.send(json: [
 			"status": "ok",
 			"blocks": data
+		])
+		next()
+	}
+
+	private func handleGetJournal(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+		let chain = self.node!.ledger.longest
+		var b: BlockType? = chain.highest
+		var data: [String] = [];
+		while let block = b {
+			data.append(String(data: block.payloadData, encoding: .utf8)!)
+			b = chain.blocks[block.previous]
+		}
+
+		response.send(json: [
+			"status": "ok",
+			"blocks": Array(data.reversed())
 		])
 		next()
 	}
