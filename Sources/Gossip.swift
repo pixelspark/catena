@@ -123,14 +123,16 @@ class Server<BlockType: Block>: WebSocketService {
 
 	/** Other peers will GET this, or POST with a JSON object containing their own UUID (string) and port (number). */
 	private func handleIndex(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+		let longest = self.node!.ledger.longest
+
 		response.send(json: [
 			"version": self.version,
 			"uuid": self.node!.uuid.uuidString,
 
-			"longest": self.node!.ledger.mutex.locked { return [
-				"highest": self.node!.ledger.longest.highest.json,
-				"genesis": self.node!.ledger.longest.genesis.json
-			]},
+			"longest": [
+				"highest": longest.highest.json,
+				"genesis": longest.genesis.json
+			],
 
 			"peers": self.node!.peers.map { (url, p) -> [String: Any] in
 				return p.mutex.locked {
@@ -616,7 +618,7 @@ public class Peer<BlockType: Block>: PeerConnectionDelegate {
 				self.state = .connected(c)
 			}
 			else {
-				fatalError("[Peer] \(url) connected while not connecting")
+				Log.error("[Peer] \(url) connected while not connecting")
 			}
 		}
 	}
