@@ -11,7 +11,7 @@ let netPortOption = IntOption(shortFlag: "p", longFlag: "gossip-port", helpMessa
 let queryPortOption = IntOption(shortFlag: "q", longFlag: "query-port", helpMessage: "Listen port for query communications (default: networking port + 1)")
 let peersOption = MultiStringOption(shortFlag: "j", helpMessage: "Peer to connect to ('hostname:port' or just 'hostname')")
 let mineOption = BoolOption(shortFlag: "m", longFlag: "mine", helpMessage: "Enable mining of blocks")
-let logOption = IntOption(longFlag: "log", helpMessage: "The log level (default: 1)")
+let logOption = StringOption(shortFlag: "v", longFlag: "log", helpMessage: "The log level: debug, verbose, info, warning (default: info)")
 
 let cli = CommandLineKit.CommandLine()
 cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption)
@@ -31,10 +31,19 @@ if helpOption.wasSet {
 }
 
 // Configure logging
-let logLevel = logOption.value ?? LoggerMessageType.verbose.rawValue
-let logger = HeliumLogger(LoggerMessageType.init(rawValue: logLevel)!)
-logger.details = false
+let logLevel = logOption.value ?? "info"
+let logLevelType: LoggerMessageType
 
+switch logLevel {
+	case "verbose": logLevelType = .verbose
+	case "debug": logLevelType = .debug
+	case "warning": logLevelType = .warning
+	case "info": logLevelType = .info
+	default: fatalError("Invalid setting for --log")
+}
+
+let logger = HeliumLogger(logLevelType)
+logger.details = false
 Log.logger = logger
 
 let database = Database()
