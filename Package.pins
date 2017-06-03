@@ -8,12 +8,6 @@
       "version": "0.2.3"
     },
     {
-      "package": "CSQLite",
-      "reason": null,
-      "repositoryURL": "https://github.com/stephencelis/CSQLite.git",
-      "version": "0.0.2"
-    },
-    {
       "package": "CommandLine",
       "reason": null,
       "repositoryURL": "https://github.com/jatoben/CommandLine",
@@ -72,6 +66,12 @@
       "reason": null,
       "repositoryURL": "https://github.com/IBM-Swift/LoggerAPI.git",
       "version": "1.7.0"
+    },
+    {
+      "package": "SQLite",
+      "reason": null,
+      "repositoryURL": "https://github.com/pixelspark/sqlite.git",
+      "version": "3.19.2"
     },
     {
       "package": "SSLService",
