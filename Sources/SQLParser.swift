@@ -50,12 +50,19 @@ struct SQLSchema {
 	var columns = OrderedDictionary<SQLColumn, SQLType>()
 }
 
+struct SQLSelect {
+	var these: [SQLExpression] = []
+	var from: SQLTable? = nil
+	var `where`: SQLExpression? = nil
+	var distinct: Bool = false
+}
+
 enum SQLStatement {
 	case create(table: SQLTable, schema: SQLSchema)
 	case delete(from: SQLTable, where: SQLExpression?)
 	case drop(table: SQLTable)
 	case insert(into: SQLTable, columns: [SQLColumn], values: [[SQLExpression]])
-	case select(these: [SQLExpression], from: SQLTable?, where: SQLExpression?, distinct: Bool)
+	case select(SQLSelect)
 	case update
 
 	var isMutating: Bool {
@@ -102,13 +109,13 @@ enum SQLStatement {
 		case .update:
 			return "UPDATE;"
 
-		case .select(let exprs, from: let table, where: let w, distinct: let d):
-			let selectList = exprs.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
-			let distinctSQL = d ? " DISTINCT" : ""
+		case .select(let select):
+			let selectList = select.these.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
+			let distinctSQL = select.distinct ? " DISTINCT" : ""
 
-			if let t = table {
+			if let t = select.from {
 				let whereSQL: String
-				if let w = w {
+				if let w = select.where {
 					whereSQL = " WHERE \(w.sql(dialect: dialect))"
 				}
 				else {
@@ -310,32 +317,34 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		// Statement types
 		add_named_rule("select-dql-statement", rule:
 			Parser.matchLiteralInsensitive("SELECT") => {
-				self.stack.append(.statement(.select(these: [], from: nil, where: nil, distinct: false)))
+				self.stack.append(.statement(.select(SQLSelect())))
 			}
 			~~ ((Parser.matchLiteralInsensitive("DISTINCT") => {
 				guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
-				guard case .select(these: _, from: _, where: _, distinct: _) = st else { fatalError() }
-				self.stack.append(.statement(.select(these: [], from :nil, where: nil, distinct: true)))
+				guard case .select(var select) = st else { fatalError() }
+				select.distinct = true
+				self.stack.append(.statement(.select(select)))
 			})/~)
 			~~ (^"tuple" => {
 				guard case .tuple(let exprs) = self.stack.popLast()! else { fatalError() }
 				guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
-				guard case .select(these: _, from: _, where: _, distinct: let distinct) = st else { fatalError() }
-
-				self.stack.append(.statement(.select(these: exprs, from :nil, where: nil, distinct: distinct)))
+				guard case .select(var select) = st else { fatalError() }
+				select.these = exprs
+				self.stack.append(.statement(.select(select)))
 			})
 			~~ (
 					Parser.matchLiteralInsensitive("FROM") ~~ ^"id-table" => {
 						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
-						guard case .select(these: let exprs, from: _, where: _, distinct: let distinct) = st else { fatalError() }
-						self.stack.append(.statement(.select(these: exprs, from: SQLTable(name: self.text), where: nil, distinct: distinct)))
+						guard case .select(var select) = st else { fatalError() }
+						select.from = SQLTable(name: self.text)
+						self.stack.append(.statement(.select(select)))
 					}
 					~~ (Parser.matchLiteralInsensitive("WHERE") ~~ ^"ex" => {
 						guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
 						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
-						guard case .select(these: let exprs, from: let from, where: _, distinct: let distinct) = st else { fatalError() }
-
-						self.stack.append(.statement(.select(these: exprs, from: from, where: expression, distinct: distinct)))
+						guard case .select(var select) = st else { fatalError() }
+						select.where = expression
+						self.stack.append(.statement(.select(select)))
 					})/~
 				)/~
 		)
@@ -346,16 +355,12 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 				})
 			~~ Parser.matchLiteral("(")
 			~~ Parser.matchList(^"column-definition" => {
-				if case .columnDefinition(column: let column, type: let type) = self.stack.popLast()!,
-					case .statement(let s) = self.stack.popLast()!,
-					case .create(table: let t, schema: let oldSchema) = s {
-						var newSchema = oldSchema
-						newSchema.columns[column] = type
-						self.stack.append(.statement(.create(table: t, schema: newSchema)))
-				}
-				else {
-					fatalError("IMPOSSIBRU")
-				}
+				guard case .columnDefinition(column: let column, type: let type) = self.stack.popLast()! else { fatalError() }
+				guard case .statement(let s) = self.stack.popLast()! else { fatalError() }
+				guard case .create(table: let t, schema: let oldSchema) = s else { fatalError() }
+				var newSchema = oldSchema
+				newSchema.columns[column] = type
+				self.stack.append(.statement(.create(table: t, schema: newSchema)))
 			}, separator: Parser.matchLiteral(","))
 			~~ Parser.matchLiteral(")")
 		)
@@ -385,11 +390,10 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 				~~ ((Parser.matchLiteral("(") => { self.stack.append(.columnList([])) }) ~~ ^"column-list" ~~ Parser.matchLiteral(")"))
 				~~ Parser.matchLiteralInsensitive("VALUES") ~~ ((Parser.matchLiteral("(") => { self.stack.append(.tuple([])) }) ~~ ^"tuple" ~~ Parser.matchLiteral(")"))
 			) => {
-				if  case .tuple(let rs) = self.stack.popLast()!,
-					case .columnList(let cs) = self.stack.popLast()!,
-					case .tableIdentifier(let tn) = self.stack.popLast()! {
-					self.stack.append(.statement(.insert(into: tn, columns: cs, values: [rs])))
-				}
+				guard case .tuple(let rs) = self.stack.popLast()! else { fatalError() }
+				guard case .columnList(let cs) = self.stack.popLast()! else { fatalError() }
+				guard case .tableIdentifier(let tn) = self.stack.popLast()! else { fatalError() }
+				self.stack.append(.statement(.insert(into: tn, columns: cs, values: [rs])))
 			})
 
 		// Statement categories

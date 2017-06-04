@@ -70,13 +70,13 @@ extension SQLStatement {
 		case .drop(table: _):
 			return self
 
-		case .delete(from: _, `where`: _):
+		case .delete(from: _, where: _):
 			return self
 
 		case .insert(into: _, columns: _, values: _):
 			return self
 
-		case .select(these: _, from: _, where: _, distinct: _):
+		case .select(_):
 			return self
 
 		// This will be used to rewrite column names, table names, etc. for backend processing
