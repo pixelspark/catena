@@ -52,10 +52,10 @@ struct SQLSchema {
 
 enum SQLStatement {
 	case create(table: SQLTable, schema: SQLSchema)
-	case delete(from: SQLTable)
+	case delete(from: SQLTable, where: SQLExpression?)
 	case drop(table: SQLTable)
 	case insert(into: SQLTable, columns: [SQLColumn], values: [[SQLExpression]])
-	case select(these: [SQLExpression], from: SQLTable?)
+	case select(these: [SQLExpression], from: SQLTable?, where: SQLExpression?, distinct: Bool)
 	case update
 
 	var isMutating: Bool {
@@ -77,8 +77,15 @@ enum SQLStatement {
 
 			return "CREATE TABLE \(table.sql(dialect: dialect)) (\(def.joined(separator: ", ")));"
 
-		case .delete(from: let table):
-			return "DELETE FROM \(table.sql(dialect: dialect));"
+		case .delete(from: let table, where: let expression):
+			let whereSQL: String
+			if let w = expression {
+				whereSQL = " WHERE \(w.sql(dialect: dialect))";
+			}
+			else {
+				whereSQL = "";
+			}
+			return "DELETE FROM \(table.sql(dialect: dialect))\(whereSQL);"
 
 		case .drop(let table):
 			return "DROP TABLE \(table.sql(dialect: dialect));"
@@ -95,14 +102,44 @@ enum SQLStatement {
 		case .update:
 			return "UPDATE;"
 
-		case .select(let exprs, from: let table):
+		case .select(let exprs, from: let table, where: let w, distinct: let d):
 			let selectList = exprs.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
+			let distinctSQL = d ? " DISTINCT" : ""
+
 			if let t = table {
-				return "SELECT \(selectList) FROM \(t.sql(dialect: dialect));"
+				let whereSQL: String
+				if let w = w {
+					whereSQL = " WHERE \(w.sql(dialect: dialect))"
+				}
+				else {
+					whereSQL = ""
+				}
+
+				return "SELECT\(distinctSQL) \(selectList) FROM \(t.sql(dialect: dialect))\(whereSQL);"
 			}
 			else {
-				return "SELECT \(selectList);"
+				return "SELECT\(distinctSQL) \(selectList);"
 			}
+		}
+	}
+}
+
+enum SQLBinary {
+	case equals
+	case notEquals
+	case lessThan
+	case greaterThan
+	case lessThanOrEqual
+	case greaterThanOrEqual
+
+	func sql(dialect: SQLDialect) -> String {
+		switch self {
+		case .equals: return "="
+		case .notEquals: return "<>"
+		case .lessThan: return "<"
+		case .greaterThan: return ">"
+		case .lessThanOrEqual: return "<="
+		case .greaterThanOrEqual: return ">="
 		}
 	}
 }
@@ -112,6 +149,8 @@ enum SQLExpression {
 	case literalString(String)
 	case column(SQLColumn)
 	case allColumns
+	case null
+	indirect case binary(SQLExpression, SQLBinary, SQLExpression)
 
 	func sql(dialect: SQLDialect) -> String {
 		switch self {
@@ -126,6 +165,12 @@ enum SQLExpression {
 
 		case .allColumns:
 			return "*"
+
+		case .null:
+			return "NULL"
+
+		case .binary(let left, let binary, let right):
+			return "(\(left.sql(dialect: dialect)) \(binary.sql(dialect: dialect)) \(right.sql(dialect: dialect)))"
 		}
 	}
 }
@@ -139,6 +184,7 @@ enum SQLFragment {
 	case columnIdentifier(SQLColumn)
 	case type(SQLType)
 	case columnDefinition(column: SQLColumn, type: SQLType)
+	case binaryOperator(SQLBinary)
 }
 
 internal class SQLParser: Parser, CustomDebugStringConvertible {
@@ -161,11 +207,15 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		// Literals
 		let firstCharacter: ParserRule = (("a"-"z")|("A"-"Z"))
 		let followingCharacter: ParserRule = (firstCharacter | ("0"-"9") | literal("_"))
-		add_named_rule("lit-int", rule: (("0"-"9")+) => {
+		add_named_rule("lit-int", rule: (Parser.matchLiteral("-")/~ ~ ("0"-"9")+) => {
 			if let n = Int(self.text) {
 				self.stack.append(.expression(.literalInteger(n)))
 			}
-			})
+		})
+
+		add_named_rule("lit-null", rule: Parser.matchLiteralInsensitive("NULL") => {
+			self.stack.append(.expression(.null))
+		})
 
 		add_named_rule("lit-column", rule: (firstCharacter ~ (followingCharacter*)/~) => {
 			self.stack.append(.columnIdentifier(SQLColumn(name: self.text)))
@@ -180,18 +230,37 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			^"lit-int"
 			| ^"lit-all-columns"
 			| ^"lit-string"
+			| ^"lit-null"
 			| (^"lit-column" => {
-				if case .columnIdentifier(let c) = self.stack.popLast()! {
-					self.stack.append(.expression(.column(c)))
-				}
-				else {
-					fatalError("IMPOSSIBRU")
-				}
+				guard case .columnIdentifier(let c) = self.stack.popLast()! else { fatalError() }
+				self.stack.append(.expression(.column(c)))
 			  })
 			)
 
 		// Expressions
-		add_named_rule("ex", rule: ^"lit")
+		add_named_rule("ex-sub", rule: Parser.matchLiteral("(") ~~ ^"ex" ~~ Parser.matchLiteral(")"))
+		add_named_rule("ex-value", rule: ^"lit" | ^"ex-sub")
+
+		add_named_rule("ex-equality-operator", rule: Parser.matchAnyFrom(["=", "<>", "<=", ">=", "<", ">"].map { Parser.matchLiteral($0) }) => {
+			switch self.text {
+			case "=": self.stack.append(.binaryOperator(.equals))
+			case "<>": self.stack.append(.binaryOperator(.notEquals))
+			case "<=": self.stack.append(.binaryOperator(.lessThanOrEqual))
+			case ">=": self.stack.append(.binaryOperator(.greaterThanOrEqual))
+			case "<": self.stack.append(.binaryOperator(.lessThan))
+			case ">": self.stack.append(.binaryOperator(.greaterThan))
+			default: fatalError()
+			}
+		})
+
+		add_named_rule("ex-equality", rule: ^"ex-value" ~~ ((^"ex-equality-operator" ~~ ^"ex-value") => {
+			guard case .expression(let right) = self.stack.popLast()! else { fatalError() }
+			guard case .binaryOperator(let op) = self.stack.popLast()! else { fatalError() }
+			guard case .expression(let left) = self.stack.popLast()! else { fatalError() }
+			self.stack.append(.expression(.binary(left, op, right)))
+		})/~)
+
+		add_named_rule("ex", rule: ^"ex-equality")
 
 		// Types
 		add_named_rule("type-text", rule: Parser.matchLiteral("TEXT") => { self.stack.append(.type(SQLType.text)) })
@@ -200,13 +269,9 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 
 		// Column definition
 		add_named_rule("column-definition", rule: (^"lit-column" ~~ ^"type") => {
-			if case .type(let t) = self.stack.popLast()!,
-			   case .columnIdentifier(let c) = self.stack.popLast()! {
-				self.stack.append(.columnDefinition(column: c, type: t))
-			}
-			else {
-				fatalError("IMPOSSIBRU")
-			}
+			guard case .type(let t) = self.stack.popLast()! else { fatalError() }
+			guard case .columnIdentifier(let c) = self.stack.popLast()! else { fatalError() }
+			self.stack.append(.columnDefinition(column: c, type: t))
 		})
 
 		// FROM
@@ -215,14 +280,15 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		// SELECT
 		add_named_rule("tuple", rule: Parser.matchList(^"ex" => {
 			if case .expression(let ne) = self.stack.popLast()! {
-				if let last = self.stack.popLast(), case .tuple(let exprs) = last {
+				if let last = self.stack.last, case .tuple(let exprs) = last {
+					_ = self.stack.popLast()
 					self.stack.append(.tuple(exprs + [ne]))
 				}
 				else {
 					self.stack.append(.tuple([ne]))
 				}
 			}
-			}, separator: Parser.matchLiteral(",")))
+		}, separator: Parser.matchLiteral(",")))
 
 		// INSERT
 		add_named_rule("column-list", rule: Parser.matchList(^"lit-column" => {
@@ -242,17 +308,36 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 
 
 		// Statement types
-		add_named_rule("select-dql-statement", rule: Parser.matchLiteralInsensitive("SELECT")
+		add_named_rule("select-dql-statement", rule:
+			Parser.matchLiteralInsensitive("SELECT") => {
+				self.stack.append(.statement(.select(these: [], from: nil, where: nil, distinct: false)))
+			}
+			~~ ((Parser.matchLiteralInsensitive("DISTINCT") => {
+				guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+				guard case .select(these: _, from: _, where: _, distinct: _) = st else { fatalError() }
+				self.stack.append(.statement(.select(these: [], from :nil, where: nil, distinct: true)))
+			})/~)
 			~~ (^"tuple" => {
-					if let last = self.stack.popLast(), case .tuple(let exprs) = last {
-						self.stack.append(.statement(.select(these: exprs, from: nil)))
+				guard case .tuple(let exprs) = self.stack.popLast()! else { fatalError() }
+				guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+				guard case .select(these: _, from: _, where: _, distinct: let distinct) = st else { fatalError() }
+
+				self.stack.append(.statement(.select(these: exprs, from :nil, where: nil, distinct: distinct)))
+			})
+			~~ (
+					Parser.matchLiteralInsensitive("FROM") ~~ ^"id-table" => {
+						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+						guard case .select(these: let exprs, from: _, where: _, distinct: let distinct) = st else { fatalError() }
+						self.stack.append(.statement(.select(these: exprs, from: SQLTable(name: self.text), where: nil, distinct: distinct)))
 					}
-				})
-			~~ (Parser.matchLiteralInsensitive("FROM") ~~ ^"id-table" => {
-					if let last = self.stack.popLast(), case .statement(let st) = last, case .select(these: let exprs, from: _) = st {
-						self.stack.append(.statement(.select(these: exprs, from: SQLTable(name: self.text))))
-					}
-				})/~
+					~~ (Parser.matchLiteralInsensitive("WHERE") ~~ ^"ex" => {
+						guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
+						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+						guard case .select(these: let exprs, from: let from, where: _, distinct: let distinct) = st else { fatalError() }
+
+						self.stack.append(.statement(.select(these: exprs, from: from, where: expression, distinct: distinct)))
+					})/~
+				)/~
 		)
 
 		add_named_rule("create-ddl-statement", rule: Parser.matchLiteralInsensitive("CREATE TABLE")
@@ -284,8 +369,14 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		add_named_rule("update-dml-statement", rule: Parser.matchLiteralInsensitive("UPDATE"))
 		add_named_rule("delete-dml-statement", rule: Parser.matchLiteralInsensitive("DELETE FROM")
 			~~ (^"id-table" => {
-				self.stack.append(.statement(.delete(from: SQLTable(name: self.text))))
+				self.stack.append(.statement(.delete(from: SQLTable(name: self.text), where: nil)))
 			})
+			~~ (Parser.matchLiteralInsensitive("WHERE") ~~ ^"ex" => {
+				guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
+				guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+				guard case .delete(from: let table, where: _) = st else { fatalError() }
+				self.stack.append(.statement(.delete(from:table, where: expression)))
+			})/~
 		)
 
 		add_named_rule("insert-dml-statement", rule: (

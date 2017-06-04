@@ -64,19 +64,19 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 extension SQLStatement {
 	func backendStatement() -> SQLStatement {
 		switch self {
-		case .create:
+		case .create(table: _, schema: _):
 			return self
 
-		case .drop:
+		case .drop(table: _):
 			return self
 
-		case .delete:
+		case .delete(from: _, `where`: _):
 			return self
 
 		case .insert(into: _, columns: _, values: _):
 			return self
 
-		case .select(these: _, from: _):
+		case .select(these: _, from: _, where: _, distinct: _):
 			return self
 
 		// This will be used to rewrite column names, table names, etc. for backend processing

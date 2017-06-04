@@ -93,13 +93,22 @@ Currently, the following types of statements are supported:
 
 * CREATE TABLE foo (bar TEXT, baz INT);
 * INSERT INTO table (x, y, z) VALUES ('text', 1337);
-* SELECT *, x, y, 'value', 123 FROM table;
-* DELETE FROM foo;
+* SELECT DISTINCT *, x, y, 'value', 123 FROM table WHERE x=10;
+* DELETE FROM foo WHERE x=10;
 * DROP TABLE foo;
 
-Column and table names are case-insensitive, must start with an alphabetic (a-Z) character, and may subsequently contain numbers and underscores. SQL keywords (such as 'SELECT') are case-insensitive. All statements must end with a semicolon. Currently only the types 'TEXT' and 'INT'  are supported.
+SQL has the following limitations:
 
-In the future, the Catena parser will be expanded to support more types of statements.
+* Column and table names are case-insensitive, and must start with an alphabetic (a-Z) character, and may subsequently contain numbers and underscores. 
+* SQL keywords (such as 'SELECT') are case-insensitive. 
+* All statements must end with a semicolon.
+* Values can be a string (between 'single quotes') or an integer, or NULL
+* An expression can be a value, '*' a column name, or a supported operation
+* Supported operators are "=", "<>", "<", ">", ">=", "<="
+* Currently only the types 'TEXT' and 'INT' are supported.
+
+In the future, the Catena parser will be expanded to support more types of statements. Only deterministic queries will
+be supported (e.g. no functions that return current date/time or random values).
 
 ### What kind of blockchain is implemented by Catena?
 
