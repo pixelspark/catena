@@ -59,13 +59,20 @@ class Result {
 		return cns
 	}
 
+	// TODO: use a more appropriate type than string (variant type)
 	var values: [String] {
 		let n = sqlite3_column_count(resultset)
 
 		var cns: [String] = []
 		for i in 0..<n {
-			let name = String(cString: sqlite3_column_text(self.resultset, i))
-			cns.append(name)
+			if let v = sqlite3_column_text(self.resultset, i) {
+				let name = String(cString: v)
+				cns.append(name)
+			}
+			else {
+				// TODO: this is NULL
+				cns.append("")
+			}
 		}
 
 		return cns
