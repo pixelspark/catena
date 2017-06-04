@@ -52,8 +52,8 @@ struct SQLSchema {
 
 enum SQLStatement {
 	case create(table: SQLTable, schema: SQLSchema)
-	case delete
-	case drop
+	case delete(from: SQLTable)
+	case drop(table: SQLTable)
 	case insert(into: SQLTable, columns: [SQLColumn], values: [[SQLExpression]])
 	case select(these: [SQLExpression], from: SQLTable?)
 	case update
@@ -77,11 +77,11 @@ enum SQLStatement {
 
 			return "CREATE TABLE \(table.sql(dialect: dialect)) (\(def.joined(separator: ", ")));"
 
-		case .delete:
-			return "DELETE;"
+		case .delete(from: let table):
+			return "DELETE FROM \(table.sql(dialect: dialect));"
 
-		case .drop:
-			return "DROP;"
+		case .drop(let table):
+			return "DROP TABLE \(table.sql(dialect: dialect));"
 
 		case .insert(into: let into, columns: let cols, values: let tuples):
 			let colSQL = cols.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
@@ -98,7 +98,7 @@ enum SQLStatement {
 		case .select(let exprs, from: let table):
 			let selectList = exprs.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
 			if let t = table {
-				return "SELECT \(selectList) FROM \(t.sql);"
+				return "SELECT \(selectList) FROM \(t.sql(dialect: dialect));"
 			}
 			else {
 				return "SELECT \(selectList);"
@@ -111,6 +111,7 @@ enum SQLExpression {
 	case literalInteger(Int)
 	case literalString(String)
 	case column(SQLColumn)
+	case allColumns
 
 	func sql(dialect: SQLDialect) -> String {
 		switch self {
@@ -122,6 +123,9 @@ enum SQLExpression {
 
 		case .column(let c):
 			return c.sql(dialect: dialect)
+
+		case .allColumns:
+			return "*"
 		}
 	}
 }
@@ -167,9 +171,15 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			self.stack.append(.columnIdentifier(SQLColumn(name: self.text)))
 		})
 
+		add_named_rule("lit-all-columns", rule: Parser.matchLiteral("*") => {
+			self.stack.append(.expression(.allColumns))
+		})
+
 		add_named_rule("lit-string", rule: Parser.matchLiteral("'") ~ Parser.matchAnyCharacterExcept([Character("'")])* => pushLiteralString ~ Parser.matchLiteral("'"))
 		add_named_rule("lit", rule:
 			^"lit-int"
+			| ^"lit-all-columns"
+			| ^"lit-string"
 			| (^"lit-column" => {
 				if case .columnIdentifier(let c) = self.stack.popLast()! {
 					self.stack.append(.expression(.column(c)))
@@ -178,7 +188,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 					fatalError("IMPOSSIBRU")
 				}
 			  })
-			| ^"lit-string")
+			)
 
 		// Expressions
 		add_named_rule("ex", rule: ^"lit")
@@ -234,14 +244,14 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		// Statement types
 		add_named_rule("select-dql-statement", rule: Parser.matchLiteralInsensitive("SELECT")
 			~~ (^"tuple" => {
-				if let last = self.stack.popLast(), case .tuple(let exprs) = last {
-					self.stack.append(.statement(.select(these: exprs, from: nil)))
-				}
+					if let last = self.stack.popLast(), case .tuple(let exprs) = last {
+						self.stack.append(.statement(.select(these: exprs, from: nil)))
+					}
 				})
 			~~ (Parser.matchLiteralInsensitive("FROM") ~~ ^"id-table" => {
-				if let last = self.stack.popLast(), case .statement(let st) = last, case .select(these: let exprs, from: _) = st {
-					self.stack.append(.statement(.select(these: exprs, from: SQLTable(name: self.text))))
-				}
+					if let last = self.stack.popLast(), case .statement(let st) = last, case .select(these: let exprs, from: _) = st {
+						self.stack.append(.statement(.select(these: exprs, from: SQLTable(name: self.text))))
+					}
 				})/~
 		)
 
@@ -265,9 +275,18 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			~~ Parser.matchLiteral(")")
 		)
 
-		add_named_rule("drop-ddl-statement", rule: Parser.matchLiteralInsensitive("DROP"))
+		add_named_rule("drop-ddl-statement", rule: Parser.matchLiteralInsensitive("DROP TABLE")
+			~~ (^"id-table" => {
+				self.stack.append(.statement(.drop(table: SQLTable(name: self.text))))
+			})
+		)
+
 		add_named_rule("update-dml-statement", rule: Parser.matchLiteralInsensitive("UPDATE"))
-		add_named_rule("delete-dml-statement", rule: Parser.matchLiteralInsensitive("DELETE"))
+		add_named_rule("delete-dml-statement", rule: Parser.matchLiteralInsensitive("DELETE FROM")
+			~~ (^"id-table" => {
+				self.stack.append(.statement(.delete(from: SQLTable(name: self.text))))
+			})
+		)
 
 		add_named_rule("insert-dml-statement", rule: (
 			Parser.matchLiteralInsensitive("INSERT INTO")

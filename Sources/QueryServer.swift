@@ -25,7 +25,7 @@ class NodeQueryServer: QueryServer {
 			else {
 				// This we can execute right now
 				do {
-					let result = try ledger.permanentHistory.database.perform(query)
+					let result = try ledger.permanentHistory.database.perform(transaction.root.backendSQL(dialect: ledger.permanentHistory.database.dialect))
 
 					if case .row = result.state {
 						// Send columns
