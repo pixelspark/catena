@@ -46,14 +46,6 @@ let logger = HeliumLogger(logLevelType)
 logger.details = false
 Log.logger = logger
 
-let database = Database()
-if !database.open(databaseFileOption.value ?? "catena.sqlite") {
-	fatalError("Could not open database")
-}
-
-_ = database.perform("DROP TABLE IF EXISTS test")
-_ = database.perform("CREATE TABLE test (origin TEXT, x INT)")
-
 let seedValue = seedOption.value ?? ""
 let genesisTransaction = try! SQLTransaction(statement: "SELECT '\(seedValue)';")
 Log.debug("Genesis transaction is \(genesisTransaction.root.sql)")
@@ -63,7 +55,7 @@ var genesisBlock = SQLBlock(index: 0, previous: Hash.zeroHash, payload: genesisP
 genesisBlock.mine(difficulty: 10)
 Log.info("Genesis block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
 
-var ledger = SQLLedger(genesis: genesisBlock, database: database)
+var ledger = try! SQLLedger(genesis: genesisBlock, database: databaseFileOption.value ?? "catena.sqlite")
 let netPort = netPortOption.value ?? 8338
 let node = Node<SQLBlock>(ledger: ledger, port: netPort)
 

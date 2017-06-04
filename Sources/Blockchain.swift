@@ -282,8 +282,12 @@ class Ledger<BlockType: Block>: CustomDebugStringConvertible {
 						// We found a root earlier in the chain. Unwind to the root and apply all blocks
 						if let r = root {
 							if let splice = self.longest.blocks[r.previous] {
-								Log.info("[Ledger] splicing to \(r.index), then fast-forwarding to \(block.index)")
-								self.longest.unwind(to: splice)
+								if splice.signature! != self.longest.highest.signature! {
+									Log.info("[Ledger] splicing to \(r.index), then fast-forwarding to \(block.index)")
+									self.longest.unwind(to: splice)
+									self.didUnwind(from: self.longest.highest, to: splice)
+								}
+
 								Log.info("[Ledger] head is now at \(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)")
 								for b in stack.reversed() {
 									Log.info("[Ledger] appending \(b.index) \(b.signature!.stringValue)")
@@ -322,7 +326,13 @@ class Ledger<BlockType: Block>: CustomDebugStringConvertible {
 		// For overriding
 	}
 
+	func didUnwind(from: BlockType, to: BlockType) {
+		// For overriding
+	}
+
 	var debugDescription: String {
-		return "Client [longest height=\(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)]"
+		return self.mutex.locked {
+			"Client [longest height=\(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)]"
+		}
 	}
 }

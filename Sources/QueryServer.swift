@@ -25,28 +25,24 @@ class NodeQueryServer: QueryServer {
 			else {
 				// This we can execute right now
 				do {
-					switch ledger.database.perform(query) {
-					case .success(let result):
-						if case .row = result.state {
-							// Send columns
-							let fields = result.columns.map { col in
-								return PQField(name: col, tableId: 0, columnId: 0, type: .text, typeModifier: 0)
-							}
-							try connection.send(description: fields)
+					let result = try ledger.permanentHistory.database.perform(query)
 
-							while case .row = result.state {
-								let values = result.values.map { val in
-									return PQValue.text(val)
-								}
-								try connection.send(row: values)
-								result.step()
-							}
+					if case .row = result.state {
+						// Send columns
+						let fields = result.columns.map { col in
+							return PQField(name: col, tableId: 0, columnId: 0, type: .text, typeModifier: 0)
 						}
-						try connection.sendQueryComplete(tag: "SELECT")
+						try connection.send(description: fields)
 
-					case .failure(let e):
-						try connection.send(error: e)
+						while case .row = result.state {
+							let values = result.values.map { val in
+								return PQValue.text(val)
+							}
+							try connection.send(row: values)
+							result.step()
+						}
 					}
+					try connection.sendQueryComplete(tag: "SELECT")
 				}
 				catch {
 					try? connection.send(error: error.localizedDescription)
