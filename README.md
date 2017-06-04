@@ -64,14 +64,17 @@ Catena provides an HTTP interface on port 8338 (default), which can be used for 
 provides a WebSocket service which is used for communication between peers. 
 
 The (private)  SQL interface is available 
-on port 8334 (by default). If you set a different HTTP port (using the '-p' command line switch), the SQL interface 
+on port 8339 (by default). If you set a different HTTP port (using the '-p' command line switch), the SQL interface 
 will assume that port+1. You can connect to the SQL interface using the PostgreSQL command line client:
 
 ````
 psql -h localhost -p 8334
 ````
 
-To enable block mining, add the '-m' command line switch. 
+You can use any username and password; in the future, the username will be your public key and the password the private
+key for signing transactions (which in turn will be subject to a grants system).
+
+To enable block mining, add the '-m' command line switch.
 
 ## FAQ
 
