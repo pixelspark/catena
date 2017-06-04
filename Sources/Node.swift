@@ -222,13 +222,18 @@ class Node<BlockType: Block> {
 		}
 	}
 
-	public func start() {
+	public func start(blocking: Bool) {
 		self.tickTimer.setEventHandler { [unowned self] _ in
 			self.tick()
 		}
 		self.tickTimer.scheduleRepeating(deadline: .now(), interval: 2.0)
 		self.tickTimer.resume()
 
-		Kitura.start()
+		if blocking {
+			Kitura.run()
+		}
+		else {
+			Kitura.start()
+		}
 	}
 }

@@ -12,9 +12,10 @@ let queryPortOption = IntOption(shortFlag: "q", longFlag: "query-port", helpMess
 let peersOption = MultiStringOption(shortFlag: "j", helpMessage: "Peer to connect to ('hostname:port' or just 'hostname')")
 let mineOption = BoolOption(shortFlag: "m", longFlag: "mine", helpMessage: "Enable mining of blocks")
 let logOption = StringOption(shortFlag: "v", longFlag: "log", helpMessage: "The log level: debug, verbose, info, warning (default: info)")
+let testOption = BoolOption(shortFlag: "t", helpMessage: "Submit test queries to the chain periodically (default: off)")
 
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption)
 
 do {
 	try cli.parse()
@@ -73,25 +74,30 @@ queryServerV6.run()
 queryServerV4.run()
 
 node.miner.enabled = mineOption.value
-node.start()
 
-let q = "CREATE TABLE test (origin TEXT, x TEXT);";
-let payload = SQLPayload(transactions: [try SQLTransaction(statement: q)])
-Log.info("Submit \(q)")
-node.submit(payload: payload.data)
+if testOption.value {
+	node.start(blocking: false)
+	let q = "CREATE TABLE test (origin TEXT, x TEXT);";
+	let payload = SQLPayload(transactions: [try SQLTransaction(statement: q)])
+	Log.info("Submit \(q)")
+	node.submit(payload: payload.data)
 
-Log.info("Start submitting demo blocks")
-do {
-	var i = 0
-	while true {
-		i += 1
-		let q = "INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));"
-		let payload = SQLPayload(transactions: [try SQLTransaction(statement: q)])
-		Log.info("Submit \(q)")
-		node.submit(payload: payload.data)
-		sleep(10)
+	Log.info("Start submitting demo blocks")
+	do {
+		var i = 0
+		while true {
+			i += 1
+			let q = "INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));"
+			let payload = SQLPayload(transactions: [try SQLTransaction(statement: q)])
+			Log.info("Submit \(q)")
+			node.submit(payload: payload.data)
+			sleep(10)
+		}
+	}
+	catch {
+		Log.error("\(error.localizedDescription)")
 	}
 }
-catch {
-	Log.error("\(error.localizedDescription)")
+else {
+	node.start(blocking: true)
 }
