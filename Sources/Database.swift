@@ -1,11 +1,6 @@
 import Foundation
 import LoggerAPI
-
-#if os(Linux)
-	import CSQLiteLinux
-#else
-	import CSQLite
-#endif
+import CSQLite
 
 enum ResultState {
 	case row
