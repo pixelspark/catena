@@ -132,6 +132,8 @@ final class QueryClientConnection {
 	}
 
 	let socket: Socket
+	private(set) var username: String? = nil
+	private(set) var password: String? = nil
 	private var state: State = .new
 	private static let bufferSize = 4096
 	private weak var server: QueryServer?
@@ -370,6 +372,7 @@ final class QueryClientConnection {
 							// Read parameters
 							if let p = try self.readParameters(length: len - UInt32(8)) {
 								Log.debug("[PSQL] Parameters: \(p)")
+								self.username = p["user"]
 
 								// Send authentication request
 								let buf = Data(bytes: [UInt8(Character("R").codePoint), 0, 0, 0, 8, 0, 0, 0, 3])
@@ -377,7 +380,7 @@ final class QueryClientConnection {
 
 								// Read authentication
 								if let pw = try self.readAuthentication() {
-									Log.debug("[PSQL] Password: \(pw)")
+									self.password = pw
 
 									// Send authentication success
 									let buf = Data(bytes: [UInt8(Character("R").codePoint), 0, 0, 0, 8, 0, 0, 0, 0])
