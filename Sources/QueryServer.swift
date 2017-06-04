@@ -20,7 +20,7 @@ class NodeQueryServer: QueryServer {
 				// This needs to go to the ledger
 				let pl = SQLPayload(transactions: [transaction])
 				self.node.submit(payload: pl.data)
-				try connection.send(error: "OK \(transaction.identifier.stringValue)", severity: .info)
+				try connection.send(error: "OK \(transaction.identifier.stringValue) \(transaction.root.sql(dialect: SQLStandardDialect()))", severity: .info)
 			}
 			else {
 				// This we can execute right now

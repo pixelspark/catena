@@ -103,7 +103,13 @@ class Result {
 	}
 }
 
-struct Dialect {
+protocol SQLDialect {
+	func literalString(_ string: String) -> String
+	func tableIdentifier(_ table: String) -> String
+	func columnIdentifier(_ column: String) -> String
+}
+
+struct SQLStandardDialect: SQLDialect {
 	let stringEscape = "\\"
 	let stringQualifierEscape = "\'\'"
 	let stringQualifier = "\'"
@@ -131,7 +137,7 @@ class Database {
 	private var db: OpaquePointer? = nil
 	private let mutex = Mutex()
 	private var counter = 0
-	let dialect = Dialect()
+	let dialect = SQLStandardDialect()
 
 	enum DatabaseError: LocalizedError {
 		case error(String)

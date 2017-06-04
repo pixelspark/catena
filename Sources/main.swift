@@ -75,6 +75,11 @@ queryServerV4.run()
 node.miner.enabled = mineOption.value
 node.start()
 
+let q = "CREATE TABLE test (origin TEXT, x TEXT);";
+let payload = SQLPayload(transactions: [try SQLTransaction(statement: q)])
+Log.info("Submit \(q)")
+node.submit(payload: payload.data)
+
 Log.info("Start submitting demo blocks")
 do {
 	var i = 0

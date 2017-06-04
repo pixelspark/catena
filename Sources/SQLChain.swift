@@ -62,8 +62,42 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 }
 
 extension SQLStatement {
-	var backendSQL: String {
-		return self.sql
+	func backendStatement() -> SQLStatement {
+		switch self {
+		case .create:
+			return self
+
+		case .drop:
+			return self
+
+		case .delete:
+			return self
+
+		case .insert(into: _, columns: _, values: _):
+			return self
+
+		case .select(these: _, from: _):
+			return self
+
+		// This will be used to rewrite column names, table names, etc. for backend processing
+		/*case .insert(into: let table, columns: let columns, values: let values):
+			return SQLStatement.insert(into: SQLTable(name: "user_\(table.name)"), columns: columns, values: values)
+
+		case .select(these: let expressions, from: let table):
+			if let t = table {
+				return SQLStatement.select(these: expressions, from: SQLTable(name: "user_\(t.name)"))
+			}
+			else {
+				return SQLStatement.select(these: expressions, from: nil)
+			}*/
+
+		case .update:
+			return self
+		}
+	}
+
+	func backendSQL(dialect: SQLDialect) -> String {
+		return self.backendStatement().sql(dialect: dialect)
 	}
 }
 
@@ -150,7 +184,7 @@ class SQLHistory {
 					let transactionSavepointName = "tr-\(transaction.identifier.stringValue)"
 
 					try database.transaction(name: transactionSavepointName) {
-						let query = transaction.root.backendSQL
+						let query = transaction.root.backendSQL(dialect: self.database.dialect)
 						_ = try database.perform(query)
 					}
 				}
@@ -183,13 +217,6 @@ class SQLLedger: Ledger<SQLBlock> {
 		self.databasePath = path
 		let permanentDatabase = Database()
 		try permanentDatabase.open(path)
-
-		// Database initialization
-		// FIXME REMOVE
-		try permanentDatabase.transaction {
-			try _ = permanentDatabase.perform("DROP TABLE IF EXISTS test")
-			try _ = permanentDatabase.perform("CREATE TABLE test (origin TEXT, x INT)")
-		}
 
 		self.permanentHistory = try SQLHistory(genesis: genesis, database: permanentDatabase)
 
@@ -234,9 +261,6 @@ class SQLLedger: Ledger<SQLBlock> {
 			let db = Database()
 			try db.open(self.databasePath)
 			self.permanentHistory = try SQLHistory(genesis: self.longest.genesis, database: db)
-
-			// FIXME REMOVE
-			try _ = db.perform("CREATE TABLE test (origin TEXT, x INT)")
 
 			// Find blocks to be replayed
 			// TODO: refactor so we can just walk the chain from old to new without creating a giant array
