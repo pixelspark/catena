@@ -231,7 +231,7 @@ public struct OrderedSet<Element : Hashable> : Hashable, Collection, MutableColl
 			set.remove(oldValue)
 			array[position] = newValue
 			set.insert(newValue)
-			array = array.enumerated().filter { (index, element) in return index == position || element.hashValue != newValue.hashValue }.map { $0.element }
+			array = array.enumerated().filter { (arg) -> Bool in let (index, element) = arg; return index == position || element.hashValue != newValue.hashValue }.map { $0.element }
 		}
 	}
 

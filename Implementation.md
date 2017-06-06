@@ -1,5 +1,16 @@
 # Implementation notes
 
+## Authentication
+
+Catena uses Ed25519 key pairs for authentication. A transaction contains an 'invoker' field which holds the public key of the
+invoker of the query (in future versions, this will be used to determine whether a user has the required privileges).
+
+## Genesis block
+
+The genesis block in Catena is 'special' in the sense that instead of transactions, it contains a special 'seed string'. The block
+is deterministically mined (starting from nonce=0) so that a given seed string and difficulty will lead to a specific genesis block
+and signature. 
+
 ## Protocol
 
 Nodes use a Gossip protocol to perform the following tasks:

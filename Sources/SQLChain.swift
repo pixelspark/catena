@@ -9,7 +9,7 @@ struct SQLPayload {
 	}
 
 	init(data: Data) throws {
-		if let arr = try JSONSerialization.jsonObject(with: data, options: []) as? [Any] {
+		if let arr = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
 			self.transactions = try arr.map { item in
 				return try SQLTransaction(data: item)
 			}
@@ -27,33 +27,73 @@ struct SQLPayload {
 		let d = self.transactions.map { $0.data }
 		return try! JSONSerialization.data(withJSONObject: d, options: [])
 	}
+
+	var isSignatureValid: Bool {
+		for tr in self.transactions {
+			if !tr.isSignatureValid {
+				return false
+			}
+		}
+		return true
+	}
 }
 
 struct SQLBlock: Block, CustomDebugStringConvertible {
+	typealias TransactionType = SQLTransaction
+
 	var index: UInt
 	var previous: Hash
-	let payload: SQLPayload
+	var payload: SQLPayload
 	var nonce: UInt = 0
 	var signature: Hash? = nil
+	private let seed: String! // Only used for genesis blocks, in which case hash==zeroHash and payload is empty
 
-	static func ==(lhs: SQLBlock, rhs: SQLBlock) -> Bool {
-		return lhs.signedData == rhs.signedData
+	init() {
+		self.index = 0
+		self.previous = Hash.zeroHash
+		self.payload = SQLPayload()
+		self.seed = nil
+	}
+
+	init(genesisBlockWith seed: String) {
+		self.index = 0
+		self.seed = seed
+		self.payload = SQLPayload()
+		self.previous = Hash.zeroHash
 	}
 
 	init(index: UInt, previous: Hash, payload: Data) throws {
 		self.index = index
 		self.previous = previous
 		self.payload = try SQLPayload(data: payload)
+		self.seed = nil
 	}
 
 	init(index: UInt, previous: Hash, payload: SQLPayload) {
 		self.index = index
 		self.previous = previous
 		self.payload = payload
+		self.seed = nil
+	}
+
+	static func ==(lhs: SQLBlock, rhs: SQLBlock) -> Bool {
+		return lhs.signedData == rhs.signedData
+	}
+
+	func isPayloadValid() -> Bool {
+		if isAGenesisBlock {
+			return self.payload.transactions.isEmpty 
+		}
+		return self.payload.isSignatureValid
+	}
+
+	mutating func append(transaction: SQLTransaction) {
+		assert(self.seed == nil, "cannot append transactions to a genesis block")
+		self.payload.transactions.append(transaction)
 	}
 
 	var payloadData: Data {
-		return self.payload.data
+		return self.isAGenesisBlock ? self.seed.data(using: .utf8)! : self.payload.data
 	}
 
 	var debugDescription: String {
@@ -175,17 +215,24 @@ class SQLHistory {
 
 	func process(block: SQLBlock) throws {
 		try self.mutex.locked {
+			assert(block.isSignatureValid && block.isPayloadValid(), "Block is invalid")
 			assert(block.index == self.headIndex + 1, "Block is not consecutive: \(block.index) upon \(self.headIndex)")
 
 			let blockSavepointName = "block-\(block.signature!.stringValue)"
 
 			try database.transaction(name: blockSavepointName) {
 				for transaction in block.payload.transactions {
-					let transactionSavepointName = "tr-\(transaction.identifier.stringValue)"
+					do {
+						let transactionSavepointName = "tr-\(transaction.signature?.base58encoded ?? "unsigned")"
 
-					try database.transaction(name: transactionSavepointName) {
-						let query = transaction.root.backendSQL(dialect: self.database.dialect)
-						_ = try database.perform(query)
+						try database.transaction(name: transactionSavepointName) {
+							let query = transaction.statement.backendSQL(dialect: self.database.dialect)
+							_ = try database.perform(query)
+						}
+					}
+					catch {
+						// Transactions can fail, this is not a problem - the block can be processed
+						Log.debug("Transaction failed, but block will continue to be processed: \(error.localizedDescription)")
 					}
 				}
 

@@ -99,24 +99,33 @@ public func == (lhs: Hash, rhs: Hash) -> Bool {
 	return lhs.hash == rhs.hash
 }
 
-enum BlockError: Error {
+enum BlockError: LocalizedError {
 	case formatError
 
-	var localizedDescription: String {
+	var errorDescription: String? {
 		switch self {
-		case .formatError: return "format error"
+		case .formatError: return "block format error"
 		}
 	}
 }
 
-public protocol Block: CustomDebugStringConvertible {
+public protocol Transaction {
+	var isSignatureValid: Bool { get }
+}
+
+public protocol Block: CustomDebugStringConvertible, Equatable {
+	associatedtype TransactionType: Transaction
+
 	var index: UInt { get set }
 	var previous: Hash { get set }
 	var nonce: UInt { get set }
 	var signature: Hash? { get set }
 	var payloadData: Data { get }
 
+	init()
 	init(index: UInt, previous: Hash, payload: Data) throws
+	mutating func append(transaction: TransactionType)
+	func isPayloadValid() -> Bool
 }
 
 extension Data {
@@ -135,6 +144,10 @@ extension Block {
 			return self.signedData.hash == s
 		}
 		return false
+	}
+
+	var isAGenesisBlock: Bool {
+		return self.previous == Hash.zeroHash
 	}
 
 	var signedData: Data {
@@ -165,10 +178,6 @@ extension Block {
 			}
 		}
 	}
-}
-
-public func ==(lhs: Block, rhs: Block) -> Bool {
-	return rhs.signedData == lhs.signedData
 }
 
 class Blockchain<BlockType: Block>: CustomDebugStringConvertible {

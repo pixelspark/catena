@@ -17,9 +17,9 @@ internal extension Block {
 	}
 
 	static func read(json: [String: Any]) throws -> Self {
-		if let nonce = json["nonce"] as? Int,
+		if let nonce = json["nonce"] as? NSNumber,
 			let signature = json["hash"] as? String,
-			let height = json["index"] as? Int,
+			let height = json["index"] as? NSNumber,
 			let previous = json["previous"] as? String,
 			let payloadBase64 = json["payload"] as? String,
 			let payload = Data(base64Encoded: payloadBase64),
@@ -392,6 +392,7 @@ public class PeerConnection {
 		}
 
 		try self.mutex.locked {
+			Log.debug("[PeerConnection] send request \(c)")
 			let d = try JSONSerialization.data(withJSONObject: [c, gossip.json], options: [])
 			try self.send(data: d)
 		}
@@ -527,6 +528,7 @@ public class Peer<BlockType: Block>: PeerConnectionDelegate {
 	}
 
 	public func fail(error: String) {
+		Log.info("[Peer] \(self.url.absoluteString) failing: \(error)")
 		self.mutex.locked {
 			self.state = .failed(error: error)
 		}
@@ -568,6 +570,7 @@ public class Peer<BlockType: Block>: PeerConnectionDelegate {
 
 	public func peer(connection: PeerConnection, requests gossip: Gossip, counter: Int) {
 		do {
+			Log.debug("[Peer] receive request \(counter)")
 			switch gossip {
 			case .block(let blockData):
 				do {

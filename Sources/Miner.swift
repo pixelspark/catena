@@ -4,122 +4,92 @@ import LoggerAPI
 
 class Miner<BlockType: Block> {
 	private weak var node: Node<BlockType>?
-	private var queue: [Data] = []
+	private var block: BlockType? = nil
 	private let mutex = Mutex()
 	private var counter: UInt = 0
-	private var mining = false
-	public var enabled = true
+	public var isEnabled = true
+	private(set) var isMining = false
 
 	init(node: Node<BlockType>) {
 		self.node = node
 		self.counter = UInt(abs(random(Int.self)))
 	}
 
-	func submit(payload: Data) {
+	func append(callback: ((BlockType?) -> BlockType)) {
 		self.mutex.locked {
-			self.queue.append(payload)
+			self.block = callback(self.block)
 		}
 		self.start()
 	}
 
 	private func start() {
 		let shouldStart = self.mutex.locked { () -> Bool in
-			if !self.enabled {
+			if !self.isEnabled {
 				Log.info("[Miner] mining is not enabled")
 				return false
 			}
 
-			if !self.mining {
-				self.mining = true
+			if !self.isMining {
+				self.isMining = true
 				return true
 			}
 			return false
 		}
 
 		if shouldStart {
-			tick()
-		}
-	}
-
-	private func tick() {
-		DispatchQueue.global(qos: .background).async {
-			if let mined = self.mine() {
-				Log.info("[Miner] mined \(mined)")
-				self.node?.mined(block: mined)
-				self.tick() // Next block!
-			}
-			else {
-				// Nothing to mine
+			DispatchQueue.global(qos: .background).async {
+				self.mine()
 				self.mutex.locked {
-					self.mining = false
+					self.isMining = false
 				}
 			}
 		}
 	}
 
-	private func mine() -> BlockType? {
-		var stop = self.mutex.locked { return !self.enabled }
-
-		var block: BlockType? = nil
-		var currentPayload: Data? = nil
+	private func mine() {
+		var stop = self.mutex.locked { return !self.isEnabled }
 
 		while !stop {
-			let b = autoreleasepool { () -> BlockType? in
-
-				var nonce: UInt = 0
-				var base: BlockType? = nil
-				var difficulty: Int = 0
-
+			autoreleasepool { () -> () in
 				self.mutex.locked { () -> () in
+					stop = !self.isEnabled
+
 					if let n = node {
-						base = self.node?.ledger.longest.highest
-						if let base = base {
+						let difficulty = n.ledger.longest.difficulty
+
+						if let base = self.node?.ledger.longest.highest {
+							// Set up the block
 							self.counter += 1
-							if let payload = self.queue.first {
-								if block == nil || currentPayload != payload {
-									currentPayload = payload
-									block = try! BlockType(index: base.index + 1, previous: base.signature!, payload: payload)
-								}
-								else {
-									block!.index = base.index + 1
-									block!.previous = base.signature!
-								}
+							if var b = self.block {
+								b.index = base.index + 1
+								b.previous = base.signature!
+								b.nonce = self.counter
 
-								difficulty = n.ledger.longest.difficulty
-								nonce = self.counter
+								// See if this combination is good enough
+								let hash = b.signedData.hash
+								if hash.difficulty >= difficulty {
+									// We found a block!
+									b.signature = hash
+									self.block = nil
+									stop = true
+									DispatchQueue.global(qos: .background).async {
+										Log.info("[Miner] mined block #\(b.index)")
+										n.mined(block: b)
+									}
+								}
+							}
+							else {
+								// No block to mine
+								stop = true
 							}
 						}
 					}
-				}
-
-				if var b = block, let base = base {
-					b.nonce = nonce
-					b.previous = base.signature!
-					b.index = base.index + 1
-					let hash = b.signedData.hash
-					if hash.difficulty >= difficulty {
-						b.signature = hash
-						self.mutex.locked {
-							if let f = self.queue.first, f == block?.payloadData {
-								self.queue.removeFirst()
-							}
-						}
-						return b
+					else {
+						// Node has been destroyed
+						stop = true
 					}
 				}
-				else {
-					stop = true
-					return nil
-				}
-
-				return nil
-			}
-
-			if let b = b {
-				return b
 			}
 		}
-		
-		return nil
 	}
 }

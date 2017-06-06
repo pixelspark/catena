@@ -48,8 +48,13 @@ class Node<BlockType: Block> {
 		self.server = Server(node: self, port: port)
 	}
 
-	func submit(payload: Data) {
-		self.miner.submit(payload: payload)
+	func submit(transaction: BlockType.TransactionType) {
+
+		self.miner.append { (b : BlockType?) -> BlockType in
+			var block = b ?? BlockType()
+			block.append(transaction: transaction)
+			return block
+		}
 	}
 
 	func add(peer url: URL) {
@@ -108,13 +113,17 @@ class Node<BlockType: Block> {
 	}
 
 	func receive(block: BlockType) {
-		self.mutex.locked {
-			self.ledger.receive(block: block)
+		Log.info("[Node] receive block #\(block.index)")
+
+		if block.isPayloadValid() {
+			self.mutex.locked {
+				self.ledger.receive(block: block)
+			}
 		}
 	}
 
 	func mined(block: BlockType) {
-		_ = self.ledger.receive(block: block)
+		self.receive(block: block)
 
 		// Send our peers the good news!
 		self.mutex.locked {
@@ -178,7 +187,7 @@ class Node<BlockType: Block> {
 								if block.isSignatureValid {
 									Log.debug("[Node] fetch returned valid block: \(block)")
 									self.ledger.mutex.locked {
-										_ = self.ledger.receive(block: block)
+										self.receive(block: block)
 										if block.index > 0 &&
 											self.ledger.orphansByPreviousHash[block.previous] != nil &&
 											self.ledger.orphansByHash[block.previous] == nil &&
@@ -198,7 +207,7 @@ class Node<BlockType: Block> {
 								}
 							}
 							catch {
-								Log.error("[Gossip] Received invalid block format to fetch: \(reply)")
+								Log.error("[Gossip] Error parsing result from fetch: \(error.localizedDescription)")
 								self.mutex.locked {
 									self.peers[candidate.peer]?.fail(error: "invalid reply to fetch")
 								}

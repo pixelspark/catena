@@ -3,6 +3,8 @@ import Kitura
 import CommandLineKit
 import LoggerAPI
 import HeliumLogger
+import Ed25519
+import Base58
 
 let databaseFileOption = StringOption(shortFlag: "d", longFlag: "database", required: false, helpMessage: "Backing database file (default: catena.sqlite)")
 let seedOption = StringOption(shortFlag: "s", longFlag: "seed", required: false, helpMessage: "Genesis block seed string (default: empty)")
@@ -14,8 +16,10 @@ let mineOption = BoolOption(shortFlag: "m", longFlag: "mine", helpMessage: "Enab
 let logOption = StringOption(shortFlag: "v", longFlag: "log", helpMessage: "The log level: debug, verbose, info, warning (default: info)")
 let testOption = BoolOption(shortFlag: "t", helpMessage: "Submit test queries to the chain periodically (default: off)")
 
+let initializeOption = BoolOption(shortFlag: "i", helpMessage: "Generate transactions to initialize basic database structure (default: false)")
+
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption)
 
 do {
 	try cli.parse()
@@ -47,12 +51,9 @@ let logger = HeliumLogger(logLevelType)
 logger.details = false
 Log.logger = logger
 
+// Generate genesis block
 let seedValue = seedOption.value ?? ""
-let genesisTransaction = try! SQLTransaction(statement: "SELECT '\(seedValue)';")
-Log.debug("Genesis transaction is \(genesisTransaction.root.sql)")
-let genesisPayload = SQLPayload(transactions: [genesisTransaction])
-
-var genesisBlock = SQLBlock(index: 0, previous: Hash.zeroHash, payload: genesisPayload)
+var genesisBlock = SQLBlock(genesisBlockWith: seedValue)
 genesisBlock.mine(difficulty: 10)
 Log.info("Genesis block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
 
@@ -62,7 +63,7 @@ let node = Node<SQLBlock>(ledger: ledger, port: netPort)
 
 // Add peers from command line
 for p in peersOption.value ?? [] {
-	if var u = URL(string: "ws://\(p)/") {
+	if let u = URL(string: "ws://\(p)/") {
 		node.add(peer: u)
 	}
 }
@@ -73,24 +74,35 @@ let queryServerV6 = NodeQueryServer(node: node, port: queryPortOption.value ?? (
 queryServerV6.run()
 queryServerV4.run()
 
-node.miner.enabled = mineOption.value
+node.miner.isEnabled = mineOption.value
 
+// Initialize database if we have to
+if initializeOption.value {
+	// Generate root keypair
+	let identity = try! Identity()
+	Log.info("Root private key: \(identity.privateKey.stringValue)")
+	Log.info("Root public key: \(identity.publicKey.stringValue)")
+
+	// Create grants table, etc.
+}
+
+// Start submitting test blocks if that's what the user requested
 if testOption.value {
+	let identity = try! Identity()
+
 	node.start(blocking: false)
-	let q = "CREATE TABLE test (origin TEXT, x TEXT);";
-	let payload = SQLPayload(transactions: [try SQLTransaction(statement: q)])
+	let q = try! SQLStatement("CREATE TABLE test (origin TEXT, x TEXT);");
 	Log.info("Submit \(q)")
-	node.submit(payload: payload.data)
+	node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey))
 
 	Log.info("Start submitting demo blocks")
 	do {
 		var i = 0
 		while true {
 			i += 1
-			let q = "INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));"
-			let payload = SQLPayload(transactions: [try SQLTransaction(statement: q)])
+			let q = try! SQLStatement("INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));")
 			Log.info("Submit \(q)")
-			node.submit(payload: payload.data)
+			node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey).sign(with: identity.privateKey))
 			sleep(10)
 		}
 	}

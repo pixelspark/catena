@@ -65,6 +65,30 @@ enum SQLStatement {
 	case select(SQLSelect)
 	case update
 
+	enum SQLStatementError: LocalizedError {
+		case syntaxError
+
+		var errorDescription: String? {
+			switch self {
+			case .syntaxError: return "syntax error"
+			}
+		}
+	}
+
+	init(_ sql: String) throws {
+		let parser = SQLParser()
+		if !parser.parse(sql) {
+			throw SQLStatementError.syntaxError
+		}
+
+		// Top-level item must be a statement
+		guard let root = parser.root, case .statement(let statement) = root else {
+			throw SQLStatementError.syntaxError
+		}
+
+		self = statement
+	}
+
 	var isMutating: Bool {
 		switch self {
 		case .create, .drop, .delete, .update, .insert(into:_, columns:_, values:_):

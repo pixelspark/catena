@@ -176,12 +176,15 @@ final class QueryClientConnection {
 
 	private func readParameters(length: UInt32) throws -> [String: String]? {
 		if let data = try self.read(length: length) {
-			let elements = data.split(separator: 0x0)
-			let strs = elements.map { d in return String(bytes: d, encoding: .utf8) }
+			let elements = data.split(separator: 0x0, maxSplits: Int.max, omittingEmptySubsequences: false)
+			let strs = elements.map { d -> String in
+				let dx = Data(d)
+				return String(data: dx, encoding: .utf8) ?? ""
+			}
 
 			var parameters: [String: String] = [:]
 			for idx in stride(from: 0, to: strs.count, by: 2) {
-				parameters[strs[idx]!] = strs[idx+1]!
+				parameters[strs[idx]] = strs[idx+1]
 			}
 			return parameters
 		}
@@ -219,7 +222,7 @@ final class QueryClientConnection {
 		if try self.readByte() == CChar(Character("p").codePoint) {
 			// Password authentication, get password
 			if let len = self.readInt32(), let pwData = try self.read(length: len - UInt32(4)) {
-				return String(data: pwData, encoding: .utf8)
+				return String(data: pwData.subdata(in: 0..<Int(len-4-1)), encoding: .utf8)
 			}
 			else {
 				return nil
@@ -277,7 +280,7 @@ final class QueryClientConnection {
 		try self.socket.write(from: packet)
 	}
 
-	func send(error: String, severity: PQSeverity = .error, code: String = "42000") throws {
+	func send(error: String, severity: PQSeverity = .error, code: String = "42000", endsQuery: Bool = true) throws {
 		assert(self.state == .querying, "not querying!")
 
 		var buf = Data()
@@ -306,8 +309,10 @@ final class QueryClientConnection {
 		packet.append(buf)
 		try self.socket.write(from: packet)
 
-		self.state = .ready
-		self.run()
+		if endsQuery {
+			self.state = .ready
+			self.run()
+		}
 	}
 
 	func send(description: [PQField]) throws {
