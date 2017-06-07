@@ -22,7 +22,7 @@ struct SQLColumn: Equatable, Hashable {
 	var name: String
 
 	func sql(dialect: SQLDialect) -> String {
-		return name.lowercased()
+		return dialect.columnIdentifier(name.lowercased())
 	}
 
 	var hashValue: Int {
@@ -48,6 +48,7 @@ enum SQLType {
 
 struct SQLSchema {
 	var columns = OrderedDictionary<SQLColumn, SQLType>()
+	var primaryKey: SQLColumn? = nil
 }
 
 struct SQLSelect {
@@ -66,11 +67,13 @@ enum SQLStatement {
 	case update
 
 	enum SQLStatementError: LocalizedError {
-		case syntaxError
+		case syntaxError(query: String)
+		case invalidRootError
 
 		var errorDescription: String? {
 			switch self {
-			case .syntaxError: return "syntax error"
+			case .syntaxError(query: let q): return "syntax error: '\(q)'"
+			case .invalidRootError: return "invalid root statement for query"
 			}
 		}
 	}
@@ -78,12 +81,12 @@ enum SQLStatement {
 	init(_ sql: String) throws {
 		let parser = SQLParser()
 		if !parser.parse(sql) {
-			throw SQLStatementError.syntaxError
+			throw SQLStatementError.syntaxError(query: sql)
 		}
 
 		// Top-level item must be a statement
 		guard let root = parser.root, case .statement(let statement) = root else {
-			throw SQLStatementError.syntaxError
+			throw SQLStatementError.invalidRootError
 		}
 
 		self = statement
@@ -103,7 +106,8 @@ enum SQLStatement {
 		switch self {
 		case .create(table: let table, schema: let schema):
 			let def = schema.columns.map { (col, type) -> String in
-				return "\(col.sql(dialect:dialect)) \(type.sql(dialect: dialect))"
+				let primary = (schema.primaryKey == col) ? " PRIMARY KEY" : ""
+				return "\(col.sql(dialect:dialect)) \(type.sql(dialect: dialect))\(primary)"
 			}
 
 			return "CREATE TABLE \(table.sql(dialect: dialect)) (\(def.joined(separator: ", ")));"
@@ -214,7 +218,7 @@ enum SQLFragment {
 	case tableIdentifier(SQLTable)
 	case columnIdentifier(SQLColumn)
 	case type(SQLType)
-	case columnDefinition(column: SQLColumn, type: SQLType)
+	case columnDefinition(column: SQLColumn, type: SQLType, primary: Bool)
 	case binaryOperator(SQLBinary)
 }
 
@@ -248,9 +252,11 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			self.stack.append(.expression(.null))
 		})
 
-		add_named_rule("lit-column", rule: (firstCharacter ~ (followingCharacter*)/~) => {
+		add_named_rule("lit-column-naked", rule: (firstCharacter ~ (followingCharacter*)/~) => {
 			self.stack.append(.columnIdentifier(SQLColumn(name: self.text)))
 		})
+
+		add_named_rule("lit-column", rule: (Parser.matchLiteral("\"") ~ ^"lit-column-naked" ~ Parser.matchLiteral("\"")) | ^"lit-column-naked")
 
 		add_named_rule("lit-all-columns", rule: Parser.matchLiteral("*") => {
 			self.stack.append(.expression(.allColumns))
@@ -299,11 +305,15 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		add_named_rule("type", rule: ^"type-text" | ^"type-int")
 
 		// Column definition
-		add_named_rule("column-definition", rule: (^"lit-column" ~~ ^"type") => {
-			guard case .type(let t) = self.stack.popLast()! else { fatalError() }
-			guard case .columnIdentifier(let c) = self.stack.popLast()! else { fatalError() }
-			self.stack.append(.columnDefinition(column: c, type: t))
-		})
+		add_named_rule("column-definition", rule: ((^"lit-column" ~~ ^"type") => {
+				guard case .type(let t) = self.stack.popLast()! else { fatalError() }
+				guard case .columnIdentifier(let c) = self.stack.popLast()! else { fatalError() }
+				self.stack.append(.columnDefinition(column: c, type: t, primary: false))
+			})
+			~~ (Parser.matchLiteralInsensitive("PRIMARY KEY") => {
+				guard case .columnDefinition(column: let c, type: let t, primary: let p) = self.stack.popLast()! else { fatalError() }
+				self.stack.append(.columnDefinition(column: c, type: t, primary: p))
+			})/~)
 
 		// FROM
 		add_named_rule("id-table", rule: firstCharacter ~ followingCharacter*)
@@ -379,11 +389,14 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 				})
 			~~ Parser.matchLiteral("(")
 			~~ Parser.matchList(^"column-definition" => {
-				guard case .columnDefinition(column: let column, type: let type) = self.stack.popLast()! else { fatalError() }
+				guard case .columnDefinition(column: let column, type: let type, primary: let primary) = self.stack.popLast()! else { fatalError() }
 				guard case .statement(let s) = self.stack.popLast()! else { fatalError() }
 				guard case .create(table: let t, schema: let oldSchema) = s else { fatalError() }
 				var newSchema = oldSchema
 				newSchema.columns[column] = type
+				if primary {
+					newSchema.primaryKey = column
+				}
 				self.stack.append(.statement(.create(table: t, schema: newSchema)))
 			}, separator: Parser.matchLiteral(","))
 			~~ Parser.matchLiteral(")")
