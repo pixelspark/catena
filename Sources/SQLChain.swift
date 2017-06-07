@@ -28,6 +28,19 @@ struct SQLPayload {
 		return try! JSONSerialization.data(withJSONObject: d, options: [])
 	}
 
+	var dataForSigning: Data {
+		var data = Data()
+
+		for tr in self.transactions {
+			let sigData = tr.signature!
+			sigData.withUnsafeBytes { bytes in
+				data.append(bytes, count: sigData.count)
+			}
+		}
+
+		return data
+	}
+
 	var isSignatureValid: Bool {
 		for tr in self.transactions {
 			if !tr.isSignatureValid {
@@ -77,7 +90,7 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 	}
 
 	static func ==(lhs: SQLBlock, rhs: SQLBlock) -> Bool {
-		return lhs.signedData == rhs.signedData
+		return lhs.dataForSigning == rhs.dataForSigning
 	}
 
 	func isPayloadValid() -> Bool {
@@ -94,6 +107,10 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 
 	var payloadData: Data {
 		return self.isAGenesisBlock ? self.seed.data(using: .utf8)! : self.payload.data
+	}
+
+	var payloadDataForSigning: Data {
+		return self.isAGenesisBlock ? self.seed.data(using: .utf8)! : self.payload.dataForSigning
 	}
 
 	var debugDescription: String {

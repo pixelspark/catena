@@ -121,6 +121,7 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	var nonce: UInt { get set }
 	var signature: Hash? { get set }
 	var payloadData: Data { get }
+	var payloadDataForSigning: Data { get }
 
 	init()
 	init(index: UInt, previous: Hash, payload: Data) throws
@@ -141,7 +142,7 @@ extension Data {
 extension Block {
 	var isSignatureValid: Bool {
 		if let s = self.signature {
-			return self.signedData.hash == s
+			return self.dataForSigning.hash == s
 		}
 		return false
 	}
@@ -150,8 +151,9 @@ extension Block {
 		return self.previous == Hash.zeroHash
 	}
 
-	var signedData: Data {
-		var data = Data(capacity: self.payloadData.count + previous.hash.count + 2 * MemoryLayout<UInt>.size)
+	var dataForSigning: Data {
+		let pd = self.payloadDataForSigning
+		var data = Data(capacity: pd.count + previous.hash.count + 2 * MemoryLayout<UInt>.size)
 
 		data.appendRaw(self.index.littleEndian)
 		data.appendRaw(self.nonce.littleEndian)
@@ -160,8 +162,8 @@ extension Block {
 			data.append(bytes, count: previous.hash.count)
 		}
 
-		self.payloadData.withUnsafeBytes { bytes in
-			data.append(bytes, count: self.payloadData.count)
+		pd.withUnsafeBytes { bytes in
+			data.append(bytes, count: pd.count)
 		}
 
 		return data
@@ -171,7 +173,7 @@ extension Block {
 	mutating func mine(difficulty: Int) {
 		while true {
 			self.nonce += 1
-			let hash = self.signedData.hash
+			let hash = self.dataForSigning.hash
 			if hash.difficulty >= difficulty {
 				self.signature = hash
 				return

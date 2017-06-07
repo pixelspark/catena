@@ -66,7 +66,7 @@ class Miner<BlockType: Block> {
 								b.nonce = self.counter
 
 								// See if this combination is good enough
-								let hash = b.signedData.hash
+								let hash = b.dataForSigning.hash
 								if hash.difficulty >= difficulty {
 									// We found a block!
 									b.signature = hash
