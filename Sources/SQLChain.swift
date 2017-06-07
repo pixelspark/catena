@@ -221,10 +221,23 @@ class SQLHistory {
 			self.headIndex = headIndex
 		}
 		else {
+			// This is a new storage file
 			self.headHash = genesis.signature!
 			self.headIndex = genesis.index
 			try self.info.set(key: infoHeadHashKey, value: self.headHash.stringValue)
 			try self.info.set(key: infoHeadIndexKey, value: String(self.headIndex))
+
+			// Create block table
+			try self.database.transaction(name: "init-storage") {
+				var cols = OrderedDictionary<SQLColumn, SQLType>()
+				cols.append(SQLType.text, forKey: SQLColumn(name: "signature"))
+				cols.append(SQLType.int, forKey: SQLColumn(name: "index"))
+				cols.append(SQLType.text, forKey: SQLColumn(name: "previous"))
+				cols.append(SQLType.text, forKey: SQLColumn(name: "payload"))
+
+				let createStatement = SQLStatement.create(table: SQLTable(name: "_block"), schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
+				_ = try self.database.perform(createStatement.sql(dialect: self.database.dialect))
+			}
 		}
 
 		Log.info("Persisted history is at index \(self.headIndex), hash \(self.headHash.stringValue)")
@@ -238,6 +251,7 @@ class SQLHistory {
 			let blockSavepointName = "block-\(block.signature!.stringValue)"
 
 			try database.transaction(name: blockSavepointName) {
+				// Write block's transactions to the database
 				for transaction in block.payload.transactions {
 					do {
 						let transactionSavepointName = "tr-\(transaction.signature?.base58encoded ?? "unsigned")"
@@ -252,6 +266,18 @@ class SQLHistory {
 						Log.debug("Transaction failed, but block will continue to be processed: \(error.localizedDescription)")
 					}
 				}
+
+				// Write the block itself
+				let insertStatement = SQLStatement.insert(
+					into: SQLTable(name: "_block"),
+					columns: ["signature", "index", "previous", "payload"].map(SQLColumn.init),
+					values: [[
+						.literalString(block.signature!.stringValue),
+						.literalInteger(Int(block.index)),
+						.literalString(block.previous.stringValue),
+						.literalString(block.payload.data.base64EncodedString())
+					]])
+				_ = try database.perform(insertStatement.sql(dialect: database.dialect))
 
 				try self.info.set(key: self.infoHeadHashKey, value: block.signature!.stringValue)
 				try self.info.set(key: self.infoHeadIndexKey, value: "\(block.index)")

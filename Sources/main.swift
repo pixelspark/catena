@@ -3,8 +3,6 @@ import Kitura
 import CommandLineKit
 import LoggerAPI
 import HeliumLogger
-import Ed25519
-import Base58
 
 let databaseFileOption = StringOption(shortFlag: "d", longFlag: "database", required: false, helpMessage: "Backing database file (default: catena.sqlite)")
 let seedOption = StringOption(shortFlag: "s", longFlag: "seed", required: false, helpMessage: "Genesis block seed string (default: empty)")
