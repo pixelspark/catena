@@ -130,7 +130,7 @@ extension SQLStatement {
 		case .delete(from: _, where: _):
 			return self
 
-		case .insert(into: _, columns: _, values: _):
+		case .insert(_):
 			return self
 
 		case .select(_):
@@ -162,8 +162,8 @@ class SQLKeyValueTable {
 	let database: Database
 	let table: String
 
-	private let keyColumnName = "key"
-	private let valueColumnName = "value"
+	private let keyColumn = SQLColumn(name: "key")
+	private let valueColumn = SQLColumn(name: "value")
 
 	init(database: Database, table: String) throws {
 		self.database = database
@@ -171,19 +171,26 @@ class SQLKeyValueTable {
 
 		// Ensure the table exists
 		try database.transaction {
-			let r = try database.perform("SELECT type FROM sqlite_master WHERE name=\(database.dialect.tableIdentifier(table))")
-			if !r.hasRow {
-				let kn = self.database.dialect.columnIdentifier(self.keyColumnName)
-				let vn = self.database.dialect.columnIdentifier(self.valueColumnName)
-				try _ = database.perform("CREATE TABLE \(database.dialect.tableIdentifier(table)) (\(kn) TEXT PRIMARY KEY, \(vn) TEXT)")
+			// TODO this is SQLite-specific
+			if !(try database.exists(table: self.table)) {
+				var cols = OrderedDictionary<SQLColumn, SQLType>()
+				cols.append(.text, forKey: keyColumn)
+				cols.append(.text, forKey: valueColumn)
+				let createStatement = SQLStatement.create(table: SQLTable(name: self.table), schema: SQLSchema(columns: cols, primaryKey: self.keyColumn))
+				try _ = self.database.perform(createStatement.sql(dialect: self.database.dialect))
 			}
 		}
 	}
 
 	func get(_ key: String) throws -> String? {
-		let kn = self.database.dialect.columnIdentifier(self.keyColumnName)
-		let vn = self.database.dialect.columnIdentifier(self.valueColumnName)
-		let r = try database.perform("SELECT \(vn) FROM \(database.dialect.tableIdentifier(table)) WHERE \(kn)=\(database.dialect.literalString(key))")
+		let selectStatement = SQLStatement.select(SQLSelect(
+			these: [.column(self.valueColumn)],
+			from: SQLTable(name: self.table),
+			where: SQLExpression.binary(.column(self.keyColumn), .equals, .literalString(key)),
+			distinct: false
+		))
+
+		let r = try self.database.perform(selectStatement.sql(dialect: self.database.dialect))
 		if r.hasRow {
 			return r.values[0]
 		}
@@ -191,11 +198,13 @@ class SQLKeyValueTable {
 	}
 
 	func set(key: String, value: String) throws {
-		let k = self.database.dialect.literalString(key)
-		let v = self.database.dialect.literalString(value)
-		let kn = self.database.dialect.columnIdentifier(self.keyColumnName)
-		let vn = self.database.dialect.columnIdentifier(self.valueColumnName)
-		try _ = self.database.perform("INSERT OR REPLACE INTO \(database.dialect.tableIdentifier(table)) (\(kn), \(vn)) VALUES (\(k), \(v))")
+		let insertStatement = SQLStatement.insert(SQLInsert(
+			orReplace: true,
+			into: SQLTable(name: self.table),
+			columns: [self.keyColumn, self.valueColumn],
+			values: [[SQLExpression.literalString(key), SQLExpression.literalString(value)]]
+		))
+		try _ = self.database.perform(insertStatement.sql(dialect: self.database.dialect))
 	}
 }
 
@@ -268,7 +277,8 @@ class SQLHistory {
 				}
 
 				// Write the block itself
-				let insertStatement = SQLStatement.insert(
+				let insertStatement = SQLStatement.insert(SQLInsert(
+					orReplace: false,
 					into: SQLTable(name: "_block"),
 					columns: ["signature", "index", "previous", "payload"].map(SQLColumn.init),
 					values: [[
@@ -276,7 +286,7 @@ class SQLHistory {
 						.literalInteger(Int(block.index)),
 						.literalString(block.previous.stringValue),
 						.literalString(block.payload.data.base64EncodedString())
-					]])
+					]]))
 				_ = try database.perform(insertStatement.sql(dialect: database.dialect))
 
 				try self.info.set(key: self.infoHeadHashKey, value: block.signature!.stringValue)
@@ -305,7 +315,7 @@ class SQLLedger: Ledger<SQLBlock> {
 
 	init(genesis: SQLBlock, database path: String) throws {
 		self.databasePath = path
-		let permanentDatabase = Database()
+		let permanentDatabase = SQLiteDatabase()
 		try permanentDatabase.open(path)
 
 		self.permanentHistory = try SQLHistory(genesis: genesis, database: permanentDatabase)
@@ -348,7 +358,7 @@ class SQLLedger: Ledger<SQLBlock> {
 			}
 
 			// Create new database
-			let db = Database()
+			let db = SQLiteDatabase()
 			try db.open(self.databasePath)
 			self.permanentHistory = try SQLHistory(genesis: self.longest.genesis, database: db)
 

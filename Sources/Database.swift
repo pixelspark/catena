@@ -27,12 +27,20 @@ class Snapshot {
 	}
 }
 
-class Result {
+protocol Result {
+	var hasRow: Bool { get }
+	var columns: [String] { get }
+	var values: [String] { get }
+	var state: ResultState { get }
+	@discardableResult func step() -> ResultState
+}
+
+class SQLiteResult: Result {
 	private(set) var state: ResultState
-	let database: Database
+	let database: SQLiteDatabase
 	private let resultset: OpaquePointer
 
-	init(database: Database, resultset: OpaquePointer, rows: Bool) {
+	init(database: SQLiteDatabase, resultset: OpaquePointer, rows: Bool) {
 		self.database = database
 		self.resultset = resultset
 		self.state = rows ? .row : .done
@@ -134,12 +142,26 @@ struct SQLStandardDialect: SQLDialect {
 	}
 }
 
-class Database {
+protocol Database {
+	var dialect: SQLDialect { get }
+	func transaction(name: String?, callback: (() throws -> ())) throws
+	func perform(_ sql: String) throws -> Result
+	func close()
+	func exists(table: String) throws -> Bool
+}
+
+extension Database {
+	func transaction(callback: (() throws -> ())) throws {
+		try self.transaction(name: nil, callback: callback)
+	}
+}
+
+class SQLiteDatabase: Database {
 	private let schema = "main"
 	private var db: OpaquePointer? = nil
 	private let mutex = Mutex()
 	private var counter = 0
-	let dialect = SQLStandardDialect()
+	let dialect: SQLDialect = SQLStandardDialect()
 
 	enum DatabaseError: LocalizedError {
 		case error(String)
@@ -172,6 +194,11 @@ class Database {
 				self.db = nil
 			}
 		}
+	}
+
+	func exists(table: String) throws -> Bool {
+		let r = try self.perform("SELECT type FROM sqlite_master WHERE name=\(self.dialect.literalString(table))")
+		return r.hasRow
 	}
 
 	fileprivate var lastError: String {
@@ -215,10 +242,10 @@ class Database {
 					// Time to execute
 					switch sqlite3_step(resultSet) {
 					case SQLITE_DONE:
-						return Result(database: self, resultset: resultSet!, rows: false)
+						return SQLiteResult(database: self, resultset: resultSet!, rows: false)
 
 					case SQLITE_ROW:
-						return Result(database: self, resultset: resultSet!, rows: true)
+						return SQLiteResult(database: self, resultset: resultSet!, rows: true)
 
 					default:
 						throw DatabaseError.error(self.lastError)
