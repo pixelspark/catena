@@ -58,11 +58,18 @@ struct SQLSelect {
 	var distinct: Bool = false
 }
 
+struct SQLInsert {
+	var orReplace: Bool = false
+	var into: SQLTable
+	var columns: [SQLColumn] = []
+	var values: [[SQLExpression]] = []
+}
+
 enum SQLStatement {
 	case create(table: SQLTable, schema: SQLSchema)
 	case delete(from: SQLTable, where: SQLExpression?)
 	case drop(table: SQLTable)
-	case insert(into: SQLTable, columns: [SQLColumn], values: [[SQLExpression]])
+	case insert(SQLInsert)
 	case select(SQLSelect)
 	case update
 
@@ -94,7 +101,7 @@ enum SQLStatement {
 
 	var isMutating: Bool {
 		switch self {
-		case .create, .drop, .delete, .update, .insert(into:_, columns:_, values:_):
+		case .create, .drop, .delete, .update, .insert(_):
 			return true
 
 		case .select(_):
@@ -125,14 +132,15 @@ enum SQLStatement {
 		case .drop(let table):
 			return "DROP TABLE \(table.sql(dialect: dialect));"
 
-		case .insert(into: let into, columns: let cols, values: let tuples):
-			let colSQL = cols.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
-			let tupleSQL = tuples.map { tuple in
+		case .insert(let insert):
+			let colSQL = insert.columns.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
+			let tupleSQL = insert.values.map { tuple in
 				let ts = tuple.map { $0.sql(dialect: dialect) }.joined(separator: ",")
 				return "(\(ts))"
 				}.joined(separator: ", ")
 
-			return "INSERT INTO \(into.sql(dialect: dialect)) (\(colSQL)) VALUES \(tupleSQL);"
+			let orReplaceSQL = insert.orReplace ? " OR REPLACE" : ""
+			return "INSERT\(orReplaceSQL) INTO \(insert.into.sql(dialect: dialect)) (\(colSQL)) VALUES \(tupleSQL);"
 
 		case .update:
 			return "UPDATE;"
@@ -300,8 +308,8 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		add_named_rule("ex", rule: ^"ex-equality")
 
 		// Types
-		add_named_rule("type-text", rule: Parser.matchLiteral("TEXT") => { self.stack.append(.type(SQLType.text)) })
-		add_named_rule("type-int", rule: Parser.matchLiteral("INT") => { self.stack.append(.type(SQLType.int)) })
+		add_named_rule("type-text", rule: Parser.matchLiteralInsensitive("TEXT") => { self.stack.append(.type(SQLType.text)) })
+		add_named_rule("type-int", rule: Parser.matchLiteralInsensitive("INT") => { self.stack.append(.type(SQLType.int)) })
 		add_named_rule("type", rule: ^"type-text" | ^"type-int")
 
 		// Column definition
@@ -422,7 +430,16 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		)
 
 		add_named_rule("insert-dml-statement", rule: (
-			Parser.matchLiteralInsensitive("INSERT INTO")
+				Parser.matchLiteralInsensitive("INSERT") => {
+					self.stack.append(.statement(.insert(SQLInsert(orReplace: false, into: SQLTable(name: ""), columns: [], values: []))))
+				}
+				~~ (Parser.matchLiteralInsensitive("OR REPLACE")/~ => {
+					guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
+					guard case .insert(var insert) = statement else { fatalError() }
+					insert.orReplace = true
+					self.stack.append(.statement(.insert(insert)))
+				})
+				~~ Parser.matchLiteralInsensitive("INTO")
 				~~ (^"id-table" => { self.stack.append(.tableIdentifier(SQLTable(name: self.text))) })
 				~~ ((Parser.matchLiteral("(") => { self.stack.append(.columnList([])) }) ~~ ^"column-list" ~~ Parser.matchLiteral(")"))
 				~~ Parser.matchLiteralInsensitive("VALUES") ~~ ((Parser.matchLiteral("(") => { self.stack.append(.tuple([])) }) ~~ ^"tuple" ~~ Parser.matchLiteral(")"))
@@ -430,7 +447,14 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 				guard case .tuple(let rs) = self.stack.popLast()! else { fatalError() }
 				guard case .columnList(let cs) = self.stack.popLast()! else { fatalError() }
 				guard case .tableIdentifier(let tn) = self.stack.popLast()! else { fatalError() }
-				self.stack.append(.statement(.insert(into: tn, columns: cs, values: [rs])))
+				guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
+				guard case .insert(var insert) = statement else { fatalError() }
+
+				insert.into = tn
+				insert.columns = cs
+				insert.values = [rs]
+
+				self.stack.append(.statement(.insert(insert)))
 			})
 
 		// Statement categories
