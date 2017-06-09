@@ -258,6 +258,26 @@ class SQLHistory: Inventory {
 		Log.info("Persisted history is at index \(self.headIndex), hash \(self.headHash.stringValue)")
 	}
 
+	func get(block hash: Hash) throws -> SQLBlock? {
+		let stmt = SQLStatement.select(SQLSelect(
+			these: ["signature", "index", "previous", "payload"].map { return SQLExpression.column(SQLColumn(name: $0)) },
+			from: self.blockTable,
+			where: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)),
+			distinct: false
+		))
+
+		let res = try self.database.perform(stmt.sql(dialect: self.database.dialect))
+		if res.hasRow,
+			case .int(let index) = res.values[1],
+			case .blob(let previousData) = res.values[2],
+			case .blob(let payloadData) = res.values[3] {
+			let previous = Hash(previousData)
+			assert(index >= 0, "Index must be positive")
+			return try SQLBlock(index: UInt(index), previous: previous, payload: payloadData)
+		}
+		return nil
+	}
+
 	func process(block: SQLBlock) throws {
 		try self.mutex.locked {
 			assert(block.isSignatureValid && block.isPayloadValid(), "Block is invalid")

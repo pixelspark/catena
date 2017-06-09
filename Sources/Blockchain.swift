@@ -228,6 +228,11 @@ class Blockchain<BlockType: Block>: CustomDebugStringConvertible {
 	}
 }
 
+protocol Inventory {
+	associatedtype BlockType: Block
+	func get(block: Hash) throws -> BlockType?
+}
+
 class Ledger<BlockType: Block>: CustomDebugStringConvertible {
 	let longest: Blockchain<BlockType>
 	let mutex = Mutex()
