@@ -27,10 +27,19 @@ class Snapshot {
 	}
 }
 
+enum Value {
+	case int(Int)
+	case text(String)
+	case blob(Data)
+	case float(Double)
+	case bool(Bool)
+	case null
+}
+
 protocol Result {
 	var hasRow: Bool { get }
 	var columns: [String] { get }
-	var values: [String] { get }
+	var values: [Value] { get }
 	var state: ResultState { get }
 	@discardableResult func step() -> ResultState
 }
@@ -63,18 +72,39 @@ class SQLiteResult: Result {
 	}
 
 	// TODO: use a more appropriate type than string (variant type)
-	var values: [String] {
+	var values: [Value] {
 		let n = sqlite3_column_count(resultset)
 
-		var cns: [String] = []
+		var cns: [Value] = []
 		for i in 0..<n {
-			if let v = sqlite3_column_text(self.resultset, i) {
-				let name = String(cString: v)
-				cns.append(name)
-			}
-			else {
-				// TODO: this is NULL
-				cns.append("")
+			let t = sqlite3_column_type(self.resultset, i)
+
+			switch t {
+			case SQLITE_INTEGER:
+				if let ptr = sqlite3_column_decltype(self.resultset, i) {
+					let type = String(cString: ptr)
+					if type.hasPrefix("BOOL") {
+						cns.append(Value.bool(sqlite3_column_int64(self.resultset, i) != 0))
+					}
+					cns.append(Value.int(Int(sqlite3_column_int64(self.resultset, i))))
+				}
+				else {
+					fatalError("could not get delctype from sqlite result")
+				}
+
+			case SQLITE_TEXT: cns.append(Value.text(String(cString: sqlite3_column_text(self.resultset, i))))
+			case SQLITE_FLOAT: cns.append(Value.float(sqlite3_column_double(self.resultset, i)))
+			case SQLITE_NULL: cns.append(Value.null)
+			case SQLITE_BLOB:
+				if let b = sqlite3_column_blob(self.resultset, i) {
+					let sz = sqlite3_column_bytes(self.resultset, i)
+					let data = Data(bytes: b, count: Int(sz))
+					cns.append(Value.blob(data))
+				}
+				else {
+					cns.append(Value.null)
+				}
+			default: fatalError("unknown SQLite value type: \(t)")
 			}
 		}
 
@@ -117,6 +147,7 @@ protocol SQLDialect {
 	func literalString(_ string: String) -> String
 	func tableIdentifier(_ table: String) -> String
 	func columnIdentifier(_ column: String) -> String
+	func literalBlob(_ blob: Data) -> String
 }
 
 struct SQLStandardDialect: SQLDialect {
@@ -131,6 +162,11 @@ struct SQLStandardDialect: SQLDialect {
 			.replacingOccurrences(of: stringEscape, with: stringEscape+stringEscape)
 			.replacingOccurrences(of: stringQualifier, with: stringQualifierEscape)
 		return "\(stringQualifier)\(escaped)\(stringQualifier)"
+	}
+
+	func literalBlob(_ blob: Data) -> String {
+		let hex = blob.map { String(format: "%02hhx", $0) }.joined()
+		return "X\(self.stringQualifier)\(hex)\(self.stringQualifier)"
 	}
 
 	func tableIdentifier(_ table: String) -> String {

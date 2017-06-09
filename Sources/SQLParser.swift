@@ -37,11 +37,13 @@ struct SQLColumn: Equatable, Hashable {
 enum SQLType {
 	case text
 	case int
+	case blob
 
 	func sql(dialect: SQLDialect) -> String {
 		switch self {
 		case .text: return "TEXT"
 		case .int: return "INT"
+		case .blob: return "BLOB"
 		}
 	}
 }
@@ -190,6 +192,7 @@ enum SQLBinary {
 enum SQLExpression {
 	case literalInteger(Int)
 	case literalString(String)
+	case literalBlob(Data)
 	case column(SQLColumn)
 	case allColumns
 	case null
@@ -202,6 +205,9 @@ enum SQLExpression {
 
 		case .literalInteger(let i):
 			return "\(i)"
+
+		case .literalBlob(let d):
+			return dialect.literalBlob(d)
 
 		case .column(let c):
 			return c.sql(dialect: dialect)

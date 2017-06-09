@@ -13,6 +13,19 @@ struct QueryError: LocalizedError {
 	}
 }
 
+extension Value {
+	var pqValue: PQValue {
+		switch self {
+		case .text(let s): return PQValue.text(s)
+		case .int(let i): return PQValue.int(Int32(i))
+		case .float(let d): return PQValue.float8(d)
+		case .bool(let b): return PQValue.bool(b)
+		case .blob(let b): return PQValue.text(b.base64EncodedString())
+		case .null: return PQValue.null
+		}
+	}
+}
+
 class NodeQueryServer: QueryServer {
 	var node: Node<SQLBlock>
 
@@ -78,7 +91,7 @@ class NodeQueryServer: QueryServer {
 
 					while case .row = result.state {
 						let values = result.values.map { val in
-							return PQValue.text(val)
+							return val.pqValue
 						}
 						try connection.send(row: values)
 						result.step()

@@ -160,23 +160,25 @@ extension SQLStatement {
 
 class SQLKeyValueTable {
 	let database: Database
-	let table: String
+	let table: SQLTable
 
 	private let keyColumn = SQLColumn(name: "key")
 	private let valueColumn = SQLColumn(name: "value")
 
-	init(database: Database, table: String) throws {
+	init(database: Database, table: SQLTable) throws {
 		self.database = database
 		self.table = table
 
 		// Ensure the table exists
 		try database.transaction {
 			// TODO this is SQLite-specific
-			if !(try database.exists(table: self.table)) {
+			if !(try database.exists(table: self.table.name)) {
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
 				cols.append(.text, forKey: keyColumn)
 				cols.append(.text, forKey: valueColumn)
-				let createStatement = SQLStatement.create(table: SQLTable(name: self.table), schema: SQLSchema(columns: cols, primaryKey: self.keyColumn))
+				let createStatement = SQLStatement.create(table: self.table, schema: SQLSchema(
+					columns: cols,
+					primaryKey: self.keyColumn))
 				try _ = self.database.perform(createStatement.sql(dialect: self.database.dialect))
 			}
 		}
@@ -185,14 +187,14 @@ class SQLKeyValueTable {
 	func get(_ key: String) throws -> String? {
 		let selectStatement = SQLStatement.select(SQLSelect(
 			these: [.column(self.valueColumn)],
-			from: SQLTable(name: self.table),
+			from: self.table,
 			where: SQLExpression.binary(.column(self.keyColumn), .equals, .literalString(key)),
 			distinct: false
 		))
 
 		let r = try self.database.perform(selectStatement.sql(dialect: self.database.dialect))
-		if r.hasRow {
-			return r.values[0]
+		if r.hasRow, case .text(let value) = r.values[0] {
+			return value
 		}
 		return nil
 	}
@@ -200,7 +202,7 @@ class SQLKeyValueTable {
 	func set(key: String, value: String) throws {
 		let insertStatement = SQLStatement.insert(SQLInsert(
 			orReplace: true,
-			into: SQLTable(name: self.table),
+			into: self.table,
 			columns: [self.keyColumn, self.valueColumn],
 			values: [[SQLExpression.literalString(key), SQLExpression.literalString(value)]]
 		))
@@ -208,7 +210,9 @@ class SQLKeyValueTable {
 	}
 }
 
-class SQLHistory {
+class SQLHistory: Inventory {
+	typealias BlockType = SQLBlock
+	
 	let info: SQLKeyValueTable
 	let database: Database
 	var headHash: Hash
@@ -218,10 +222,12 @@ class SQLHistory {
 
 	let infoHeadHashKey = "head"
 	let infoHeadIndexKey = "index"
+	let infoTable = SQLTable(name: "_info")
+	let blockTable = SQLTable(name: "_block")
 
 	init(genesis: SQLBlock, database: Database) throws {
 		self.database = database
-		self.info = try SQLKeyValueTable(database: database, table: "_info")
+		self.info = try SQLKeyValueTable(database: database, table: self.infoTable)
 
 		// Obtain the current state of the history
 		if let hi = try self.info.get(infoHeadIndexKey), let headIndex = UInt(hi),
@@ -239,12 +245,12 @@ class SQLHistory {
 			// Create block table
 			try self.database.transaction(name: "init-storage") {
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
-				cols.append(SQLType.text, forKey: SQLColumn(name: "signature"))
+				cols.append(SQLType.blob, forKey: SQLColumn(name: "signature"))
 				cols.append(SQLType.int, forKey: SQLColumn(name: "index"))
-				cols.append(SQLType.text, forKey: SQLColumn(name: "previous"))
-				cols.append(SQLType.text, forKey: SQLColumn(name: "payload"))
+				cols.append(SQLType.blob, forKey: SQLColumn(name: "previous"))
+				cols.append(SQLType.blob, forKey: SQLColumn(name: "payload"))
 
-				let createStatement = SQLStatement.create(table: SQLTable(name: "_block"), schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
+				let createStatement = SQLStatement.create(table: self.blockTable, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
 				_ = try self.database.perform(createStatement.sql(dialect: self.database.dialect))
 			}
 		}
@@ -279,13 +285,13 @@ class SQLHistory {
 				// Write the block itself
 				let insertStatement = SQLStatement.insert(SQLInsert(
 					orReplace: false,
-					into: SQLTable(name: "_block"),
+					into: self.blockTable,
 					columns: ["signature", "index", "previous", "payload"].map(SQLColumn.init),
 					values: [[
-						.literalString(block.signature!.stringValue),
+						.literalBlob(block.signature!.hash),
 						.literalInteger(Int(block.index)),
-						.literalString(block.previous.stringValue),
-						.literalString(block.payload.data.base64EncodedString())
+						.literalBlob(block.previous.hash),
+						.literalBlob(block.payload.data)
 					]]))
 				_ = try database.perform(insertStatement.sql(dialect: database.dialect))
 
