@@ -81,7 +81,9 @@ class SQLiteResult: Result {
 
 			switch t {
 			case SQLITE_INTEGER:
-				if let ptr = sqlite3_column_decltype(self.resultset, i) {
+				cns.append(Value.int(Int(sqlite3_column_int64(self.resultset, i))))
+				
+				/*if let ptr = sqlite3_column_decltype(self.resultset, i) {
 					let type = String(cString: ptr)
 					if type.hasPrefix("BOOL") {
 						cns.append(Value.bool(sqlite3_column_int64(self.resultset, i) != 0))
@@ -90,7 +92,7 @@ class SQLiteResult: Result {
 				}
 				else {
 					fatalError("could not get delctype from sqlite result")
-				}
+				}*/
 
 			case SQLITE_TEXT: cns.append(Value.text(String(cString: sqlite3_column_text(self.resultset, i))))
 			case SQLITE_FLOAT: cns.append(Value.float(sqlite3_column_double(self.resultset, i)))
@@ -126,6 +128,9 @@ class SQLiteResult: Result {
 
 			case SQLITE_ERROR:
 				self.state = .error(database.lastError)
+
+			case SQLITE_MISUSE:
+				fatalError("SQLite misuse")
 
 			default:
 				self.state = .error("Unknown error code")
@@ -180,15 +185,19 @@ struct SQLStandardDialect: SQLDialect {
 
 protocol Database {
 	var dialect: SQLDialect { get }
-	func transaction(name: String?, callback: (() throws -> ())) throws
+	func transaction<T>(name: String?, alwaysRollback: Bool, callback: (() throws -> (T))) throws -> T
 	func perform(_ sql: String) throws -> Result
 	func close()
 	func exists(table: String) throws -> Bool
 }
 
 extension Database {
-	func transaction(callback: (() throws -> ())) throws {
-		try self.transaction(name: nil, callback: callback)
+	func transaction<T>(name: String? = nil, callback: (() throws -> (T))) throws -> T {
+		return try self.transaction(name: name, alwaysRollback: false, callback: callback)
+	}
+
+	func hypothetical<T>(callback: (() throws -> (T))) throws -> T {
+		return try self.transaction(name: nil, alwaysRollback: true, callback: callback)
 	}
 }
 
@@ -253,14 +262,22 @@ class SQLiteDatabase: Database {
 		}
 	}
 
-	func transaction(name: String? = nil, callback: (() throws -> ())) throws {
+	func transaction<T>(name: String? = nil, alwaysRollback: Bool, callback: (() throws -> (T))) throws -> T {
 		let savepointName = self.dialect.literalString(name ?? "tx-\(self.counter)")
 
 		try _ = self.perform("SAVEPOINT \(savepointName)")
 
 		do {
-			try callback()
-			try _ = self.perform("RELEASE SAVEPOINT \(savepointName)")
+			let t = try callback()
+
+			if alwaysRollback {
+				try _ = self.perform("ROLLBACK TO SAVEPOINT \(savepointName)")
+			}
+			else {
+				try _ = self.perform("RELEASE SAVEPOINT \(savepointName)")
+			}
+
+			return t
 		}
 		catch {
 			try! _ = self.perform("ROLLBACK TO SAVEPOINT \(savepointName)")

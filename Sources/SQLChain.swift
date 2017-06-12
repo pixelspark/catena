@@ -210,58 +210,90 @@ class SQLKeyValueTable {
 	}
 }
 
-class SQLHistory: Inventory {
-	typealias BlockType = SQLBlock
-	
+struct SQLMetadata {
+	static let grantsTableName = "grants"
+	static let infoTableName = "info"
+	static let blocksTableName = "blocks"
+
 	let info: SQLKeyValueTable
+	let grants: SQLGrants
+	let blocks: SQLTable
 	let database: Database
-	var headHash: Hash
-	var headIndex: UInt
 
-	let mutex = Mutex()
+	private let infoHeadHashKey = "head"
+	private let infoHeadIndexKey = "index"
 
-	let infoHeadHashKey = "head"
-	let infoHeadIndexKey = "index"
-	let infoTable = SQLTable(name: "_info")
-	let blockTable = SQLTable(name: "_block")
-
-	init(genesis: SQLBlock, database: Database) throws {
+	init(database: Database) throws {
 		self.database = database
-		self.info = try SQLKeyValueTable(database: database, table: self.infoTable)
+		self.info = try SQLKeyValueTable(database: database, table: SQLTable(name: SQLMetadata.infoTableName))
+		self.blocks = SQLTable(name: SQLMetadata.blocksTableName)
+		self.grants = try SQLGrants(database: database, table: SQLTable(name: SQLMetadata.grantsTableName))
 
-		// Obtain the current state of the history
-		if let hi = try self.info.get(infoHeadIndexKey), let headIndex = UInt(hi),
-			let hh = try self.info.get(infoHeadHashKey), let headHash = Hash(string: hh) {
-			self.headHash = headHash
-			self.headIndex = headIndex
-		}
-		else {
-			// This is a new storage file
-			self.headHash = genesis.signature!
-			self.headIndex = genesis.index
-			try self.info.set(key: infoHeadHashKey, value: self.headHash.stringValue)
-			try self.info.set(key: infoHeadIndexKey, value: String(self.headIndex))
-
+		// This is a new file?
+		if !(try database.exists(table: self.blocks.name)) {
 			// Create block table
-			try self.database.transaction(name: "init-storage") {
+			try self.database.transaction(name: "init-block-archive") {
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "signature"))
 				cols.append(SQLType.int, forKey: SQLColumn(name: "index"))
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "previous"))
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "payload"))
 
-				let createStatement = SQLStatement.create(table: self.blockTable, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
+				let createStatement = SQLStatement.create(table: self.blocks, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
 				_ = try self.database.perform(createStatement.sql(dialect: self.database.dialect))
 			}
 		}
+	}
 
-		Log.info("Persisted history is at index \(self.headIndex), hash \(self.headHash.stringValue)")
+	var headHash: Hash? {
+		do {
+			if let h = try self.info.get(self.infoHeadHashKey) {
+				return Hash(string: h)
+			}
+			return nil
+		}
+		catch {
+			return nil
+		}
+	}
+
+	var headIndex: UInt? {
+		do {
+			if let h = try self.info.get(self.infoHeadIndexKey) {
+				return UInt(h)
+			}
+			return nil
+		}
+		catch {
+			return nil
+		}
+	}
+
+	func set(head: Hash, index: UInt) throws {
+		try self.database.transaction(name: "metadata-set-\(index)-\(head.stringValue)") {
+			try self.info.set(key: infoHeadHashKey, value: head.stringValue)
+			try self.info.set(key: infoHeadIndexKey, value: String(index))
+		}
+	}
+
+	func archive(block: SQLBlock) throws {
+		let insertStatement = SQLStatement.insert(SQLInsert(
+			orReplace: false,
+			into: self.blocks,
+			columns: ["signature", "index", "previous", "payload"].map(SQLColumn.init),
+			values: [[
+				.literalBlob(block.signature!.hash),
+				.literalInteger(Int(block.index)),
+				.literalBlob(block.previous.hash),
+				.literalBlob(block.payload.data)
+			]]))
+		_ = try database.perform(insertStatement.sql(dialect: database.dialect))
 	}
 
 	func get(block hash: Hash) throws -> SQLBlock? {
 		let stmt = SQLStatement.select(SQLSelect(
 			these: ["signature", "index", "previous", "payload"].map { return SQLExpression.column(SQLColumn(name: $0)) },
-			from: self.blockTable,
+			from: self.blocks,
 			where: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)),
 			distinct: false
 		))
@@ -277,49 +309,120 @@ class SQLHistory: Inventory {
 		}
 		return nil
 	}
+}
+
+class SQLHistory: Inventory {
+	typealias BlockType = SQLBlock
+	
+	let meta: SQLMetadata
+	let database: Database
+	let mutex = Mutex()
+
+	init(genesis: SQLBlock, database: Database) throws {
+		self.database = database
+		self.meta = try SQLMetadata(database: database)
+
+		if self.meta.headHash == nil {
+			try self.meta.set(head: genesis.signature!, index: genesis.index)
+		}
+	}
+
+	func get(block: Hash) throws -> SQLBlock? {
+		return try self.meta.get(block: block)
+	}
 
 	func process(block: SQLBlock) throws {
 		try self.mutex.locked {
-			assert(block.isSignatureValid && block.isPayloadValid(), "Block is invalid")
-			assert(block.index == self.headIndex + 1, "Block is not consecutive: \(block.index) upon \(self.headIndex)")
+			try block.apply(database: self.database, meta: self.meta)
+		}
+	}
+}
 
-			let blockSavepointName = "block-\(block.signature!.stringValue)"
+enum SQLBlockError: LocalizedError {
+	case metadataError
+	case inconsecutiveBlockError
+	case blockSignatureError
+	case payloadSignatureError
 
-			try database.transaction(name: blockSavepointName) {
-				// Write block's transactions to the database
-				for transaction in block.payload.transactions {
-					do {
-						let transactionSavepointName = "tr-\(transaction.signature?.base58encoded ?? "unsigned")"
+	var errorDescription: String? {
+		switch self {
+		case .metadataError: return "metadata error"
+		case .inconsecutiveBlockError: return "inconsecutive block error"
+		case .blockSignatureError: return "block signature error"
+		case .payloadSignatureError: return "payload signature error"
+		}
+	}
+}
 
-						try database.transaction(name: transactionSavepointName) {
-							let query = transaction.statement.backendSQL(dialect: self.database.dialect)
-							_ = try database.perform(query)
-						}
-					}
-					catch {
-						// Transactions can fail, this is not a problem - the block can be processed
-						Log.debug("Transaction failed, but block will continue to be processed: \(error.localizedDescription)")
-					}
+extension SQLBlock {
+	/** This is where the magic happens! **/
+	func apply(database: Database, meta: SQLMetadata) throws {
+		// Obtain current chain state
+		guard let headIndex = meta.headIndex else { throw SQLBlockError.metadataError }
+		guard let headHash = meta.headHash else { throw SQLBlockError.metadataError }
+
+		// Check whether block is valid and consecutive
+		if self.index != (headIndex + 1) || self.previous != headHash {
+			throw SQLBlockError.inconsecutiveBlockError
+		}
+
+		if !self.isSignatureValid {
+			throw SQLBlockError.blockSignatureError
+		}
+
+		if !self.isPayloadValid() {
+			throw SQLBlockError.payloadSignatureError
+		}
+
+		// Start a database transaction
+		let blockSavepointName = "block-\(self.signature!.stringValue)"
+		try database.transaction(name: blockSavepointName) {
+			/* Check transaction grants (only grants from previous blocks 'count'; as transactions can potentially change
+			the grants, we need to check them up front) */
+			let privilegedTransactions = try self.payload.transactions.filter { transaction -> Bool in
+				if self.index == 1 {
+					/* Block 1 is special in that it doesn't enforce grants - so that you can actually set them for the
+					first time without getting the error that you don't have the required privileges. */
+					return true
 				}
 
-				// Write the block itself
-				let insertStatement = SQLStatement.insert(SQLInsert(
-					orReplace: false,
-					into: self.blockTable,
-					columns: ["signature", "index", "previous", "payload"].map(SQLColumn.init),
-					values: [[
-						.literalBlob(block.signature!.hash),
-						.literalInteger(Int(block.index)),
-						.literalBlob(block.previous.hash),
-						.literalBlob(block.payload.data)
-					]]))
-				_ = try database.perform(insertStatement.sql(dialect: database.dialect))
+				// Does any of the privileges involve a 'special' table? If so, deny
+				let requiredPrivileges = transaction.statement.requiredPrivileges
+				let containsSpecial = requiredPrivileges.contains { p in
+					if let t = p.table, t.name == SQLMetadata.blocksTableName || t.name == SQLMetadata.infoTableName {
+						return true
+					}
+					return false
+				}
 
-				try self.info.set(key: self.infoHeadHashKey, value: block.signature!.stringValue)
-				try self.info.set(key: self.infoHeadIndexKey, value: "\(block.index)")
-				self.headIndex = block.index
-				self.headHash = block.signature!
+				if containsSpecial {
+					return false
+				}
+
+				return try meta.grants.check(privileges: requiredPrivileges, forUser: transaction.invoker)
 			}
+
+			// Write block's transactions to the database
+			for transaction in privilegedTransactions {
+				do {
+					let transactionSavepointName = "tr-\(transaction.signature?.base58encoded ?? "unsigned")"
+
+					try database.transaction(name: transactionSavepointName) {
+						let query = transaction.statement.backendSQL(dialect: database.dialect)
+						_ = try database.perform(query)
+					}
+				}
+				catch {
+					// Transactions can fail, this is not a problem - the block can be processed
+					Log.debug("Transaction failed, but block will continue to be processed: \(error.localizedDescription)")
+				}
+			}
+
+			// Write the block itself to archive
+			try meta.archive(block: self)
+
+			// Update info
+			try meta.set(head: self.signature!, index: self.index)
 		}
 	}
 }
@@ -354,14 +457,14 @@ class SQLLedger: Ledger<SQLBlock> {
 			try self.mutex.locked {
 				Log.info("[SQLLedger] Unwind from #\(from.index) to #\(to.index)")
 
-				if self.permanentHistory.headIndex <= to.index {
+				if self.permanentHistory.meta.headIndex! <= to.index {
 					// Unwinding within queue
 					self.queue = self.queue.filter { return $0.index <= to.index }
-					Log.info("[SQLLedger] Permanent is at \(self.permanentHistory.headIndex), replayed up to+including \(to.index)")
+					Log.info("[SQLLedger] Permanent is at \(self.permanentHistory.meta.headIndex!), replayed up to+including \(to.index)")
 				}
 				else {
 					// To-block is earlier than the head of permanent storage. Need to replay the full chain
-					Log.info("[SQLLedger] Unwind requires a replay of the full chain, because target block (\(to.index)) << head of permanent history (\(self.permanentHistory.headIndex)) ")
+					Log.info("[SQLLedger] Unwind requires a replay of the full chain, because target block (\(to.index)) << head of permanent history (\(self.permanentHistory.meta.headIndex!)) ")
 					try self.replayPermanentStorage(to: to)
 				}
 			}
@@ -413,15 +516,28 @@ class SQLLedger: Ledger<SQLBlock> {
 
 			if self.queue.count > maxQueueSize {
 				let promoted = self.queue.removeFirst()
-				Log.info("[SQLLedger] promoting block \(promoted.index) to permanent storage which is now at \(self.permanentHistory.headIndex)")
+				Log.info("[SQLLedger] promoting block \(promoted.index) to permanent storage which is now at \(self.permanentHistory.meta.headIndex!)")
 
-				if (self.permanentHistory.headIndex + 1) != promoted.index {
+				if (self.permanentHistory.meta.headIndex! + 1) != promoted.index {
 					Log.info("[SQLLedger] need to replay first to \(promoted.index-1)")
 					let prev = self.longest.blocks[promoted.previous]!
 					try self.replayPermanentStorage(to: prev)
 				}
 				try permanentHistory.process(block: promoted)
 				Log.info("[SQLLedger] promoted block \(promoted.index) to permanent storage; qs=\(self.queue.count)")
+			}
+		}
+	}
+
+	func withUnverifiedTransactions<T>(_ block: ((Database) throws -> (T))) rethrows -> T {
+		return try self.mutex.locked {
+			return try self.permanentHistory.database.hypothetical {
+				// Replay queued blocks
+				for block in self.queue {
+					try block.apply(database: self.permanentHistory.database, meta: self.permanentHistory.meta)
+				}
+
+				return try block(self.permanentHistory.database)
 			}
 		}
 	}

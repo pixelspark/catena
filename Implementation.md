@@ -1,15 +1,60 @@
 # Implementation notes
 
+## Database structure
+
+Catena provides an ordinary SQL database. The following system tables are defined:
+
+* _info_: holds information about the current block hash and index. When a block transaction is executed, this contains information on the *last* block processed (i.e. not the block the transaction is part of)
+* _blocks_: holds an archive of all blocks in the chain.
+* _grants_: holds information about database privileges (see 'authentication' below).
+
+Only the _grants_ table is 'on chain' (that is, the CREATE statement for it is included in the blockchain). The other tables are
+created by the client at initialization time (or can be 'virtual' depending on implementation).
+
 ## Authentication
 
 Catena uses Ed25519 key pairs for authentication. A transaction contains an 'invoker' field which holds the public key of the
-invoker of the query (in future versions, this will be used to determine whether a user has the required privileges).
+invoker of the query. The transactions signature needs to validate for the public key of the invoker.
 
-## Genesis block
+### Privileges
 
-The genesis block in Catena is 'special' in the sense that instead of transactions, it contains a special 'seed string'. The block
-is deterministically mined (starting from nonce=0) so that a given seed string and difficulty will lead to a specific genesis block
-and signature. 
+Before a transaction is executed, the query parser determines the privileges required for the query. Currently, the followjng
+kinds of privileges are recognized:
+
+* "create" (CREATE TABLE)
+* "delete" (DELETE FROM)
+* "drop" (DROP TABLE)
+* "insert" (INSERT INTO)
+
+Privileges are checked against a grants table. The grants table has three columns:
+* "user": the public key of the user that is allowed the privilege
+* "kind": the privilege kind (one of the above strings)
+* "table": the table to which the privilege applies. NULL if the privilege applies to all tables.
+
+Note: associated privileges are *not* automatically removed when references tables are dropped.
+
+The "table" parameter for a grant can be "grants", in which case the user can perform the indicated operation on the grants
+table (use wisely). Regardless of the grants table, other special tables (such as _info_ and _blocks_ are never writable).
+
+A transaction can execute if the required privileges exist after processing of the block previous to the one it is part of. A transaction hence cannot depend on privileges created in the same block. When a transaction cannot execute due to missing privileges, it is simply ignored.
+
+## Genesis blocks
+
+In Catena, two blocks are 'special':
+
+* The genesis block (block #0) in Catena is 'special' in the sense that instead of transactions, it contains a special 'seed string'. The block is deterministically mined (starting from nonce=0) so that a given seed string and difficulty will lead to a specific genesis block and signature.
+* The configuration block (block #1) is special because unlike the other blocks, it does not check grants before executing transactions. This block is actually required to contain the transactions that set up the grants table.
+
+## Transaction playback
+
+When a node receives a valid block, it appends it to a queue. When the queue grows beyond a preset size, the oldest block
+in the queue is persisted on disk. When the chain needs to be spliced and the splice happens inside the queue, the client can
+perform this splice efficiently. If the splice happens in a block older than the oldest block in the queue, the client needs to
+replay the full set of transactions from block #0 to the splice point.
+
+All read queries (sent over the Postgres wire protocol) execute in a 'hypothetical' transaction - this is a transaction that is started
+before the query and in which the queued block transactions have been executed already. The transaction is automatically
+rolled back after the query is finished, such that the changes from the queued blocks are not persisted to disk.
 
 ## Protocol
 

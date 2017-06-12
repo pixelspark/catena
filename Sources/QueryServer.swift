@@ -80,24 +80,25 @@ class NodeQueryServer: QueryServer {
 				try connection.send(error: "OK \(transaction.signature!.base58encoded) \(transaction.statement.sql(dialect: SQLStandardDialect()))", severity: .info)
 			}
 			else {
-				let result = try ledger.permanentHistory.database.perform(statement.backendSQL(dialect: ledger.permanentHistory.database.dialect))
-
-				if case .row = result.state {
-					// Send columns
-					let fields = result.columns.map { col in
-						return PQField(name: col, tableId: 0, columnId: 0, type: .text, typeModifier: 0)
-					}
-					try connection.send(description: fields)
-
-					while case .row = result.state {
-						let values = result.values.map { val in
-							return val.pqValue
+				try ledger.withUnverifiedTransactions { db in
+					let result = try db.perform(statement.backendSQL(dialect: db.dialect))
+					if case .row = result.state {
+						// Send columns
+						let fields = result.columns.map { col in
+							return PQField(name: col, tableId: 0, columnId: 0, type: .text, typeModifier: 0)
 						}
-						try connection.send(row: values)
-						result.step()
+						try connection.send(description: fields)
+
+						while case .row = result.state {
+							let values = result.values.map { val in
+								return val.pqValue
+							}
+							try connection.send(row: values)
+							result.step()
+						}
 					}
+					try connection.sendQueryComplete(tag: "SELECT")
 				}
-				try connection.sendQueryComplete(tag: "SELECT")
 			}
 		}
 		catch {

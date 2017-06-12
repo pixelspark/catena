@@ -19,7 +19,7 @@ struct Identity {
 	}
 }
 
-class Key {
+class Key: CustomStringConvertible {
 	let data: Data
 	let version: UInt8
 
@@ -41,6 +41,10 @@ class Key {
 
 	var stringValue: String {
 		return self.data.base58checkEncoded(version: self.version)
+	}
+
+	var description: String {
+		return self.stringValue
 	}
 }
 

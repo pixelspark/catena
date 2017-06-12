@@ -50,12 +50,17 @@ logger.details = false
 Log.logger = logger
 
 // Generate genesis block
+let databaseFile = databaseFileOption.value ?? "catena.sqlite"
 let seedValue = seedOption.value ?? ""
 var genesisBlock = SQLBlock(genesisBlockWith: seedValue)
 genesisBlock.mine(difficulty: 10)
 Log.info("Genesis block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
 
-var ledger = try! SQLLedger(genesis: genesisBlock, database: databaseFileOption.value ?? "catena.sqlite")
+if initializeOption.value {
+	_ = unlink(databaseFile.cString(using: .utf8))
+}
+
+var ledger = try! SQLLedger(genesis: genesisBlock, database: databaseFile)
 let netPort = netPortOption.value ?? 8338
 let node = Node<SQLBlock>(ledger: ledger, port: netPort)
 
@@ -80,8 +85,27 @@ if initializeOption.value {
 	let identity = try! Identity()
 	Log.info("Root private key: \(identity.privateKey.stringValue)")
 	Log.info("Root public key: \(identity.publicKey.stringValue)")
+	Swift.print("\r\nPGPASSWORD=\(identity.privateKey.stringValue) psql -h localhost -p \(netPort+1) -U \(identity.publicKey.stringValue)\r\n")
 
 	// Create grants table, etc.
+	let create = SQLStatement.create(table: SQLTable(name: SQLMetadata.grantsTableName), schema: SQLGrants.schema)
+	let createTransaction = try SQLTransaction(statement: create, invoker: identity.publicKey)
+
+	let grant = SQLStatement.insert(SQLInsert(
+		orReplace: false,
+		into: SQLTable(name: SQLMetadata.grantsTableName),
+		columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
+		values: [
+			[.literalBlob(identity.publicKey.data), .literalString(SQLPrivilege.Kind.create.rawValue), .null],
+			[.literalBlob(identity.publicKey.data), .literalString(SQLPrivilege.Kind.drop.rawValue), .null],
+			[.literalBlob(identity.publicKey.data), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString(SQLMetadata.grantsTableName)],
+			[.literalBlob(identity.publicKey.data), .literalString(SQLPrivilege.Kind.delete.rawValue), .literalString(SQLMetadata.grantsTableName)]
+		]
+	))
+	let grantTransaction = try SQLTransaction(statement: grant, invoker: identity.publicKey)
+
+	node.submit(transaction: try createTransaction.sign(with: identity.privateKey))
+	node.submit(transaction: try grantTransaction.sign(with: identity.privateKey))
 }
 
 // Start submitting test blocks if that's what the user requested
