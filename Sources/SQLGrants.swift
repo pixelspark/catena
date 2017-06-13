@@ -55,7 +55,7 @@ class SQLGrants {
 				var tableCheckExpression = SQLExpression.unary(.isNull, .column(SQLColumn(name: "table")))
 				if let t = p.table {
 					let specificCheckExpression = SQLExpression.binary(.column(SQLColumn(name: "table")), .equals, .literalString(t.name))
-					tableCheckExpression = SQLExpression.binary(tableCheckExpression, .and, specificCheckExpression)
+					tableCheckExpression = SQLExpression.binary(tableCheckExpression, .or, specificCheckExpression)
 				}
 
 				let select = SQLStatement.select(SQLSelect(
