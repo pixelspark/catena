@@ -19,7 +19,7 @@ struct Identity {
 	}
 }
 
-class Key: CustomStringConvertible {
+class Key: CustomStringConvertible, CustomDebugStringConvertible {
 	let data: Data
 	let version: UInt8
 
@@ -44,6 +44,10 @@ class Key: CustomStringConvertible {
 	}
 
 	var description: String {
+		return self.stringValue
+	}
+
+	var debugDescription: String {
 		return self.stringValue
 	}
 }

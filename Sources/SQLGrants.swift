@@ -1,7 +1,7 @@
 import Foundation
 import LoggerAPI
 
-struct SQLPrivilege {
+struct SQLPrivilege: CustomDebugStringConvertible {
 	enum Kind: String {
 		case create = "create"
 		case delete = "delete"
@@ -12,6 +12,11 @@ struct SQLPrivilege {
 
 	var kind: Kind
 	var table: SQLTable? = nil
+
+	var debugDescription: String {
+		let tn = table?.name ?? "any"
+		return "\(self.kind.rawValue) on \(tn)"
+	}
 }
 
 extension SQLStatement {

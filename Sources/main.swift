@@ -13,7 +13,6 @@ let peersOption = MultiStringOption(shortFlag: "j", longFlag: "join", helpMessag
 let mineOption = BoolOption(shortFlag: "m", longFlag: "mine", helpMessage: "Enable mining of blocks")
 let logOption = StringOption(shortFlag: "v", longFlag: "log", helpMessage: "The log level: debug, verbose, info, warning (default: info)")
 let testOption = BoolOption(shortFlag: "t", helpMessage: "Submit test queries to the chain periodically (default: off)")
-
 let initializeOption = BoolOption(shortFlag: "i", helpMessage: "Generate transactions to initialize basic database structure (default: false)")
 
 let cli = CommandLineKit.CommandLine()
