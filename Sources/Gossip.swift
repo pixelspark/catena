@@ -36,15 +36,17 @@ internal extension Block {
 	}
 }
 
-class Server<BlockType: Block>: WebSocketService {
+class Server<BlockchainType: Blockchain>: WebSocketService {
+	typealias BlockType = BlockchainType.BlockType
+
 	private let version = 1
 	let router = Router()
 	let port: Int
 	private let mutex = Mutex()
 	private var gossipConnections = [String: PeerIncomingConnection]()
-	weak var node: Node<BlockType>?
+	weak var node: Node<BlockchainType>?
 
-	init(node: Node<BlockType>, port: Int) {
+	init(node: Node<BlockchainType>, port: Int) {
 		self.node = node
 		self.port = port
 
@@ -160,11 +162,14 @@ class Server<BlockType: Block>: WebSocketService {
 	private func handleGetBlock(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
 		if let hashString = request.parameters["hash"], let hash = Hash(string: hashString) {
 			if let ledger = self.node?.ledger {
-				let block = ledger.mutex.locked {
-					return ledger.longest.blocks[hash]
+				let block = try ledger.mutex.locked {
+					return try ledger.longest.get(block: hash)
 				}
 
 				if let b = block {
+					assert(b.isSignatureValid, "returning invalid blocks, that can't be good")
+					assert(try! BlockType.read(json: b.json).isSignatureValid, "JSON goes wild")
+
 					response.send(json: b.json)
 
 					next()
@@ -201,7 +206,7 @@ class Server<BlockType: Block>: WebSocketService {
 					"index": block.index,
 					"hash": block.signature!.stringValue
 				])
-				b = chain.blocks[block.previous]
+				b = try chain.get(block: block.previous)
 			}
 			else {
 				break
@@ -221,7 +226,7 @@ class Server<BlockType: Block>: WebSocketService {
 		var data: [String] = [];
 		while let block = b {
 			data.append(String(data: block.payloadData, encoding: .utf8)!)
-			b = chain.blocks[block.previous]
+			b = try chain.get(block: block.previous)
 		}
 
 		response.send(json: [
@@ -479,17 +484,18 @@ public class PeerOutgoingConnection: PeerConnection, WebSocketDelegate {
 	}
 }
 
-public class Peer<BlockType: Block>: PeerConnectionDelegate {
+class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
+	typealias BlockType = BlockchainType.BlockType
 	let url: URL
 	private(set) var state: PeerState
-	weak var node: Node<BlockType>?
+	weak var node: Node<BlockchainType>?
 	public let mutex = Mutex()
 
 	public var connection: PeerConnection? {
 		return self.state.connection
 	}
 
-	init(url: URL, state: PeerState, delegate: Node<BlockType>) {
+	init(url: URL, state: PeerState, delegate: Node<BlockchainType>) {
 		self.url = url
 		self.state = state
 		self.node = delegate
@@ -575,7 +581,7 @@ public class Peer<BlockType: Block>: PeerConnectionDelegate {
 			case .block(let blockData):
 				do {
 					let b = try BlockType.read(json: blockData)
-					self.node?.receive(block: b)
+					try self.node?.receive(block: b)
 				}
 				catch {
 					self.fail(error: "Received invalid unsolicited block")
@@ -583,7 +589,10 @@ public class Peer<BlockType: Block>: PeerConnectionDelegate {
 
 			case .fetch(let h):
 				try self.node?.ledger.mutex.locked {
-					if let block = self.node?.ledger.longest.blocks[h] {
+					if let block = try self.node?.ledger.longest.get(block: h) {
+						assert(block.isSignatureValid, "returning invalid blocks, that can't be good")
+						assert(try! BlockType.read(json: block.json).isSignatureValid, "JSON goes wild")
+
 						try connection.reply(counter: counter, gossip: .block(block.json))
 					}
 				}

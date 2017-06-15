@@ -13,16 +13,17 @@ struct Candidate<BlockType: Block>: Equatable {
 	let peer: URL
 }
 
-class Node<BlockType: Block> {
-	private(set) var server: Server<BlockType>! = nil
-	private(set) var miner: Miner<BlockType>! = nil
-	let ledger: Ledger<BlockType>
+class Node<BlockchainType: Blockchain> {
+	typealias BlockType = BlockchainType.BlockType
+	private(set) var server: Server<BlockchainType>! = nil
+	private(set) var miner: Miner<BlockchainType>! = nil
+	let ledger: Ledger<BlockchainType>
 	let uuid: UUID
 
 	private let tickTimer: DispatchSourceTimer
 	private let mutex = Mutex()
 	private let workerQueue = DispatchQueue.global(qos: .background)
-	private(set) var peers: [URL: Peer<BlockType>] = [:]
+	private(set) var peers: [URL: Peer<BlockchainType>] = [:]
 	private var queryQueue: [URL] = []
 	private var candidateQueue: [Candidate<BlockType>] = []
 
@@ -40,7 +41,7 @@ class Node<BlockType: Block> {
 		})
 	}
 
-	init(ledger: Ledger<BlockType>, port: Int) {
+	init(ledger: Ledger<BlockchainType>, port: Int) {
 		self.uuid = UUID()
 		self.tickTimer = DispatchSource.makeTimerSource(flags: [], queue: self.workerQueue)
 		self.ledger = ledger
@@ -48,8 +49,8 @@ class Node<BlockType: Block> {
 		self.server = Server(node: self, port: port)
 	}
 
+	/** Append a transaction to the memory pool (maintained by the miner). */
 	func submit(transaction: BlockType.TransactionType) {
-
 		self.miner.append { (b : BlockType?) -> BlockType in
 			var block = b ?? BlockType()
 			block.append(transaction: transaction)
@@ -60,7 +61,7 @@ class Node<BlockType: Block> {
 	func add(peer url: URL) {
 		self.mutex.locked {
 			if self.peers[url] == nil {
-				self.peers[url] = Peer<BlockType>(url: url, state: .new, delegate: self)
+				self.peers[url] = Peer<BlockchainType>(url: url, state: .new, delegate: self)
 				self.queryQueue.append(url)
 			}
 		}
@@ -89,7 +90,7 @@ class Node<BlockType: Block> {
 				connection.close()
 			}
 
-			let peer = Peer<BlockType>(url: url, state: isSelf ? .ignored(reason: "is ourselves") : .connected(connection), delegate: self)
+			let peer = Peer<BlockchainType>(url: url, state: isSelf ? .ignored(reason: "is ourselves") : .connected(connection), delegate: self)
 			connection.delegate = peer
 
 			self.mutex.locked {
@@ -112,18 +113,18 @@ class Node<BlockType: Block> {
 		}
 	}
 
-	func receive(block: BlockType) {
+	func receive(block: BlockType) throws {
 		Log.info("[Node] receive block #\(block.index)")
 
 		if block.isPayloadValid() {
-			self.mutex.locked {
-				self.ledger.receive(block: block)
+			try self.mutex.locked {
+				try self.ledger.receive(block: block)
 			}
 		}
 	}
 
-	func mined(block: BlockType) {
-		self.receive(block: block)
+	func mined(block: BlockType) throws {
+		try self.receive(block: block)
 
 		// Send our peers the good news!
 		self.mutex.locked {
@@ -186,21 +187,23 @@ class Node<BlockType: Block> {
 
 								if block.isSignatureValid {
 									Log.debug("[Node] fetch returned valid block: \(block)")
-									self.ledger.mutex.locked {
-										self.receive(block: block)
+									try self.ledger.mutex.locked {
+										try self.receive(block: block)
 										if block.index > 0 &&
 											self.ledger.orphansByPreviousHash[block.previous] != nil &&
-											self.ledger.orphansByHash[block.previous] == nil &&
-											self.ledger.longest.blocks[block.previous] == nil {
-											// Ledger is looking for the previous block for this block, go get it from the peer we got this from
-											self.workerQueue.async {
-												self.fetch(candidate: Candidate(hash: block.previous, height: block.index-1, peer: candidate.peer))
+											self.ledger.orphansByHash[block.previous] == nil {
+											let pb = try self.ledger.longest.get(block: block.previous)
+											if pb == nil {
+												// Ledger is looking for the previous block for this block, go get it from the peer we got this from
+												self.workerQueue.async {
+													self.fetch(candidate: Candidate(hash: block.previous, height: block.index-1, peer: candidate.peer))
+												}
 											}
 										}
 									}
 								}
 								else {
-									Log.warning("[Node] fetch returned invalid block; setting peer invalid")
+									Log.warning("[Node] fetch returned invalid block (signature invalid); setting peer \(candidate.peer) invalid")
 									self.mutex.locked {
 										self.peers[candidate.peer]?.fail(error: "invalid block")
 									}

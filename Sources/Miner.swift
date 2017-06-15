@@ -2,15 +2,17 @@ import Foundation
 import Dispatch
 import LoggerAPI
 
-class Miner<BlockType: Block> {
-	private weak var node: Node<BlockType>?
+class Miner<BlockchainType: Blockchain> {
+	typealias BlockType = BlockchainType.BlockType
+
+	private weak var node: Node<BlockchainType>?
 	private var block: BlockType? = nil
 	private let mutex = Mutex()
 	private var counter: UInt = 0
 	public var isEnabled = true
 	private(set) var isMining = false
 
-	init(node: Node<BlockType>) {
+	init(node: Node<BlockchainType>) {
 		self.node = node
 		self.counter = UInt(abs(random(Int.self)))
 	}
@@ -74,7 +76,12 @@ class Miner<BlockType: Block> {
 									stop = true
 									DispatchQueue.global(qos: .background).async {
 										Log.info("[Miner] mined block #\(b.index)")
-										n.mined(block: b)
+										do {
+											try n.mined(block: b)
+										}
+										catch {
+											Log.info("[Miner] mined block #\(b.index), but node fails: \(error.localizedDescription)")
+										}
 									}
 								}
 							}

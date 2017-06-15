@@ -75,7 +75,13 @@ and private key for the 'root' user when initializing a new chain (with the -i o
 you to use to connect as root.
 
 By default, only the 'root' user created during initialization has any rights on the database. Add rows to the 'grants' table to
-create more 'users' (identified by public key).
+create more 'users' (identified by public key). For example (as root):
+
+````
+CREATE TABLE test(foo INT);
+INSERT INTO grants(kind, user, table) VALUES ('insert', $invoker, 'test');
+INSERT INTO test(foo) VALUES (1337);
+````
 
 For testing, you can supply the username 'random' with any password; Catena will generate a new keypair for each (mutating) query and report it back to you as INFO messages in the Postgres client.
 
@@ -114,6 +120,7 @@ SQL has the following limitations:
 * An expression can be a value, '*' a column name, or a supported operation
 * Supported operators are "=", "<>", "<", ">", ">=", "<="
 * Currently only the types 'TEXT' and 'INT' are supported.
+* The special `$invoker` variable can be used to refer to the current public key of the transaction invoker
 
 In the future, the Catena parser will be expanded to support more types of statements. Only deterministic queries will
 be supported (e.g. no functions that return current date/time or random values).

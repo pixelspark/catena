@@ -113,6 +113,18 @@ public protocol Transaction {
 	var isSignatureValid: Bool { get }
 }
 
+protocol Blockchain {
+	associatedtype BlockType: Block
+
+	var highest: BlockType { get }
+	var genesis: BlockType { get }
+	var difficulty: Int { get }
+
+	func get(block: Hash) throws -> BlockType?
+	func append(block: BlockType) throws -> Bool
+	func unwind(to: BlockType) throws
+}
+
 public protocol Block: CustomDebugStringConvertible, Equatable {
 	associatedtype TransactionType: Transaction
 
@@ -182,72 +194,23 @@ extension Block {
 	}
 }
 
-class Blockchain<BlockType: Block>: CustomDebugStringConvertible {
-	var highest: BlockType
-	let genesis: BlockType
-	var blocks: [Hash: BlockType] = [:]
+class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
+	typealias BlockType = BlockchainType.BlockType
 
-	required init(genesis: BlockType) {
-		assert(genesis.index == 0)
-		self.genesis = genesis
-		self.highest = genesis
-		self.blocks[genesis.signature!] = genesis
-	}
-
-	func append(block: BlockType) -> Bool {
-		if block.previous == self.highest.signature! && block.index == (self.highest.index + 1) && block.isSignatureValid && block.signature!.difficulty >= self.difficulty {
-			self.highest = block
-			self.blocks[block.signature!] = block
-			return true
-		}
-		return false
-	}
-
-	func unwind(to: BlockType) {
-		if self.blocks[to.signature!] == nil {
-			fatalError("Cannot unwind to a block that is not in the chain: \(to.signature!.stringValue)")
-		}
-
-		while !(highest == to) {
-			if let previous = blocks[highest.previous] {
-				blocks.removeValue(forKey: highest.signature!)
-				highest = previous
-			}
-			else {
-				fatalError("unwound full chain")
-			}
-		}
-	}
-
-	var difficulty: Int {
-		return self.genesis.signature!.difficulty
-	}
-
-	var debugDescription: String {
-		return "Blockchain [height=\(self.highest.index) highest=\(self.highest.signature!.stringValue)]";
-	}
-}
-
-protocol Inventory {
-	associatedtype BlockType: Block
-	func get(block: Hash) throws -> BlockType?
-}
-
-class Ledger<BlockType: Block>: CustomDebugStringConvertible {
-	let longest: Blockchain<BlockType>
+	var longest: BlockchainType
 	let mutex = Mutex()
 	var orphansByHash: [Hash: BlockType] = [:]
 	var orphansByPreviousHash: [Hash: BlockType] = [:]
 
-	init(genesis: BlockType) {
-		self.longest = Blockchain(genesis: genesis)
+	init(longest: BlockchainType) {
+		self.longest = longest
 	}
 
 	let spliceLimit: UInt = 1
 
-	func receive(block: BlockType) -> Bool {
+	func receive(block: BlockType) throws -> Bool {
 		Log.debug("[Ledger] receive block #\(block.index) \(block.signature!.stringValue)")
-		return self.mutex.locked { () -> Bool in
+		return try self.mutex.locked { () -> Bool in
 			if block.isSignatureValid {
 				// Were we waiting for this block?
 				var block = block
@@ -258,8 +221,7 @@ class Ledger<BlockType: Block>: CustomDebugStringConvertible {
 				}
 
 				// This block can simply be appended to the chain
-				if self.longest.append(block: block) {
-					self.didAppend(block: block)
+				if try self.longest.append(block: block) {
 					Log.info("[Ledger] can append directly")
 					return true
 				}
@@ -271,7 +233,7 @@ class Ledger<BlockType: Block>: CustomDebugStringConvertible {
 						var stack: [BlockType] = []
 						while true {
 							if let r = root {
-								if self.longest.blocks[r.previous] == nil {
+								if try self.longest.get(block: r.previous) == nil {
 									if let prev = self.orphansByHash[r.previous] {
 										root = prev
 										stack.append(r)
@@ -297,20 +259,18 @@ class Ledger<BlockType: Block>: CustomDebugStringConvertible {
 
 						// We found a root earlier in the chain. Unwind to the root and apply all blocks
 						if let r = root {
-							if let splice = self.longest.blocks[r.previous] {
+							if let splice = try self.longest.get(block: r.previous) {
 								if splice.signature! != self.longest.highest.signature! {
 									Log.info("[Ledger] splicing to \(r.index), then fast-forwarding to \(block.index)")
-									self.longest.unwind(to: splice)
-									self.didUnwind(from: self.longest.highest, to: splice)
+									try self.longest.unwind(to: splice)
 								}
 
 								Log.info("[Ledger] head is now at \(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)")
 								for b in stack.reversed() {
 									Log.info("[Ledger] appending \(b.index) \(b.signature!.stringValue)")
-									if !self.longest.append(block: b) {
+									if !(try self.longest.append(block: b)) {
 										fatalError("this block should be appendable!")
 									}
-									self.didAppend(block: b)
 								}
 								return true
 							}
@@ -336,14 +296,6 @@ class Ledger<BlockType: Block>: CustomDebugStringConvertible {
 				return false
 			}
 		}
-	}
-
-	func didAppend(block: BlockType) {
-		// For overriding
-	}
-
-	func didUnwind(from: BlockType, to: BlockType) {
-		// For overriding
 	}
 
 	var debugDescription: String {

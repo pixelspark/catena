@@ -61,7 +61,7 @@ if initializeOption.value {
 
 var ledger = try! SQLLedger(genesis: genesisBlock, database: databaseFile)
 let netPort = netPortOption.value ?? 8338
-let node = Node<SQLBlock>(ledger: ledger, port: netPort)
+let node = Node<SQLBlockchain>(ledger: ledger, port: netPort)
 
 // Add peers from command line
 for p in peersOption.value ?? [] {

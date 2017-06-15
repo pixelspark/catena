@@ -222,6 +222,7 @@ enum SQLExpression {
 	case column(SQLColumn)
 	case allColumns
 	case null
+	case variable(String)
 	indirect case binary(SQLExpression, SQLBinary, SQLExpression)
 	indirect case unary(SQLUnary, SQLExpression)
 
@@ -244,6 +245,9 @@ enum SQLExpression {
 
 		case .null:
 			return "NULL"
+
+		case .variable(let v):
+			return "$\(v)"
 
 		case .binary(let left, let binary, let right):
 			return "(\(left.sql(dialect: dialect)) \(binary.sql(dialect: dialect)) \(right.sql(dialect: dialect)))"
@@ -307,6 +311,10 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			self.stack.append(.expression(.null))
 		})
 
+		add_named_rule("lit-variable", rule: Parser.matchLiteral("$") ~ ((firstCharacter ~ (followingCharacter*)/~) => {
+			self.stack.append(.expression(.variable(self.text)))
+		}))
+
 		add_named_rule("lit-column-naked", rule: (firstCharacter ~ (followingCharacter*)/~) => {
 			self.stack.append(.columnIdentifier(SQLColumn(name: self.text)))
 		})
@@ -323,6 +331,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		add_named_rule("lit", rule:
 			^"lit-int"
 			| ^"lit-all-columns"
+			| ^"lit-variable"
 			| ^"lit-blob"
 			| ^"lit-string"
 			| ^"lit-null"

@@ -27,9 +27,9 @@ extension Value {
 }
 
 class NodeQueryServer: QueryServer {
-	var node: Node<SQLBlock>
+	var node: Node<SQLBlockchain>
 
-	init(node: Node<SQLBlock>, port: Int, family: Family = .ipv6) {
+	init(node: Node<SQLBlockchain>, port: Int, family: Family = .ipv6) {
 		self.node = node
 		super.init(port: port, family: family)
 	}
@@ -43,36 +43,37 @@ class NodeQueryServer: QueryServer {
 			// Parse the statement
 			let statement = try SQLStatement(query)
 
+			// Get user public/private key
+			guard let username = connection.username else {
+				throw QueryError(message: "no username set")
+			}
+
+			guard let password = connection.password else {
+				throw QueryError(message: "no password set")
+			}
+
+			let identity: Identity
+
+			// for testing, autogenerate a keypair when the username is 'random'
+			if username == "random" {
+				identity = try Identity()
+				try connection.send(error: "Public key: \(identity.publicKey.stringValue)", severity: .info, code: "", endsQuery: false)
+				try connection.send(error: "Private key: \(identity.privateKey.stringValue)", severity: .info, code: "", endsQuery: false)
+			}
+			else {
+				guard let invokerKey = PublicKey(string: username) else {
+					throw QueryError(message: "no usename set or not a public key")
+				}
+
+				guard let passwordKey = PrivateKey(string: password) else {
+					throw QueryError(message: "password is not a valid private key")
+				}
+
+				identity = Identity(publicKey: invokerKey, privateKey: passwordKey)
+			}
+
+			// Mutating statements are queued
 			if statement.isMutating {
-				// Get user public/private key
-				guard let username = connection.username else {
-					throw QueryError(message: "no username set")
-				}
-
-				guard let password = connection.password else {
-					throw QueryError(message: "no password set")
-				}
-
-				let identity: Identity
-
-				// for testing, autogenerate a keypair when the username is 'random'
-				if username == "random" {
-					identity = try Identity()
-					try connection.send(error: "Public key: \(identity.publicKey.stringValue)", severity: .info, code: "", endsQuery: false)
-					try connection.send(error: "Private key: \(identity.privateKey.stringValue)", severity: .info, code: "", endsQuery: false)
-				}
-				else {
-					guard let invokerKey = PublicKey(string: username) else {
-						throw QueryError(message: "no usename set or not a public key")
-					}
-
-					guard let passwordKey = PrivateKey(string: password) else {
-						throw QueryError(message: "password is not a valid private key")
-					}
-
-					identity = Identity(publicKey: invokerKey, privateKey: passwordKey)
-				}
-
 				// This needs to go to the ledger
 				let transaction = try SQLTransaction(statement: statement, invoker: identity.publicKey)
 				try transaction.sign(with: identity.privateKey)
@@ -80,8 +81,9 @@ class NodeQueryServer: QueryServer {
 				try connection.send(error: "OK \(transaction.signature!.base58encoded) \(transaction.statement.sql(dialect: SQLStandardDialect()))", severity: .info)
 			}
 			else {
-				try ledger.withUnverifiedTransactions { db in
-					let result = try db.perform(statement.backendSQL(dialect: db.dialect))
+				try ledger.longest.withUnverifiedTransactions { db in
+					let context = SQLContext(metadata: ledger.longest.meta, invoker: identity.publicKey)
+					let result = try db.perform(statement.backendStatement(context: context).sql(dialect: db.dialect))
 					if case .row = result.state {
 						// Send columns
 						let fields = result.columns.map { col in
