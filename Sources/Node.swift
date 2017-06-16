@@ -113,18 +113,38 @@ class Node<BlockchainType: Blockchain> {
 		}
 	}
 
-	func receive(block: BlockType) throws {
-		Log.info("[Node] receive block #\(block.index)")
+	/** Peer can be nil when the block originated from ourselves (i.e. was mined). */
+	func receive(block: BlockType, from peer: Peer<BlockchainType>?) throws {
+		Log.info("[Node] receive block #\(block.index) from \(peer?.url.absoluteString ?? "self")")
 
-		if block.isPayloadValid() {
-			try self.mutex.locked {
-				try self.ledger.receive(block: block)
+		if block.isSignatureValid && block.isPayloadValid() {
+			let isNew = try self.mutex.locked { () -> Bool in
+				let isNew = try self.ledger.isNew(block: block)
+				try _ = self.ledger.receive(block: block)
+				return isNew
+			}
+
+			// Did we get this block from someone else and is it new? Then rebroadcast
+			if let p = peer, isNew {
+				Log.info("[Node] Re-broadcasting block \(block) to peers as it is new")
+				self.peers.forEach { (url, otherPeer) in
+					if otherPeer.url != p.url {
+						if case .connected(let c) = otherPeer.state {
+							do {
+								try c.request(gossip: Gossip.block(block.json))
+							}
+							catch {
+								// Not a problem if this fails
+							}
+						}
+					}
+				}
 			}
 		}
 	}
 
 	func mined(block: BlockType) throws {
-		try self.receive(block: block)
+		try self.receive(block: block, from: nil)
 
 		// Send our peers the good news!
 		self.mutex.locked {
@@ -188,7 +208,8 @@ class Node<BlockchainType: Blockchain> {
 								if block.isSignatureValid {
 									Log.debug("[Node] fetch returned valid block: \(block)")
 									try self.ledger.mutex.locked {
-										try self.receive(block: block)
+										let peer = self.peers[candidate.peer]
+										try self.receive(block: block, from: peer)
 										if block.index > 0 &&
 											self.ledger.orphansByPreviousHash[block.previous] != nil &&
 											self.ledger.orphansByHash[block.previous] == nil {

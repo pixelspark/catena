@@ -208,6 +208,23 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 
 	let spliceLimit: UInt = 1
 
+	func isNew(block: BlockType) throws -> Bool {
+		return try self.mutex.locked {
+			// We already know this block and it is currently an orphan
+			if self.orphansByHash[block.signature!] != nil {
+				return false
+			}
+
+			// We already know this block, it is on-chain
+			if try self.longest.get(block: block.signature!) != nil {
+				return false
+			}
+
+			// Block hasn't been seen by us before or was forgotten
+			return true
+		}
+	}
+
 	func receive(block: BlockType) throws -> Bool {
 		Log.debug("[Ledger] receive block #\(block.index) \(block.signature!.stringValue)")
 		return try self.mutex.locked { () -> Bool in

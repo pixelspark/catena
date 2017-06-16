@@ -581,7 +581,7 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 			case .block(let blockData):
 				do {
 					let b = try BlockType.read(json: blockData)
-					try self.node?.receive(block: b)
+					try self.node?.receive(block: b, from: self)
 				}
 				catch {
 					self.fail(error: "Received invalid unsolicited block")
