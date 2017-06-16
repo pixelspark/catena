@@ -223,8 +223,8 @@ class SQLKeyValueTable {
 
 struct SQLMetadata {
 	static let grantsTableName = "grants"
-	static let infoTableName = "info"
-	static let blocksTableName = "blocks"
+	static let infoTableName = "_info"
+	static let blocksTableName = "_blocks"
 
 	let info: SQLKeyValueTable
 	let grants: SQLGrants
