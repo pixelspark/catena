@@ -220,28 +220,16 @@ class SQLKeyValueTable {
 	}
 }
 
-
-struct SQLMetadata {
-	static let grantsTableName = "grants"
-	static let infoTableName = "_info"
-	static let blocksTableName = "_blocks"
-
-	let info: SQLKeyValueTable
-	let grants: SQLGrants
-	let blocks: SQLTable
+struct SQLBlockArchive {
 	let database: Database
+	let table: SQLTable
 
-	private let infoHeadHashKey = "head"
-	private let infoHeadIndexKey = "index"
-
-	init(database: Database) throws {
+	init(table: SQLTable, database: Database) throws {
+		self.table = table
 		self.database = database
-		self.info = try SQLKeyValueTable(database: database, table: SQLTable(name: SQLMetadata.infoTableName))
-		self.blocks = SQLTable(name: SQLMetadata.blocksTableName)
-		self.grants = try SQLGrants(database: database, table: SQLTable(name: SQLMetadata.grantsTableName))
 
 		// This is a new file?
-		if !(try database.exists(table: self.blocks.name)) {
+		if !(try database.exists(table: self.table.name)) {
 			// Create block table
 			try self.database.transaction(name: "init-block-archive") {
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
@@ -251,10 +239,86 @@ struct SQLMetadata {
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "previous"))
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "payload"))
 
-				let createStatement = SQLStatement.create(table: self.blocks, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
+				let createStatement = SQLStatement.create(table: self.table, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
 				_ = try self.database.perform(createStatement.sql(dialect: self.database.dialect))
 			}
 		}
+	}
+
+	func archive(block: SQLBlock) throws {
+		let insertStatement = SQLStatement.insert(SQLInsert(
+			orReplace: false,
+			into: self.table,
+			columns: ["signature", "index", "nonce", "previous", "payload"].map(SQLColumn.init),
+			values: [[
+				.literalBlob(block.signature!.hash),
+				.literalInteger(Int(block.index)),
+				.literalInteger(Int(block.nonce)),
+				.literalBlob(block.previous.hash),
+				.literalBlob(block.payloadData)
+				]]))
+		_ = try database.perform(insertStatement.sql(dialect: database.dialect))
+	}
+
+	func remove(block hash: Hash) throws {
+		let stmt = SQLStatement.delete(from: self.table, where: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)))
+		_ = try self.database.perform(stmt.sql(dialect: self.database.dialect))
+	}
+
+	func get(block hash: Hash) throws -> SQLBlock? {
+		let stmt = SQLStatement.select(SQLSelect(
+			these: ["signature", "index", "nonce", "previous", "payload"].map { return SQLExpression.column(SQLColumn(name: $0)) },
+			from: self.table,
+			where: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)),
+			distinct: false
+		))
+
+		let res = try self.database.perform(stmt.sql(dialect: self.database.dialect))
+		if res.hasRow,
+			case .int(let index) = res.values[1],
+			case .int(let nonce) = res.values[2],
+			case .blob(let previousData) = res.values[3] {
+			let previous = Hash(previousData)
+			assert(index >= 0, "Index must be positive")
+
+			// Payload can be null or block
+			var block: SQLBlock
+			if case .blob(let payloadData) = res.values[4] {
+				block = try SQLBlock(index: UInt(index), previous: previous, payload: payloadData)
+			}
+			else if case .null = res.values[4] {
+				block = try SQLBlock(index: UInt(index), previous: previous, payload: Data())
+			}
+			else {
+				fatalError("invalid payload")
+			}
+			block.nonce = UInt(nonce)
+			block.signature = hash
+			assert(block.isSignatureValid, "persisted block signature is invalid! \(block)")
+			return block
+		}
+		return nil
+	}
+}
+
+struct SQLMetadata {
+	static let grantsTableName = "grants"
+	static let infoTableName = "_info"
+	static let blocksTableName = "_blocks"
+
+	let info: SQLKeyValueTable
+	let grants: SQLGrants
+	let database: Database
+	private let archive: SQLBlockArchive
+
+	private let infoHeadHashKey = "head"
+	private let infoHeadIndexKey = "index"
+
+	init(database: Database) throws {
+		self.database = database
+		self.info = try SQLKeyValueTable(database: database, table: SQLTable(name: SQLMetadata.infoTableName))
+		self.archive = try SQLBlockArchive(table: SQLTable(name: SQLMetadata.blocksTableName), database: database)
+		self.grants = try SQLGrants(database: database, table: SQLTable(name: SQLMetadata.grantsTableName))
 	}
 
 	var headHash: Hash? {
@@ -289,58 +353,15 @@ struct SQLMetadata {
 	}
 
 	func archive(block: SQLBlock) throws {
-		let insertStatement = SQLStatement.insert(SQLInsert(
-			orReplace: false,
-			into: self.blocks,
-			columns: ["signature", "index", "nonce", "previous", "payload"].map(SQLColumn.init),
-			values: [[
-				.literalBlob(block.signature!.hash),
-				.literalInteger(Int(block.index)),
-				.literalInteger(Int(block.nonce)),
-				.literalBlob(block.previous.hash),
-				.literalBlob(block.payloadData)
-			]]))
-		_ = try database.perform(insertStatement.sql(dialect: database.dialect))
+		try self.archive.archive(block: block)
 	}
 
 	func remove(block hash: Hash) throws {
-		let stmt = SQLStatement.delete(from: self.blocks, where: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)))
-		_ = try self.database.perform(stmt.sql(dialect: self.database.dialect))
+		try self.archive.remove(block: hash)
 	}
 
 	func get(block hash: Hash) throws -> SQLBlock? {
-		let stmt = SQLStatement.select(SQLSelect(
-			these: ["signature", "index", "nonce", "previous", "payload"].map { return SQLExpression.column(SQLColumn(name: $0)) },
-			from: self.blocks,
-			where: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)),
-			distinct: false
-		))
-
-		let res = try self.database.perform(stmt.sql(dialect: self.database.dialect))
-		if res.hasRow,
-			case .int(let index) = res.values[1],
-			case .int(let nonce) = res.values[2],
-			case .blob(let previousData) = res.values[3] {
-			let previous = Hash(previousData)
-			assert(index >= 0, "Index must be positive")
-
-			// Payload can be null or block
-			var block: SQLBlock
-			if case .blob(let payloadData) = res.values[4] {
-				block = try SQLBlock(index: UInt(index), previous: previous, payload: payloadData)
-			}
-			else if case .null = res.values[4] {
-				block = try SQLBlock(index: UInt(index), previous: previous, payload: Data())
-			}
-			else {
-				fatalError("invalid payload")
-			}
-			block.nonce = UInt(nonce)
-			block.signature = hash
-			assert(block.isSignatureValid, "persisted block signature is invalid! \(block)")
-			return block
-		}
-		return nil
+		return try self.archive.get(block: hash)
 	}
 }
 
