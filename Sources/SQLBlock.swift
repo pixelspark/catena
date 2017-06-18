@@ -132,18 +132,33 @@ struct SQLContext {
 	let invoker: PublicKey
 }
 
-extension SQLExpression {
-	func backendExpression(context: SQLContext) throws -> SQLExpression {
-		switch self {
+struct SQLBackendVisitor: SQLVisitor {
+	let context: SQLContext
+
+	init(context: SQLContext) {
+		self.context = context
+	}
+
+	func visit(column: SQLColumn) throws -> SQLColumn {
+		/* Replace occurences of column 'rowid' with '$rowid'. The rowid column is special in SQLite and we are therefore
+		masking it. */
+		if column == SQLColumn(name: "rowid") {
+			return SQLColumn(name: "$rowid")
+		}
+		return column
+	}
+
+	func visit(expression: SQLExpression) throws -> SQLExpression {
+		switch expression {
 		case .variable(let v):
-			// Replace variables with literals
+			// Replace variables with corresponding literals
 			switch v {
 			case "invoker": return SQLExpression.literalBlob(context.invoker.data)
 			default: throw SQLPayload.SQLPayloadError.invalidVariableError
 			}
 
 		default:
-			return self
+			return expression
 		}
 	}
 }
@@ -152,33 +167,8 @@ extension SQLStatement {
 	/** Translates a Catena SQL statement into something our backend (SQLite) can execute. Replace variables with their
 	values (as literals), etc. */
 	func backendStatement(context: SQLContext) throws -> SQLStatement {
-		switch self {
-		case .create(table: _, schema: _):
-			return self
-
-		case .drop(table: _):
-			return self
-
-		case .delete(from: let f, where: let conditions):
-			return .delete(from: f, where: try conditions?.backendExpression(context: context))
-
-		case .insert(var ins):
-			ins.values = try ins.values.map { tuple in
-				return try tuple.map { expr in
-					return try expr.backendExpression(context: context)
-				}
-			}
-			return .insert(ins)
-
-		case .select(var s):
-			s.these = try s.these.map { expr in
-				return try expr.backendExpression(context: context)
-			}
-			return SQLStatement.select(s)
-
-		case .update:
-			return self
-		}
+		let visitor = SQLBackendVisitor(context: context)
+		return try self.visit(visitor)
 	}
 }
 

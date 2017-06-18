@@ -727,3 +727,139 @@ fileprivate extension Parser {
 	}
 }
 
+/** The visitor can be used to analyze and rewrite SQL expressions. Call .visit on the element to visit and supply an
+SQLVisitor instance. By returning a different object than the one passed into a `visit` call, you can modify the source
+expression. For items that have visitable children, the children will be visited first, and then visit will be called
+for the parent with the updated children (if applicable). */
+protocol SQLVisitor {
+	func visit(column: SQLColumn) throws -> SQLColumn
+	func visit(expression: SQLExpression) throws -> SQLExpression
+	func visit(table: SQLTable) throws -> SQLTable
+	func visit(binary: SQLBinary) throws -> SQLBinary
+	func visit(unary: SQLUnary) throws -> SQLUnary
+	func visit(statement: SQLStatement) throws -> SQLStatement
+	func visit(schema: SQLSchema) throws -> SQLSchema
+	func visit(join: SQLJoin) throws -> SQLJoin
+}
+
+extension SQLVisitor {
+	// By default, a visitor does not modify anything
+	func visit(unary: SQLUnary) throws -> SQLUnary { return unary }
+	func visit(binary: SQLBinary) throws -> SQLBinary { return binary }
+	func visit(column: SQLColumn) throws -> SQLColumn { return column }
+	func visit(expression: SQLExpression) throws -> SQLExpression { return expression }
+	func visit(table: SQLTable) throws -> SQLTable { return table }
+	func visit(statement: SQLStatement) throws -> SQLStatement { return statement }
+	func visit(schema: SQLSchema) throws -> SQLSchema { return schema }
+	func visit(join: SQLJoin) throws -> SQLJoin { return join }
+}
+
+extension SQLColumn {
+	func visit(_ visitor: SQLVisitor) throws -> SQLColumn {
+		return try visitor.visit(column: self)
+	}
+}
+
+extension SQLBinary {
+	func visit(_ visitor: SQLVisitor) throws -> SQLBinary {
+		return try visitor.visit(binary: self)
+	}
+}
+
+extension SQLUnary {
+	func visit(_ visitor: SQLVisitor) throws -> SQLUnary {
+		return try visitor.visit(unary: self)
+	}
+}
+
+extension SQLTable {
+	func visit(_ visitor: SQLVisitor) throws -> SQLTable {
+		return try visitor.visit(table: self)
+	}
+}
+
+extension SQLJoin {
+	func visit(_ visitor: SQLVisitor) throws -> SQLJoin {
+		let newSelf: SQLJoin
+		switch self {
+		case .left(table: let t, on: let ex):
+			newSelf = .left(table: try t.visit(visitor), on: try ex.visit(visitor))
+		}
+
+		return try visitor.visit(join: newSelf)
+	}
+}
+
+extension SQLSchema {
+	func visit(_ visitor: SQLVisitor) throws -> SQLSchema {
+		var cols = OrderedDictionary<SQLColumn, SQLType>()
+		try self.columns.forEach { col, type in
+			cols[try col.visit(visitor)] = type
+		}
+
+		let newSelf = SQLSchema(columns: cols, primaryKey: try self.primaryKey?.visit(visitor))
+		return try visitor.visit(schema: newSelf)
+	}
+}
+
+extension SQLStatement {
+	func visit(_ visitor: SQLVisitor) throws -> SQLStatement {
+		let newSelf: SQLStatement
+
+		switch self {
+		case .create(table: let t, schema: let s):
+			newSelf = .create(table: try t.visit(visitor), schema: try s.visit(visitor))
+
+		case .delete(from: let table, where: let expr):
+			newSelf = .delete(from: try table.visit(visitor), where: try expr?.visit(visitor))
+
+		case .drop(table: let t):
+			newSelf = .drop(table: try t.visit(visitor))
+
+		case .insert(var ins):
+			ins.columns = try ins.columns.map { try $0.visit(visitor) }
+			ins.values = try ins.values.map { tuple in
+				return try tuple.map { expr in
+					return try expr.visit(visitor)
+				}
+			}
+			newSelf = .insert(ins)
+
+		case .select(var s):
+			s.from = try s.from?.visit(visitor)
+			s.joins = try s.joins.map { try $0.visit(visitor) }
+			s.these = try s.these.map { try $0.visit(visitor) }
+			s.where = try s.where?.visit(visitor)
+			newSelf = .select(s)
+
+		case .update:
+			newSelf = .update
+		}
+
+		return try visitor.visit(statement: newSelf)
+	}
+}
+
+extension SQLExpression {
+	func visit(_ visitor: SQLVisitor) throws -> SQLExpression {
+		let newSelf: SQLExpression
+
+		switch self {
+		case .allColumns, .null, .literalInteger(_), .literalString(_), .literalBlob(_), .variable(_):
+			// Literals are not currently visited separately
+			newSelf = self
+			break
+
+		case .binary(let a, let b, let c):
+			newSelf = .binary(try a.visit(visitor), try b.visit(visitor), try c.visit(visitor))
+
+		case .column(let c):
+			newSelf = .column(try c.visit(visitor))
+
+		case .unary(let unary, let ex):
+			newSelf = .unary(try unary.visit(visitor), try ex.visit(visitor))
+		}
+
+		return try visitor.visit(expression: newSelf)
+	}
+}
