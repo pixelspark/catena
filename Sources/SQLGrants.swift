@@ -7,6 +7,7 @@ struct SQLPrivilege: CustomDebugStringConvertible {
 		case delete = "delete"
 		case drop = "drop"
 		case insert = "insert"
+		case update = "update"
 		case never = "never" // privilege that is never granted (operations that are never allowed)
 	}
 
@@ -26,7 +27,7 @@ extension SQLStatement {
 		case .delete(from: let t, where: _): return [SQLPrivilege(kind: .delete, table: t)]
 		case .drop(table: let t): return [SQLPrivilege(kind: .drop, table: t)]
 		case .select(_): return []
-		case .update: return [SQLPrivilege(kind: .never, table: nil)]
+		case .update(let update): return [SQLPrivilege(kind: .update, table: update.table)]
 		case .insert(let ins): return [SQLPrivilege(kind: .insert, table: ins.into)]
 		}
 	}

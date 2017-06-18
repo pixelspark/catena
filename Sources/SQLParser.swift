@@ -91,13 +91,23 @@ struct SQLInsert {
 	var values: [[SQLExpression]] = []
 }
 
+struct SQLUpdate {
+	var table: SQLTable
+	var set: [SQLColumn: SQLExpression] = [:]
+	var `where`: SQLExpression? = nil
+
+	init(table: SQLTable) {
+		self.table = table
+	}
+}
+
 enum SQLStatement {
 	case create(table: SQLTable, schema: SQLSchema)
 	case delete(from: SQLTable, where: SQLExpression?)
 	case drop(table: SQLTable)
 	case insert(SQLInsert)
 	case select(SQLSelect)
-	case update
+	case update(SQLUpdate)
 
 	enum SQLStatementError: LocalizedError {
 		case syntaxError(query: String)
@@ -168,8 +178,24 @@ enum SQLStatement {
 			let orReplaceSQL = insert.orReplace ? " OR REPLACE" : ""
 			return "INSERT\(orReplaceSQL) INTO \(insert.into.sql(dialect: dialect)) (\(colSQL)) VALUES \(tupleSQL);"
 
-		case .update:
-			return "UPDATE;"
+		case .update(let update):
+			if update.set.isEmpty {
+				return "UPDATE;";
+			}
+			var updateSQL: [String] = [];
+			for (col, expr) in update.set {
+				updateSQL.append("\(col.sql(dialect: dialect)) = \(expr.sql(dialect: dialect))")
+			}
+
+			let whereSQL: String
+			if let w = update.where {
+				whereSQL = " WHERE \(w.sql(dialect: dialect))"
+			}
+			else {
+				whereSQL = ""
+			}
+
+			return "UPDATE \(update.table.sql(dialect: dialect)) SET \(updateSQL.joined(separator: ", "))\(whereSQL);"
 
 		case .select(let select):
 			let selectList = select.these.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
@@ -595,7 +621,34 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			})
 		)
 
-		add_named_rule("update-dml-statement", rule: Parser.matchLiteralInsensitive("UPDATE"))
+		add_named_rule("update-dml-statement", rule: Parser.matchLiteralInsensitive("UPDATE")
+			~~ (^"id-table" => {
+				let update = SQLUpdate(table: SQLTable(name: self.text))
+				self.stack.append(.statement(.update(update)))
+			})
+			~~ Parser.matchLiteralInsensitive("SET")
+			~~ Parser.matchList(^"lit-column"
+				~~ Parser.matchLiteral("=")
+				~~ ^"ex" => {
+					guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
+					guard case .columnIdentifier(let col) = self.stack.popLast()! else { fatalError() }
+					guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+					guard case .update(var update) = st else { fatalError() }
+					if update.set[col] != nil {
+						// Same column named twice, that is not allowed
+						self.error = true
+					}
+					update.set[col] = expression
+					self.stack.append(.statement(.update(update)))
+				}, separator: Parser.matchLiteral(","))
+			~~ (Parser.matchLiteralInsensitive("WHERE") ~~ (^"ex" => {
+				guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
+				guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+				guard case .update(var update) = st else { fatalError() }
+				update.where = expression
+				self.stack.append(.statement(.update(update)))
+			}))/~)
+
 		add_named_rule("delete-dml-statement", rule: Parser.matchLiteralInsensitive("DELETE FROM")
 			~~ (^"id-table" => {
 				self.stack.append(.statement(.delete(from: SQLTable(name: self.text), where: nil)))
@@ -832,8 +885,16 @@ extension SQLStatement {
 			s.where = try s.where?.visit(visitor)
 			newSelf = .select(s)
 
-		case .update:
-			newSelf = .update
+		case .update(var u):
+			u.table = try u.table.visit(visitor)
+			u.where = try u.where?.visit(visitor)
+
+			var newSet: [SQLColumn: SQLExpression] = [:]
+			try u.set.forEach { (col, expr) in
+				newSet[try col.visit(visitor)] = try expr.visit(visitor)
+			}
+			u.set = newSet
+			newSelf = .update(u)
 		}
 
 		return try visitor.visit(statement: newSelf)

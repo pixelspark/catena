@@ -25,13 +25,15 @@ kinds of privileges are recognized:
 * "delete" (DELETE FROM)
 * "drop" (DROP TABLE)
 * "insert" (INSERT INTO)
+* "update" (UPDATE)
 
 Privileges are checked against a grants table. The grants table has three columns:
 * "user": the public key of the user that is allowed the privilege
 * "kind": the privilege kind (one of the above strings)
 * "table": the table to which the privilege applies. NULL if the privilege applies to all tables.
 
-Note: associated privileges are *not* automatically removed when references tables are dropped.
+Note: associated privileges are *not* automatically removed when referenced tables are dropped, nor are grants automatically
+created when a table is created.
 
 The "table" parameter for a grant can be "grants", in which case the user can perform the indicated operation on the grants
 table (use wisely). Regardless of the grants table, other special tables (such as _info_ and _blocks_ are never writable).
