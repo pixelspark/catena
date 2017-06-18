@@ -82,7 +82,7 @@ requests (e.g. if a client never allows more than 10 simultaneous outgoing reque
 The peer that initiated the connection uses even counters (starting at 0 and incrementing with 2 each time) whereas the
 peer that accepted the connection uses uneven counters (starting at 1 and also incrementing with 2).
 
-A message also contains a payload,  which is a dictionary with (at least) the key 'q' in it,  associated with the request type.
+A message also contains a payload,  which is a dictionary with (at least) the key 't' in it,  associated with the request type.
 
 ````
 [counter, {"t": "action", ...}]
