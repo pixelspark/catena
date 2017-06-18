@@ -66,6 +66,7 @@ class SQLGrants {
 				let select = SQLStatement.select(SQLSelect(
 					these: [SQLExpression.literalInteger(1)],
 					from: self.table,
+					joins: [],
 					where: SQLExpression.binary(
 						SQLExpression.binary(
 							SQLExpression.binary(SQLExpression.column(SQLColumn(name: "user")), .equals, .literalBlob(user.data)),

@@ -198,6 +198,7 @@ class SQLKeyValueTable {
 		let selectStatement = SQLStatement.select(SQLSelect(
 			these: [.column(self.valueColumn)],
 			from: self.table,
+			joins: [],
 			where: SQLExpression.binary(.column(self.keyColumn), .equals, .literalString(key)),
 			distinct: false
 		))
@@ -269,6 +270,7 @@ struct SQLBlockArchive {
 		let stmt = SQLStatement.select(SQLSelect(
 			these: ["signature", "index", "nonce", "previous", "payload"].map { return SQLExpression.column(SQLColumn(name: $0)) },
 			from: self.table,
+			joins: [],
 			where: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)),
 			distinct: false
 		))

@@ -65,9 +65,21 @@ struct SQLSchema {
 	}
 }
 
+enum SQLJoin {
+	case left(table: SQLTable, on: SQLExpression)
+
+	func sql(dialect: SQLDialect) -> String {
+		switch self {
+		case .left(table: let t, on: let on):
+			return "LEFT JOIN \(t.sql(dialect: dialect)) ON \(on.sql(dialect: dialect))"
+		}
+	}
+}
+
 struct SQLSelect {
 	var these: [SQLExpression] = []
 	var from: SQLTable? = nil
+	var joins: [SQLJoin] = []
 	var `where`: SQLExpression? = nil
 	var distinct: Bool = false
 }
@@ -164,6 +176,10 @@ enum SQLStatement {
 			let distinctSQL = select.distinct ? " DISTINCT" : ""
 
 			if let t = select.from {
+				// Joins
+				let joinSQL = select.joins.map { " " + $0.sql(dialect: dialect) }.joined(separator: " ")
+
+				// Where conditions
 				let whereSQL: String
 				if let w = select.where {
 					whereSQL = " WHERE \(w.sql(dialect: dialect))"
@@ -172,7 +188,7 @@ enum SQLStatement {
 					whereSQL = ""
 				}
 
-				return "SELECT\(distinctSQL) \(selectList) FROM \(t.sql(dialect: dialect))\(whereSQL);"
+				return "SELECT\(distinctSQL) \(selectList) FROM \(t.sql(dialect: dialect))\(joinSQL)\(whereSQL);"
 			}
 			else {
 				return "SELECT\(distinctSQL) \(selectList);"
@@ -268,6 +284,7 @@ enum SQLFragment {
 	case type(SQLType)
 	case columnDefinition(column: SQLColumn, type: SQLType, primary: Bool)
 	case binaryOperator(SQLBinary)
+	case join(SQLJoin)
 }
 
 internal class SQLParser: Parser, CustomDebugStringConvertible {
@@ -449,6 +466,27 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 						select.from = SQLTable(name: self.text)
 						self.stack.append(.statement(.select(select)))
 					}
+					~~ ((Parser.matchLiteralInsensitive("LEFT JOIN") => {
+							self.stack.append(.join(.left(table: SQLTable(name: ""), on: SQLExpression.null)))
+						}
+						~~ ^"id-table" => {
+							guard case .join(let join) = self.stack.popLast()! else { fatalError() }
+							guard case .left(table: _, on: _) = join else { fatalError() }
+							self.stack.append(.join(.left(table: SQLTable(name: self.text), on: SQLExpression.null)))
+						}
+						~~ Parser.matchLiteralInsensitive("ON")
+						~~ ^"ex" => {
+							guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
+							guard case .join(let join) = self.stack.popLast()! else { fatalError() }
+							guard case .left(table: let table, on: _) = join else { fatalError() }
+							self.stack.append(.join(.left(table: table, on: expression)))
+						}) => {
+							guard case .join(let join) = self.stack.popLast()! else { fatalError() }
+							guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+							guard case .select(var select) = st else { fatalError() }
+							select.joins.append(join)
+							self.stack.append(.statement(.select(select)))
+						})*
 					~~ (Parser.matchLiteralInsensitive("WHERE") ~~ ^"ex" => {
 						guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
 						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
