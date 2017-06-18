@@ -416,16 +416,12 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			switch self.text {
 			case "+": self.stack.append(.binaryOperator(.add))
 			case "-": self.stack.append(.binaryOperator(.subtract))
-			case "*": self.stack.append(.binaryOperator(.multiply))
-			case "/": self.stack.append(.binaryOperator(.divide))
 			default: fatalError()
 			}
 		})
 
 		add_named_rule("ex-math-multiplication-operator", rule: Parser.matchAnyFrom(["*", "/"].map { Parser.matchLiteral($0) }) => {
 			switch self.text {
-			case "+": self.stack.append(.binaryOperator(.add))
-			case "-": self.stack.append(.binaryOperator(.subtract))
 			case "*": self.stack.append(.binaryOperator(.multiply))
 			case "/": self.stack.append(.binaryOperator(.divide))
 			default: fatalError()
