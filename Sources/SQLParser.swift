@@ -199,10 +199,16 @@ enum SQLStatement {
 
 enum SQLUnary {
 	case isNull
+	case negate
+	case not
+	case abs
 
 	func sql(expression: String, dialect: SQLDialect) -> String {
 		switch self {
 		case .isNull: return "(\(expression)) IS NULL"
+		case .not: return "NOT(\(expression))"
+		case .abs: return "ABS(\(expression))"
+		case .negate: return "-(\(expression))"
 		}
 	}
 }
@@ -216,6 +222,10 @@ enum SQLBinary {
 	case greaterThanOrEqual
 	case and
 	case or
+	case add
+	case subtract
+	case multiply
+	case divide
 
 	func sql(dialect: SQLDialect) -> String {
 		switch self {
@@ -227,6 +237,10 @@ enum SQLBinary {
 		case .greaterThanOrEqual: return ">="
 		case .and: return "AND"
 		case .or: return "OR"
+		case .add: return "+"
+		case .subtract: return "-"
+		case .divide: return "/"
+		case .multiply: return "*"
 		}
 	}
 }
@@ -284,6 +298,7 @@ enum SQLFragment {
 	case type(SQLType)
 	case columnDefinition(column: SQLColumn, type: SQLType, primary: Bool)
 	case binaryOperator(SQLBinary)
+	case unaryOperator(SQLUnary)
 	case join(SQLJoin)
 }
 
@@ -382,7 +397,69 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			}
 		})
 
-		add_named_rule("ex-equality", rule: ^"ex-value" ~~ ((^"ex-equality-operator" ~~ ^"ex-value") => {
+		add_named_rule("ex-prefix-operator", rule: Parser.matchAnyFrom(["-"].map { Parser.matchLiteral($0) }) => {
+			switch self.text {
+			case "-": self.stack.append(.unaryOperator(.negate))
+			default: fatalError()
+			}
+		})
+
+		add_named_rule("ex-prefix-call", rule: Parser.matchAnyFrom(["NOT", "ABS"].map { Parser.matchLiteral($0) }) => {
+			switch self.text {
+			case "NOT": self.stack.append(.unaryOperator(.not))
+			case "ABS": self.stack.append(.unaryOperator(.abs))
+			default: fatalError()
+			}
+		})
+
+		add_named_rule("ex-math-addition-operator", rule: Parser.matchAnyFrom(["+", "-"].map { Parser.matchLiteral($0) }) => {
+			switch self.text {
+			case "+": self.stack.append(.binaryOperator(.add))
+			case "-": self.stack.append(.binaryOperator(.subtract))
+			case "*": self.stack.append(.binaryOperator(.multiply))
+			case "/": self.stack.append(.binaryOperator(.divide))
+			default: fatalError()
+			}
+		})
+
+		add_named_rule("ex-math-multiplication-operator", rule: Parser.matchAnyFrom(["*", "/"].map { Parser.matchLiteral($0) }) => {
+			switch self.text {
+			case "+": self.stack.append(.binaryOperator(.add))
+			case "-": self.stack.append(.binaryOperator(.subtract))
+			case "*": self.stack.append(.binaryOperator(.multiply))
+			case "/": self.stack.append(.binaryOperator(.divide))
+			default: fatalError()
+			}
+		})
+
+		add_named_rule("ex-unary-prefix", rule: (
+			((^"ex-prefix-operator" ~~ ^"ex-value") => {
+				guard case .expression(let expr) = self.stack.popLast()! else { fatalError() }
+				guard case .unaryOperator(let op) = self.stack.popLast()! else { fatalError() }
+				self.stack.append(.expression(.unary(op, expr)))
+			})
+			| ((^"ex-prefix-call" ~~ ^"ex-sub") => {
+				guard case .expression(let expr) = self.stack.popLast()! else { fatalError() }
+				guard case .unaryOperator(let op) = self.stack.popLast()! else { fatalError() }
+				self.stack.append(.expression(.unary(op, expr)))
+			})
+			| ^"ex-value"))
+
+		add_named_rule("ex-math-multiplication", rule: ^"ex-unary-prefix" ~~ ((^"ex-math-multiplication-operator" ~~ ^"ex-unary-prefix") => {
+			guard case .expression(let right) = self.stack.popLast()! else { fatalError() }
+			guard case .binaryOperator(let op) = self.stack.popLast()! else { fatalError() }
+			guard case .expression(let left) = self.stack.popLast()! else { fatalError() }
+			self.stack.append(.expression(.binary(left, op, right)))
+		})*)
+
+		add_named_rule("ex-math-addition", rule: ^"ex-math-multiplication" ~~ ((^"ex-math-addition-operator" ~~ ^"ex-math-multiplication") => {
+			guard case .expression(let right) = self.stack.popLast()! else { fatalError() }
+			guard case .binaryOperator(let op) = self.stack.popLast()! else { fatalError() }
+			guard case .expression(let left) = self.stack.popLast()! else { fatalError() }
+			self.stack.append(.expression(.binary(left, op, right)))
+			})*)
+
+		add_named_rule("ex-equality", rule: ^"ex-math-addition" ~~ ((^"ex-equality-operator" ~~ ^"ex-math-addition") => {
 			guard case .expression(let right) = self.stack.popLast()! else { fatalError() }
 			guard case .binaryOperator(let op) = self.stack.popLast()! else { fatalError() }
 			guard case .expression(let left) = self.stack.popLast()! else { fatalError() }
