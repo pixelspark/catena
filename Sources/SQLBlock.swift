@@ -177,7 +177,7 @@ struct SQLBackendVisitor: SQLVisitor {
 		case .variable(let v):
 			// Replace variables with corresponding literals
 			switch v {
-			case "invoker": return SQLExpression.literalBlob(context.invoker.data)
+			case "invoker": return SQLExpression.literalBlob(context.invoker.data.sha256)
 			default: throw SQLPayload.SQLPayloadError.invalidVariableError
 			}
 

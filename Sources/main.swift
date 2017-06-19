@@ -95,10 +95,10 @@ if initializeOption.value {
 		into: SQLTable(name: SQLMetadata.grantsTableName),
 		columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
 		values: [
-			[.literalBlob(identity.publicKey.data), .literalString(SQLPrivilege.Kind.create.rawValue), .null],
-			[.literalBlob(identity.publicKey.data), .literalString(SQLPrivilege.Kind.drop.rawValue), .null],
-			[.literalBlob(identity.publicKey.data), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString(SQLMetadata.grantsTableName)],
-			[.literalBlob(identity.publicKey.data), .literalString(SQLPrivilege.Kind.delete.rawValue), .literalString(SQLMetadata.grantsTableName)]
+			[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.create.rawValue), .null],
+			[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.drop.rawValue), .null],
+			[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString(SQLMetadata.grantsTableName)],
+			[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.delete.rawValue), .literalString(SQLMetadata.grantsTableName)]
 		]
 	))
 	let grantTransaction = try SQLTransaction(statement: grant, invoker: identity.publicKey)

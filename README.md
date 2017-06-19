@@ -124,7 +124,7 @@ SQL has the following limitations:
 * Supported mathematical operators are "+", "-", "/" and "*"
 * Other supported operators are the prefix "-" for negation, "NOT", and "x IS NULL" / "x IS NOT NULL"
 * Currently only the types 'TEXT' , 'INT' and 'BLOB' are supported.
-* The special `$invoker` variable can be used to refer to the current public key of the transaction invoker
+* The special `$invoker` variable can be used to refer to the SHA256-hash of the current public key of the transaction invoker
 
 In the future, the Catena parser will be expanded to support more types of statements. Only deterministic queries will
 be supported (e.g. no functions that return current date/time or random values).

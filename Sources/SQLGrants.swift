@@ -70,7 +70,7 @@ class SQLGrants {
 					joins: [],
 					where: SQLExpression.binary(
 						SQLExpression.binary(
-							SQLExpression.binary(SQLExpression.column(SQLColumn(name: "user")), .equals, .literalBlob(user.data)),
+							SQLExpression.binary(SQLExpression.column(SQLColumn(name: "user")), .equals, .literalBlob(user.data.sha256)),
 							SQLBinary.and,
 							SQLExpression.binary(SQLExpression.column(SQLColumn(name: "kind")), .equals, .literalString(p.kind.rawValue))
 						),
