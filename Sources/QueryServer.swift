@@ -77,7 +77,7 @@ class NodeQueryServer: QueryServer {
 				// This needs to go to the ledger
 				let transaction = try SQLTransaction(statement: statement, invoker: identity.publicKey)
 				try transaction.sign(with: identity.privateKey)
-				self.node.submit(transaction: transaction)
+				try self.node.submit(transaction: transaction)
 				try connection.send(error: "OK \(transaction.signature!.base58encoded) \(transaction.statement.sql(dialect: SQLStandardDialect()))", severity: .info)
 			}
 			else {

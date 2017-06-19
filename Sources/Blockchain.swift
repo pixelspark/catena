@@ -137,7 +137,7 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 
 	init()
 	init(index: UInt, previous: Hash, payload: Data) throws
-	mutating func append(transaction: TransactionType)
+	mutating func append(transaction: TransactionType) throws
 	func isPayloadValid() -> Bool
 }
 

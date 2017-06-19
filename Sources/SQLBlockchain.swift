@@ -372,6 +372,7 @@ enum SQLBlockError: LocalizedError {
 	case inconsecutiveBlockError
 	case blockSignatureError
 	case payloadSignatureError
+	case tooManyTransactionsInBlockError
 
 	var errorDescription: String? {
 		switch self {
@@ -379,6 +380,7 @@ enum SQLBlockError: LocalizedError {
 		case .inconsecutiveBlockError: return "inconsecutive block error"
 		case .blockSignatureError: return "block signature error"
 		case .payloadSignatureError: return "payload signature error"
+		case .tooManyTransactionsInBlockError: return "too many transactions in a block"
 		}
 	}
 }

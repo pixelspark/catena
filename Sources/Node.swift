@@ -50,10 +50,10 @@ class Node<BlockchainType: Blockchain> {
 	}
 
 	/** Append a transaction to the memory pool (maintained by the miner). */
-	func submit(transaction: BlockType.TransactionType) {
-		self.miner.append { (b : BlockType?) -> BlockType in
+	func submit(transaction: BlockType.TransactionType) throws {
+		try self.miner.append { (b : BlockType?) -> BlockType in
 			var block = b ?? BlockType()
-			block.append(transaction: transaction)
+			try block.append(transaction: transaction)
 			return block
 		}
 	}

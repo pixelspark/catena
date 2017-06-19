@@ -55,6 +55,12 @@ struct SQLPayload {
 struct SQLBlock: Block, CustomDebugStringConvertible {
 	typealias TransactionType = SQLTransaction
 
+	/// The maximum number of transactions a block is allowed to contain
+	let maximumNumberOfTransactionsPerBlock = 100
+
+	/// Maximum size of the payload data in a block (the 'data for signing' is used as reference)
+	let maximumPayloadSizeBytes = 1024 * 1024 // 1 MiB
+
 	var index: UInt
 	var previous: Hash
 	var payload: SQLPayload
@@ -103,14 +109,32 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 	}
 
 	func isPayloadValid() -> Bool {
+		// Payload must not contain too much transactions
+		if self.payload.transactions.count > self.maximumNumberOfTransactionsPerBlock {
+			return false
+		}
+
+		// Payload data must not be too large
+		if self.payloadDataForSigning.count > self.maximumPayloadSizeBytes {
+			return false
+		}
+
+		// For a genesis block, the payload must not contain any transactions
 		if isAGenesisBlock {
 			return self.payload.transactions.isEmpty 
 		}
+
+		// The signature of the payload must be valid
 		return self.payload.isSignatureValid
 	}
 
-	mutating func append(transaction: SQLTransaction) {
+	mutating func append(transaction: SQLTransaction) throws {
 		assert(self.seed == nil, "cannot append transactions to a genesis block")
+
+		if (self.payload.transactions.count+1) > self.maximumNumberOfTransactionsPerBlock {
+			throw SQLBlockError.tooManyTransactionsInBlockError
+		}
+
 		self.payload.transactions.append(transaction)
 	}
 

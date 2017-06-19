@@ -17,9 +17,9 @@ class Miner<BlockchainType: Blockchain> {
 		self.counter = UInt(abs(random(Int.self)))
 	}
 
-	func append(callback: ((BlockType?) -> BlockType)) {
-		self.mutex.locked {
-			self.block = callback(self.block)
+	func append(callback: ((BlockType?) throws -> BlockType)) rethrows {
+		try self.mutex.locked {
+			self.block = try callback(self.block)
 		}
 		self.start()
 	}

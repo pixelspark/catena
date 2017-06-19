@@ -103,8 +103,8 @@ if initializeOption.value {
 	))
 	let grantTransaction = try SQLTransaction(statement: grant, invoker: identity.publicKey)
 
-	node.submit(transaction: try createTransaction.sign(with: identity.privateKey))
-	node.submit(transaction: try grantTransaction.sign(with: identity.privateKey))
+	try! node.submit(transaction: try createTransaction.sign(with: identity.privateKey))
+	try! node.submit(transaction: try grantTransaction.sign(with: identity.privateKey))
 }
 
 // Start submitting test blocks if that's what the user requested
@@ -114,7 +114,7 @@ if testOption.value {
 	node.start(blocking: false)
 	let q = try! SQLStatement("CREATE TABLE test (origin TEXT, x TEXT);");
 	Log.info("Submit \(q)")
-	node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey))
+	try node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey))
 
 	Log.info("Start submitting demo blocks")
 	do {
@@ -123,7 +123,7 @@ if testOption.value {
 			i += 1
 			let q = try! SQLStatement("INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));")
 			Log.info("Submit \(q)")
-			node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey).sign(with: identity.privateKey))
+			try node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey).sign(with: identity.privateKey))
 			sleep(10)
 		}
 	}
