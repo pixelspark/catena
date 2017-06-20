@@ -56,7 +56,7 @@ genesisBlock.mine(difficulty: 10)
 Log.info("Genesis block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
 
 if initializeOption.value {
-	_ = unlink(databaseFile.cString(using: .utf8))
+	_ = unlink(databaseFile.cString(using: .utf8)!)
 }
 
 var ledger = try! SQLLedger(genesis: genesisBlock, database: databaseFile)

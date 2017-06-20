@@ -3,6 +3,7 @@ import Kitura
 import KituraRequest
 import LoggerAPI
 import KituraWebSocket
+import Dispatch
 
 #if !os(Linux)
 import Starscream
@@ -432,12 +433,13 @@ public class PeerIncomingConnection: PeerConnection {
 	}
 }
 
-#if !os(Linux)
 public protocol PeerConnectionDelegate: class {
-	func peer(connected: PeerOutgoingConnection)
-	func peer(disconnected: PeerOutgoingConnection)
 	func peer(connection: PeerConnection, requests: Gossip, counter: Int)
+	func peer(connected: PeerConnection)
+	func peer(disconnected: PeerConnection)
 }
+
+#if !os(Linux)
 
 public class PeerOutgoingConnection: PeerConnection, WebSocketDelegate {
 	let connection: Starscream.WebSocket
@@ -489,7 +491,7 @@ public class PeerOutgoingConnection: PeerConnection, WebSocketDelegate {
 }
 #endif
 
-class Peer<BlockchainType: Blockchain> {
+class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 	typealias BlockType = BlockchainType.BlockType
 	let url: URL
 	fileprivate(set) var state: PeerState
@@ -629,11 +631,8 @@ class Peer<BlockchainType: Blockchain> {
 			Log.error("[Peer] handle Gossip request failed: \(error.localizedDescription)")
 		}
 	}
-}
 
-#if !os(Linux)
-extension Peer: PeerConnectionDelegate {
-	public func peer(connected _: PeerOutgoingConnection) {
+	public func peer(connected _: PeerConnection) {
 		self.mutex.locked {
 			if case .connecting(let c) = self.state {
 				Log.info("[Peer] \(url) connected outgoing")
@@ -645,14 +644,13 @@ extension Peer: PeerConnectionDelegate {
 		}
 	}
 
-	public func peer(disconnected _: PeerOutgoingConnection) {
+	public func peer(disconnected _: PeerConnection) {
 		self.mutex.locked {
 			Log.info("[Peer] \(url) disconnected outgoing")
 			self.state = .new
 		}
 	}
 }
-#endif
 
 public enum PeerState {
 	case new // Peer has not yet connected
