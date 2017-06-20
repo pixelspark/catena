@@ -3,7 +3,10 @@ import Kitura
 import KituraRequest
 import LoggerAPI
 import KituraWebSocket
+
+#if !os(Linux)
 import Starscream
+#endif
 
 internal extension Block {
 	var json: [String: Any] {
@@ -429,6 +432,7 @@ public class PeerIncomingConnection: PeerConnection {
 	}
 }
 
+#if !os(Linux)
 public protocol PeerConnectionDelegate: class {
 	func peer(connected: PeerOutgoingConnection)
 	func peer(disconnected: PeerOutgoingConnection)
@@ -483,11 +487,12 @@ public class PeerOutgoingConnection: PeerConnection, WebSocketDelegate {
 		self.websocketDidReceiveData(socket: socket, data: text.data(using: .utf8)!)
 	}
 }
+#endif
 
-class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
+class Peer<BlockchainType: Blockchain> {
 	typealias BlockType = BlockchainType.BlockType
 	let url: URL
-	private(set) var state: PeerState
+	fileprivate(set) var state: PeerState
 	weak var node: Node<BlockchainType>?
 	public let mutex = Mutex()
 
@@ -508,6 +513,7 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 				if let n = node {
 					switch self.state {
 					case .new, .failed(_):
+						#if !os(Linux)
 						let ws = Starscream.WebSocket(url: url)
 						ws.headers["X-UUID"] = n.uuid.uuidString
 						ws.headers["X-Port"] = String(n.server.port)
@@ -517,6 +523,7 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 						Log.info("[Peer] connect outgoing \(url)")
 						ws.connect()
 						self.state = .connecting(pic)
+						#endif
 
 					case .connected(_), .queried(_):
 						try self.query()
@@ -622,7 +629,10 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 			Log.error("[Peer] handle Gossip request failed: \(error.localizedDescription)")
 		}
 	}
+}
 
+#if !os(Linux)
+extension Peer: PeerConnectionDelegate {
 	public func peer(connected _: PeerOutgoingConnection) {
 		self.mutex.locked {
 			if case .connecting(let c) = self.state {
@@ -642,6 +652,7 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 		}
 	}
 }
+#endif
 
 public enum PeerState {
 	case new // Peer has not yet connected
