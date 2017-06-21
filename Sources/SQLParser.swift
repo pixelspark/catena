@@ -335,8 +335,8 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 	private var error = false
 
 	private func pushLiteralString() {
-		// TODO: escaping
-		self.stack.append(.expression(.literalString(self.text)))
+		let unescaped = self.text.replacingOccurrences(of: "''", with: "'")
+		self.stack.append(.expression(.literalString(unescaped)))
 	}
 
 	private func pushLiteralBlob() {
@@ -387,7 +387,9 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 
 		add_named_rule("lit-blob", rule: Parser.matchLiteral("X'") ~ Parser.matchAnyCharacterExcept([Character("'")])* => pushLiteralBlob ~ Parser.matchLiteral("'"))
 
-		add_named_rule("lit-string", rule: Parser.matchLiteral("'") ~ Parser.matchAnyCharacterExcept([Character("'")])* => pushLiteralString ~ Parser.matchLiteral("'"))
+		add_named_rule("lit-string", rule: Parser.matchLiteral("'")
+			~ (Parser.matchAnyCharacterExcept([Character("'")]) | Parser.matchLiteral("''"))* => pushLiteralString
+			~ Parser.matchLiteral("'"))
 		add_named_rule("lit", rule:
 			^"lit-int"
 			| ^"lit-all-columns"
