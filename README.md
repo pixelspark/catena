@@ -120,7 +120,7 @@ SQL has the following limitations:
 * Values can be a string (between 'single quotes'), an integer, blobs (X'hex' syntax) or NULL.
 * An expression can be a value, '*' a column name, or a supported operation
 * Supported comparison operators are "=", "<>", "<", ">", ">=", "<="
-* Supported mathematical operators are "+", "-", "/" and "*"
+* Supported mathematical operators are "+", "-", "/" and "*". The concatenation operator "||" is also supported.
 * Other supported operators are the prefix "-" for negation, "NOT", and "x IS NULL" / "x IS NOT NULL"
 * Currently only the types 'TEXT' , 'INT' and 'BLOB' are supported.
 * The special `$invoker` variable can be used to refer to the SHA256-hash of the current public key of the transaction invoker

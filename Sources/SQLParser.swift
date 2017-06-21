@@ -252,6 +252,7 @@ enum SQLBinary {
 	case subtract
 	case multiply
 	case divide
+	case concatenate
 
 	func sql(dialect: SQLDialect) -> String {
 		switch self {
@@ -267,6 +268,7 @@ enum SQLBinary {
 		case .subtract: return "-"
 		case .divide: return "/"
 		case .multiply: return "*"
+		case .concatenate: return "||"
 		}
 	}
 }
@@ -438,10 +440,11 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			}
 		})
 
-		add_named_rule("ex-math-addition-operator", rule: Parser.matchAnyFrom(["+", "-"].map { Parser.matchLiteral($0) }) => {
+		add_named_rule("ex-math-addition-operator", rule: Parser.matchAnyFrom(["+", "-", "||"].map { Parser.matchLiteral($0) }) => {
 			switch self.text {
 			case "+": self.stack.append(.binaryOperator(.add))
 			case "-": self.stack.append(.binaryOperator(.subtract))
+			case "||": self.stack.append(.binaryOperator(.concatenate))
 			default: fatalError()
 			}
 		})
