@@ -58,11 +58,6 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 
 		// Not part of the API used between nodes
 		router.get("/", handler: self.handleIndex)
-		router.get("/api/block/:hash", handler: self.handleGetBlock)
-		router.get("/api/orphans", handler: self.handleGetOrphans)
-		router.get("/api/head", handler: self.handleGetLast)
-		router.get("/api/journal", handler: self.handleGetJournal)
-
 		Kitura.addHTTPServer(onPort: port, with: router)
 	}
 
@@ -159,83 +154,6 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 					]
 				}
 			}
-		])
-		next()
-	}
-
-	private func handleGetBlock(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		if let hashString = request.parameters["hash"], let hash = Hash(string: hashString) {
-			if let ledger = self.node?.ledger {
-				let block = try ledger.mutex.locked {
-					return try ledger.longest.get(block: hash)
-				}
-
-				if let b = block {
-					assert(b.isSignatureValid, "returning invalid blocks, that can't be good")
-					assert(try! BlockType.read(json: b.json).isSignatureValid, "JSON goes wild")
-
-					response.send(json: b.json)
-
-					next()
-				}
-				else {
-					_ = response.send(status: .notFound)
-				}
-			}
-			else {
-				_ = response.send(status: .internalServerError)
-			}
-		}
-		else {
-			_ = response.send(status: .badRequest)
-		}
-	}
-
-	private func handleGetOrphans(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let hashes = Array(self.node!.ledger.orphansByHash.keys.map { $0.stringValue })
-		response.send(json: [
-			"status": "ok",
-			"orphans": hashes
-		])
-		next()
-	}
-
-	private func handleGetLast(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let chain = self.node!.ledger.longest
-		var b: BlockType? = chain.highest
-		var data: [[String: Any]] = []
-		for _ in 0..<10 {
-			if let block = b {
-				data.append([
-					"index": block.index,
-					"hash": block.signature!.stringValue
-				])
-				b = try chain.get(block: block.previous)
-			}
-			else {
-				break
-			}
-		}
-
-		response.send(json: [
-			"status": "ok",
-			"blocks": data
-		])
-		next()
-	}
-
-	private func handleGetJournal(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let chain = self.node!.ledger.longest
-		var b: BlockType? = chain.highest
-		var data: [String] = [];
-		while let block = b {
-			data.append(String(data: block.payloadData, encoding: .utf8)!)
-			b = try chain.get(block: block.previous)
-		}
-
-		response.send(json: [
-			"status": "ok",
-			"blocks": Array(data.reversed())
 		])
 		next()
 	}
