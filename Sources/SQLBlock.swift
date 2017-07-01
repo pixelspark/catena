@@ -197,8 +197,9 @@ extension SQLStatement {
 }
 
 extension SQLBlock {
-	/** This is where the magic happens! **/
-	func apply(database: Database, meta: SQLMetadata) throws {
+	/** This is where the magic happens! When replay is false, do not process actual transaction queries, only validate
+	transactions and perform metadata housekeeping. **/
+	func apply(database: Database, meta: SQLMetadata, replay: Bool) throws {
 		// Obtain current chain state
 		guard let headIndex = meta.headIndex else { throw SQLBlockError.metadataError }
 		guard let headHash = meta.headHash else { throw SQLBlockError.metadataError }
@@ -228,16 +229,17 @@ extension SQLBlock {
 					return true
 				}
 
-				// Does any of the privileges involve a 'special' table? If so, deny
+				/* Does any of the privileges involve a 'special' table? If so, deny. Note: this should never happen
+				anyway as these tables have a name starting with an underscore, which the parser does not accept */
 				let requiredPrivileges = transaction.statement.requiredPrivileges
-				let containsSpecial = requiredPrivileges.contains { p in
-					if let t = p.table, t.name == SQLMetadata.blocksTableName || t.name == SQLMetadata.infoTableName {
+				let containsSpecialInvisible = requiredPrivileges.contains { p in
+					if let t = p.table, SQLMetadata.specialInvisibleTables.contains(t.name) {
 						return true
 					}
 					return false
 				}
 
-				if containsSpecial {
+				if containsSpecialInvisible {
 					return false
 				}
 
@@ -251,8 +253,12 @@ extension SQLBlock {
 
 					try database.transaction(name: transactionSavepointName) {
 						let context = SQLContext(metadata: meta, invoker: transaction.invoker)
-						let query = try transaction.statement.backendStatement(context: context).sql(dialect: database.dialect)
-						_ = try database.perform(query)
+						let statement = transaction.statement
+						let query = try statement.backendStatement(context: context).sql(dialect: database.dialect)
+
+						if replay || transaction.shouldAlwaysBeReplayed {
+							_ = try database.perform(query)
+						}
 					}
 				}
 				catch {
@@ -271,8 +277,11 @@ extension SQLBlock {
 }
 
 class SQLLedger: Ledger<SQLBlockchain> {
-	init(genesis: SQLBlock, database path: String) throws {
-		let lb = try SQLBlockchain(genesis: genesis, database: path)
+	/** Instantiate an SQLLedger that tracks chains starting at the indicated genesis block and uses the indicated database
+	file for storage. When`replay` is true, the ledger will process database transactions, whereas if it is false, the
+	ledger will only validate transactions and participate in grant and other metadata processing. */
+	init(genesis: SQLBlock, database path: String, replay: Bool) throws {
+		let lb = try SQLBlockchain(genesis: genesis, database: path, replay: replay)
 		super.init(longest: lb)
 	}
 }

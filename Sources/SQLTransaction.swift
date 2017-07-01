@@ -42,6 +42,20 @@ class SQLTransaction: Transaction {
 		return self
 	}
 
+	/** Whether the statement in this transaction should be executed by clients that only participate in validation and
+	metadata replay. This includes queries that modify e.g. the grants table. */
+	var shouldAlwaysBeReplayed: Bool {
+		let privs = self.statement.requiredPrivileges
+		for p in privs {
+			if let t = p.table, SQLMetadata.specialVisibleTables.contains(t.name) {
+				// Query requires a privilege to a special visible table, this should be replayed
+				return true
+			}
+		}
+
+		return false
+	}
+
 	var isSignatureValid: Bool {
 		do {
 			if let s = self.signature {

@@ -62,11 +62,11 @@ class NodeQueryServer: QueryServer {
 			}
 			else {
 				guard let invokerKey = PublicKey(string: username) else {
-					throw QueryError(message: "no usename set or not a public key")
+					throw QueryError(message: "No username set or username is not a public key. Connect with username 'random' to have the server generate a new identity for you.")
 				}
 
 				guard let passwordKey = PrivateKey(string: password) else {
-					throw QueryError(message: "password is not a valid private key")
+					throw QueryError(message: "The given password is not a valid private key.")
 				}
 
 				identity = Identity(publicKey: invokerKey, privateKey: passwordKey)

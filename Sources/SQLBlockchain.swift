@@ -16,19 +16,35 @@ class SQLBlockchain: Blockchain {
 	private var queue: [SQLBlock] = []
 	private let mutex = Mutex()
 	let meta: SQLMetadata
+	let replay: Bool
 
 	let databasePath: String
 
-	init(genesis: SQLBlock, database path: String) throws {
+	/** Instantiate an SQL blockchain that starts at the indicated genesis block and is stored in the indicated database
+	file. When `replay` is true, the chain also processes database transactions. When it is false, only validation and
+	metadata operations are performed. */
+	init(genesis: SQLBlock, database path: String, replay: Bool) throws {
 		let permDatabase = SQLiteDatabase()
 		try permDatabase.open(path)
 
+		self.replay = replay
 		self.genesis = genesis
 		self.highest = genesis
 		self.databasePath = path
 		self.database = permDatabase
 		self.meta = try SQLMetadata(database: database)
 
+		// Is this database already initialized? If so, check whether it replays
+		if let databaseReplay = self.meta.isReplaying {
+			if databaseReplay != replay {
+				throw SQLMetadataError.replayMismatchError
+			}
+		}
+		else {
+			try self.meta.set(replaying: replay)
+		}
+
+		// Load chain from storage
 		if let hh = self.meta.headHash {
 			self.highest = try self.meta.get(block: hh)!
 			Log.info("Get highest: \(self.highest.signature!.stringValue)")
@@ -58,7 +74,7 @@ class SQLBlockchain: Blockchain {
 
 	func process(block: SQLBlock) throws {
 		try self.mutex.locked {
-			try block.apply(database: self.database, meta: self.meta)
+			try block.apply(database: self.database, meta: self.meta, replay: self.replay)
 		}
 	}
 
@@ -159,7 +175,7 @@ class SQLBlockchain: Blockchain {
 			return try self.database.hypothetical {
 				// Replay queued blocks
 				for block in self.queue {
-					try block.apply(database: self.database, meta: self.meta)
+					try block.apply(database: self.database, meta: self.meta, replay: self.replay)
 				}
 
 				return try block(self.database)
@@ -308,6 +324,12 @@ struct SQLMetadata {
 	static let infoTableName = "_info"
 	static let blocksTableName = "_blocks"
 
+	/** All tables maintained for metadata that are visible to chain queries. */
+	static let specialVisibleTables = [grantsTableName]
+
+	/** All tables that are maintained for metadata, but invisible to chain queries. */
+	static let specialInvisibleTables = [infoTableName, blocksTableName]
+
 	let info: SQLKeyValueTable
 	let grants: SQLGrants
 	let database: Database
@@ -315,6 +337,10 @@ struct SQLMetadata {
 
 	private let infoHeadHashKey = "head"
 	private let infoHeadIndexKey = "index"
+	private let infoReplayingKey = "replaying"
+
+	private let infoTrueValue = "true"
+	private let infoFalseValue = "false"
 
 	init(database: Database) throws {
 		self.database = database
@@ -354,6 +380,24 @@ struct SQLMetadata {
 		}
 	}
 
+	func set(replaying: Bool) throws {
+		try self.database.transaction(name: "metadata-set-replay-\(index)") {
+			try self.info.set(key: infoReplayingKey, value: replaying ? self.infoTrueValue : self.infoFalseValue)
+		}
+	}
+
+	var isReplaying: Bool? {
+		do {
+			if let r = try self.info.get(self.infoReplayingKey) {
+				return r == self.infoTrueValue
+			}
+			return nil
+		}
+		catch {
+			return nil
+		}
+	}
+
 	func archive(block: SQLBlock) throws {
 		try self.archive.archive(block: block)
 	}
@@ -364,6 +408,16 @@ struct SQLMetadata {
 
 	func get(block hash: Hash) throws -> SQLBlock? {
 		return try self.archive.get(block: hash)
+	}
+}
+
+enum SQLMetadataError: LocalizedError {
+	case replayMismatchError
+
+	var errorDescription: String? {
+		switch self {
+		case .replayMismatchError: return "the persisted database was created with a different replay setting."
+		}
 	}
 }
 
