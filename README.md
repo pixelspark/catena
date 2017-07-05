@@ -44,7 +44,17 @@ swift build
 
 The above was tested on Ubuntu 16.04 with Swift 3.1.
 
+### Building a Docker image
+
+````
+git clone https://github.com/pixelspark/catena ./catena
+cd ./catena
+docker build -t pixelspark/catena .
+````
+
 ## Running
+
+### Natively
 
 The following command starts Catena and initializes a new chain:
 
@@ -59,6 +69,18 @@ To start another peer locally, use the following:
 ````
 ./.build/debug/Catena -p 8340 -s 'my seed string' -j 127.0.0.1:8338 -d peer2.sqlite
 ````
+
+### Running with Docker
+
+```
+docker pull pixelspark/catena
+docker run -p 8338:8338 -p 8339:8339 pixelspark/catena /root/.build/debug/Catena --help
+````
+
+Note: the port number on which Catena listens inside the container must be equal to the port number used outside the
+container (as Catena advertises it to peers).
+
+## Using Catena
 
 Catena provides an HTTP interface on port 8338 (default), which can be used for introspecting the blockchain. It also
 provides a WebSocket service which is used for communication between peers. 
