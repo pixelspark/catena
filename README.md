@@ -74,7 +74,7 @@ To start another peer locally, use the following:
 
 ```
 docker pull pixelspark/catena
-docker run -p 8338:8338 -p 8339:8339 pixelspark/catena /root/.build/debug/Catena --help
+docker run -p 8338:8338 -p 8339:8339 pixelspark/catena catena --help
 ````
 
 Note: the port number on which Catena listens inside the container must be equal to the port number used outside the
