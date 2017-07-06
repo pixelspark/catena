@@ -2,14 +2,21 @@
 
 ## Database structure
 
-Catena provides an ordinary SQL database. The following system tables are defined:
+## Metadata
 
-* _info_: holds information about the current block hash and index. When a block transaction is executed, this contains information on the *last* block processed (i.e. not the block the transaction is part of)
-* _blocks_: holds an archive of all blocks in the chain.
+Catena provides an ordinary SQL database. The following system tables are defined and visible to clients:
+
 * _grants_: holds information about database privileges (see 'authentication' below).
 
-Only the _grants_ table is 'on chain' (that is, the CREATE statement for it is included in the blockchain). The other tables are
-created by the client at initialization time (or can be 'virtual' depending on implementation).
+These tables are created and maintained 'on chain' (that is, the CREATE statement for it is included in the blockchain). They are also subject to the privilege system.
+
+### Internal metadata tables
+
+Internally, Catena stores metadata in the following tables that are *not* visible to (nor modifyable by) clients:
+
+* __info_: holds information about the current block hash and index. When a block transaction is executed, this contains information on the *last* block processed (i.e. not the block the transaction is part of)
+* __blocks_: holds an archive of all blocks in the chain.
+* __users_: holds the transaction counter for each transaction invoker public key (SHA-256 hashed)
 
 ## Authentication
 
@@ -38,7 +45,7 @@ The "table" parameter for a grant can be "grants", in which case the user can pe
 
 A transaction can execute if the required privileges exist after processing of the block previous to the one it is part of. A transaction hence cannot depend on privileges created in the same block. When a transaction cannot execute due to missing privileges, it is simply ignored.
 
-A hash of the invoker's public key is stored in `user` instead of the real public key. This ensures that the public key only
+The SHA-256 hash of the invoker's public key is stored in `user` instead of the real public key. This ensures that the public key only
 becomes known when it is used for the first time, mitigating possible future attacks against (weak) public keys. A similar
 protection is present in Bitcoin (where transaction outputs are linked to a hash of the receiver's address).
 

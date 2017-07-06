@@ -172,23 +172,19 @@ a recent transaction), the most recent transactions run the risk of being rolled
 
 ### How are changes to a Catena blockchain authenticated?
 
-Transactions are signed using a private key.
+Transactions are required to be signed with a private key.
 
-In the future, Catena will provide a grants system (like in regular databases) based on the public key.
- A transaction that modifies a certain table or row needs to be signed with a private key that has the required grants. Grants
- will be stored in a special 'grants' table (which, in turn, can be modified by those that have a grant to modify that table).
+ A transaction that modifies any table or row needs to be signed with a private key that has the privilege to modify that specific table or row. Privilege grants are stored in a special 'grants' table (which, in turn, can be modified by those that have a grant to modify that table).
 
-To prevent replaying signed transactions, Catena will record a transaction number for each public key, which is atomically 
-incremented for every transaction that is executed. A transaction will not execute (again) if it has a lower transaction
-number than the latest number recorded in the blockchain.
+To prevent replay of signed transactions, Catena stores a transaction counter for each public key, which is atomically incremented for every transaction that is executed. A transaction will not execute (again) if it has a lower transaction number than the latest number recorded in the blockchain. To successfully submit a transaction, the invoker must increment the counter by one for each transaction (or use a different key each time).
 
 ### Where does the name come from?
 
 Catena is Italian for 'chain'.
 
 ### Can I run a private Catena chain?
-Chains are identified by their genesis (first) block's hash. To create a private chain, use the '-s'  option to specify 
-a different starting seed. 
+
+Chains are identified by their genesis (first) block's hash. To create a private chain, use the '-s'  option to specify a different starting seed.
 
 ## MIT license
 
