@@ -11,6 +11,7 @@ class SQLAPIEndpoint {
 		router.get("/api/orphans", handler: self.handleGetOrphans)
 		router.get("/api/head", handler: self.handleGetLast)
 		router.get("/api/journal", handler: self.handleGetJournal)
+		router.get("/api/users", handler: self.handleGetUsers)
 	}
 
 	private func handleGetBlock(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
@@ -43,6 +44,23 @@ class SQLAPIEndpoint {
 		next()
 	}
 
+	private func handleGetUsers(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+		let data = try self.node.ledger.longest.withUnverifiedTransactions { db, meta in
+			return try meta.users.counters()
+		}
+
+		var users: [String: Int] = [:]
+		data.forEach { user, counter in
+			users[user.base64EncodedString()] = counter
+		}
+
+		response.send(json: [
+			"status": "ok",
+			"users": users
+		])
+		next()
+	}
+
 	private func handleGetLast(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
 		let chain = self.node.ledger.longest
 		var b: SQLBlock? = chain.highest
@@ -72,14 +90,14 @@ class SQLAPIEndpoint {
 		var b: SQLBlock? = chain.highest
 		var data: [String] = [];
 		while let block = b {
-			for tr in block.payload.transactions {
+			for tr in block.payload.transactions.reversed() {
 				data.append(tr.statement.sql(dialect: SQLStandardDialect()))
 			}
 			b = try chain.get(block: block.previous)
 		}
 
 		response.headers.setType("text/plain", charset: "utf8")
-		response.send(data.joined(separator: "\r\n"))
+		response.send(data.reversed().joined(separator: "\r\n"))
 		next()
 	}
 }

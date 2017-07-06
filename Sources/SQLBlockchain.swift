@@ -169,7 +169,7 @@ class SQLBlockchain: Blockchain {
 		}
 	}
 
-	func withUnverifiedTransactions<T>(_ block: ((Database) throws -> (T))) rethrows -> T {
+	func withUnverifiedTransactions<T>(_ block: ((Database, SQLMetadata) throws -> (T))) rethrows -> T {
 		// FIXME use a separate database connection!
 		return try self.mutex.locked {
 			return try self.database.hypothetical {
@@ -178,9 +178,85 @@ class SQLBlockchain: Blockchain {
 					try block.apply(database: self.database, meta: self.meta, replay: self.replay)
 				}
 
-				return try block(self.database)
+				return try block(self.database, self.meta)
 			}
 		}
+	}
+}
+
+class SQLUsersTable {
+	let database: Database
+	let table: SQLTable
+
+	private let userColumn = SQLColumn(name: "user")
+	private let counterColumn = SQLColumn(name: "counter")
+
+	init(database: Database, table: SQLTable) throws {
+		self.database = database
+		self.table = table
+
+		// Ensure the table exists
+		try database.transaction {
+			if !(try database.exists(table: self.table.name)) {
+				var cols = OrderedDictionary<SQLColumn, SQLType>()
+				cols.append(.blob, forKey: userColumn)
+				cols.append(.int, forKey: counterColumn)
+				let createStatement = SQLStatement.create(table: self.table, schema: SQLSchema(
+					columns: cols,
+					primaryKey: self.userColumn))
+				try _ = self.database.perform(createStatement.sql(dialect: self.database.dialect))
+			}
+		}
+	}
+
+	func counter(for key: PublicKey) throws -> Int? {
+		let selectStatement = SQLStatement.select(SQLSelect(
+			these: [.column(self.counterColumn)],
+			from: self.table,
+			joins: [],
+			where: SQLExpression.binary(.column(self.userColumn), .equals, .literalBlob(key.data.sha256)),
+			distinct: false,
+			orders: []
+		))
+
+		let r = try self.database.perform(selectStatement.sql(dialect: self.database.dialect))
+		if r.hasRow, case .int(let value) = r.values[0] {
+			return value
+		}
+		return nil
+	}
+
+	func setCounter(for key: PublicKey, to: Int) throws {
+		let insertStatement = SQLStatement.insert(SQLInsert(
+			orReplace: true,
+			into: self.table,
+			columns: [self.userColumn, self.counterColumn],
+			values: [[SQLExpression.literalBlob(key.data.sha256), SQLExpression.literalInteger(to)]]
+		))
+		try _ = self.database.perform(insertStatement.sql(dialect: self.database.dialect))
+	}
+
+	func counters() throws -> [Data: Int] {
+		let selectStatement = SQLStatement.select(SQLSelect(
+			these: [.column(self.userColumn), .column(self.counterColumn)],
+			from: self.table,
+			joins: [],
+			where: nil,
+			distinct: false,
+			orders: []
+		))
+
+		let r = try self.database.perform(selectStatement.sql(dialect: self.database.dialect))
+		var data: [Data: Int] = [:]
+
+		while r.hasRow {
+			if case .int(let counter) = r.values[1], case .blob(let user) = r.values[0] {
+				data[user] = counter
+			}
+			r.step()
+		}
+
+		return data
 	}
 }
 
@@ -324,15 +400,17 @@ struct SQLMetadata {
 	static let grantsTableName = "grants"
 	static let infoTableName = "_info"
 	static let blocksTableName = "_blocks"
+	static let usersTableName = "_users"
 
 	/** All tables maintained for metadata that are visible to chain queries. */
 	static let specialVisibleTables = [grantsTableName]
 
 	/** All tables that are maintained for metadata, but invisible to chain queries. */
-	static let specialInvisibleTables = [infoTableName, blocksTableName]
+	static let specialInvisibleTables = [infoTableName, blocksTableName, usersTableName]
 
 	let info: SQLKeyValueTable
 	let grants: SQLGrants
+	let users: SQLUsersTable
 	let database: Database
 	private let archive: SQLBlockArchive
 
@@ -348,6 +426,7 @@ struct SQLMetadata {
 		self.info = try SQLKeyValueTable(database: database, table: SQLTable(name: SQLMetadata.infoTableName))
 		self.archive = try SQLBlockArchive(table: SQLTable(name: SQLMetadata.blocksTableName), database: database)
 		self.grants = try SQLGrants(database: database, table: SQLTable(name: SQLMetadata.grantsTableName))
+		self.users = try SQLUsersTable(database: database, table: SQLTable(name: SQLMetadata.usersTableName))
 	}
 
 	var headHash: Hash? {

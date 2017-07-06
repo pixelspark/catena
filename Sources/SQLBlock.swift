@@ -220,9 +220,16 @@ extension SQLBlock {
 		// Start a database transaction
 		let blockSavepointName = "block-\(self.signature!.stringValue)"
 		try database.transaction(name: blockSavepointName) {
+			/* Sort transactions by counter value, so that multiple transactions submitted by a single invoker execute
+			in a defined order. */
+			let sortedTransactions = self.payload.transactions.sorted(by: { (a, b) -> Bool in
+				return b.counter > a.counter
+			})
+
 			/* Check transaction grants (only grants from previous blocks 'count'; as transactions can potentially change
 			the grants, we need to check them up front) */
-			let privilegedTransactions = try self.payload.transactions.filter { transaction -> Bool in
+			var counterChanges: [PublicKey: Int] = [:]
+			let privilegedTransactions = try sortedTransactions.filter { transaction -> Bool in
 				if self.index == 1 {
 					/* Block 1 is special in that it doesn't enforce grants - so that you can actually set them for the
 					first time without getting the error that you don't have the required privileges. */
@@ -243,6 +250,26 @@ extension SQLBlock {
 					return false
 				}
 
+				/* Check the current counter value for the invoker. Transactions can only be executed when the invoker
+				does not yet have a counter (i.e. the invoker public key is used for the first time) or the transaction
+				counter is exactly (counter+1).*/
+				if let counter = counterChanges[transaction.invoker] {
+					if transaction.counter != (counter + 1) {
+						Log.debug("Block apply: denying transaction \(transaction.signature!) because counter mismatch \(counter+1) != \(transaction.counter) inside block")
+						return false
+					}
+				}
+				else {
+					let counter = try meta.users.counter(for: transaction.invoker) ?? 0
+					if transaction.counter != (counter + 1) {
+						Log.debug("Block apply: denying transaction \(transaction.signature!) because counter mismatch \(counter+1) != \(transaction.counter)")
+						return false
+					}
+				}
+
+				counterChanges[transaction.invoker] = transaction.counter
+
+				// Transaction should be executed when the invoker has the required privileges
 				return try meta.grants.check(privileges: requiredPrivileges, forUser: transaction.invoker)
 			}
 
@@ -259,6 +286,9 @@ extension SQLBlock {
 						if replay || transaction.shouldAlwaysBeReplayed {
 							_ = try database.perform(query)
 						}
+
+						// Update counter
+						try meta.users.setCounter(for: transaction.invoker, to: transaction.counter)
 					}
 				}
 				catch {

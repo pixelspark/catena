@@ -19,7 +19,7 @@ struct Identity {
 	}
 }
 
-class Key: CustomStringConvertible, CustomDebugStringConvertible {
+class Key: CustomStringConvertible, CustomDebugStringConvertible, Hashable {
 	let data: Data
 	let version: UInt8
 
@@ -49,6 +49,14 @@ class Key: CustomStringConvertible, CustomDebugStringConvertible {
 
 	var debugDescription: String {
 		return self.stringValue
+	}
+
+	var hashValue: Int {
+		return self.data.hashValue
+	}
+
+	static func ==(lhs: Key, rhs: Key) -> Bool {
+		return lhs.data == rhs.data
 	}
 }
 

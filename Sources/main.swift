@@ -82,6 +82,7 @@ do {
 	node.miner.isEnabled = mineOption.value
 
 	// Initialize database if we have to
+	var rootCounter = 0
 	if initializeOption.value {
 		// Generate root keypair
 		let identity = try Identity()
@@ -91,7 +92,8 @@ do {
 
 		// Create grants table, etc.
 		let create = SQLStatement.create(table: SQLTable(name: SQLMetadata.grantsTableName), schema: SQLGrants.schema)
-		let createTransaction = try SQLTransaction(statement: create, invoker: identity.publicKey)
+		let createTransaction = try SQLTransaction(statement: create, invoker: identity.publicKey, counter: rootCounter)
+		rootCounter += 1
 
 		let grant = SQLStatement.insert(SQLInsert(
 			orReplace: false,
@@ -104,7 +106,8 @@ do {
 				[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.delete.rawValue), .literalString(SQLMetadata.grantsTableName)]
 			]
 		))
-		let grantTransaction = try SQLTransaction(statement: grant, invoker: identity.publicKey)
+		let grantTransaction = try SQLTransaction(statement: grant, invoker: identity.publicKey, counter: rootCounter)
+		rootCounter += 1
 
 		try node.submit(transaction: try createTransaction.sign(with: identity.privateKey))
 		try node.submit(transaction: try grantTransaction.sign(with: identity.privateKey))
@@ -117,7 +120,8 @@ do {
 		node.start(blocking: false)
 		let q = try SQLStatement("CREATE TABLE test (origin TEXT, x TEXT);");
 		Log.info("Submit \(q)")
-		try node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey))
+		try node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey, counter: rootCounter))
+		rootCounter += 1
 
 		Log.info("Start submitting demo blocks")
 		do {
@@ -126,7 +130,8 @@ do {
 				i += 1
 				let q = try SQLStatement("INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));")
 				Log.info("Submit \(q)")
-				try node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey).sign(with: identity.privateKey))
+				try node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey, counter: rootCounter).sign(with: identity.privateKey))
+				rootCounter += 1
 				sleep(10)
 			}
 		}

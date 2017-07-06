@@ -4,6 +4,7 @@ import Ed25519
 
 class SQLTransaction: Transaction {
 	let invoker: PublicKey
+	let counter: Int
 	let statement: SQLStatement
 	var signature: Data? = nil
 
@@ -12,18 +13,20 @@ class SQLTransaction: Transaction {
 		case syntaxError
 	}
 
-	init(statement: SQLStatement, invoker: PublicKey) throws {
+	init(statement: SQLStatement, invoker: PublicKey, counter: Int) throws {
 		self.invoker = invoker
 		self.statement = statement
+		self.counter = counter
 	}
 
 	convenience init(data: [String: Any]) throws {
 		guard let tx = data["tx"] as? [String: Any] else { throw SQLTransactionError.formatError }
 		guard let sql = tx["sql"] as? String else { throw SQLTransactionError.formatError }
 		guard let invoker = tx["invoker"] as? String else { throw SQLTransactionError.formatError }
+		guard let counter = tx["counter"] as? Int else { throw SQLTransactionError.formatError }
 		guard let invokerKey = PublicKey(string: invoker) else { throw SQLTransactionError.formatError }
 
-		try self.init(statement: try SQLStatement(sql), invoker: invokerKey)
+		try self.init(statement: try SQLStatement(sql), invoker: invokerKey, counter: counter)
 
 		if let sig = data["signature"] as? String, let sigData = Data(base64Encoded: sig) {
 			self.signature = sigData
@@ -33,6 +36,7 @@ class SQLTransaction: Transaction {
 	private var dataForSigning: Data {
 		var d = Data()
 		d.append(self.invoker.data)
+		d.appendRaw(self.counter)
 		d.append(self.statement.sql(dialect: SQLStandardDialect()).data(using: .utf8)!)
 		return d
 	}
@@ -72,6 +76,7 @@ class SQLTransaction: Transaction {
 		var json: [String: Any] = [
 			"tx": [
 				"sql": self.statement.sql(dialect: SQLStandardDialect()),
+				"counter": self.counter,
 				"invoker": self.invoker.stringValue
 			]
 		]
