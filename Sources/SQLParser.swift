@@ -82,6 +82,16 @@ struct SQLSelect {
 	var joins: [SQLJoin] = []
 	var `where`: SQLExpression? = nil
 	var distinct: Bool = false
+	var orders: [SQLOrder] = []
+
+	init(these: [SQLExpression] = [], from: SQLTable? = nil, joins: [SQLJoin] = [], `where`: SQLExpression? = nil, distinct: Bool = false, orders: [SQLOrder] = []) {
+		self.these = these
+		self.from = from
+		self.joins = joins
+		self.`where` = `where`
+		self.distinct = distinct
+		self.orders = orders
+	}
 }
 
 struct SQLInsert {
@@ -214,7 +224,19 @@ enum SQLStatement {
 					whereSQL = ""
 				}
 
-				return "SELECT\(distinctSQL) \(selectList) FROM \(t.sql(dialect: dialect))\(joinSQL)\(whereSQL);"
+				// ordering
+				let orderSQL: String
+				if !select.orders.isEmpty {
+					let orderString = select.orders.map { order in
+						return "\(order.expression.sql(dialect: dialect)) \(order.direction.sql(dialect: dialect))"
+					}.joined(separator: ", ")
+					orderSQL = " ORDER BY \(orderString)"
+				}
+				else {
+					orderSQL = ""
+				}
+
+				return "SELECT\(distinctSQL) \(selectList) FROM \(t.sql(dialect: dialect))\(joinSQL)\(whereSQL)\(orderSQL);"
 			}
 			else {
 				return "SELECT\(distinctSQL) \(selectList);"
@@ -316,6 +338,20 @@ enum SQLExpression {
 	}
 }
 
+enum SQLOrderDirection: String {
+	case ascending = "ASC"
+	case descending = "DESC"
+
+	func sql(dialect: SQLDialect) -> String {
+		return self.rawValue
+	}
+}
+
+struct SQLOrder {
+	var expression: SQLExpression
+	var direction: SQLOrderDirection = .ascending
+}
+
 enum SQLFragment {
 	case statement(SQLStatement)
 	case expression(SQLExpression)
@@ -328,6 +364,8 @@ enum SQLFragment {
 	case binaryOperator(SQLBinary)
 	case unaryOperator(SQLUnary)
 	case join(SQLJoin)
+	case orders([SQLOrder])
+	case order(SQLOrder)
 }
 
 internal class SQLParser: Parser, CustomDebugStringConvertible {
@@ -495,6 +533,31 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 
 		add_named_rule("ex", rule: ^"ex-equality")
 
+		add_named_rule("order-direction", rule:
+			(Parser.matchLiteralInsensitive("ASC") => {
+				guard case .order(var order) = self.stack.popLast()! else { fatalError() }
+				order.direction = .ascending
+				self.stack.append(.order(order))
+			})
+			| (Parser.matchLiteralInsensitive("DESC") => {
+				guard case .order(var order) = self.stack.popLast()! else { fatalError() }
+				order.direction = .descending
+				self.stack.append(.order(order))
+			}))
+
+		// Order specifications
+		add_named_rule("orders", rule:
+			Parser.matchList(((^"ex" => {
+				guard case .expression(let ex) = self.stack.popLast()! else { fatalError() }
+				self.stack.append(.order(SQLOrder(expression: ex, direction: .ascending)))
+			}
+			~~ (^"order-direction")/~)) => {
+				guard case .order(let order) = self.stack.popLast()! else { fatalError() }
+				guard case .orders(var orders) = self.stack.popLast()! else { fatalError() }
+				orders.append(order)
+				self.stack.append(.orders(orders))
+			}, separator: Parser.matchLiteral(",")))
+
 		// Types
 		add_named_rule("type-text", rule: Parser.matchLiteralInsensitive("TEXT") => { self.stack.append(.type(SQLType.text)) })
 		add_named_rule("type-int", rule: Parser.matchLiteralInsensitive("INT") => { self.stack.append(.type(SQLType.int)) })
@@ -598,6 +661,18 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 						select.where = expression
 						self.stack.append(.statement(.select(select)))
 					})/~
+						~~ (
+							(Parser.matchLiteralInsensitive("ORDER BY") => {
+								self.stack.append(.orders([]))
+							})
+							~~ ^"orders" => {
+								guard case .orders(let orders) = self.stack.popLast()! else { fatalError() }
+								guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+								guard case .select(var select) = st else { fatalError() }
+								select.orders = orders
+								self.stack.append(.statement(.select(select)))
+							}
+						)/~
 				)/~
 		)
 

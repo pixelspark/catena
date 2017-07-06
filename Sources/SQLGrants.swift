@@ -77,7 +77,8 @@ class SQLGrants {
 						SQLBinary.and,
 						tableCheckExpression
 					),
-					distinct: false))
+					distinct: false,
+					orders: []))
 
 				let r = try self.database.perform(select.sql(dialect: self.database.dialect))
 				if !r.hasRow {

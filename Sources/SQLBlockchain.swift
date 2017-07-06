@@ -216,7 +216,8 @@ class SQLKeyValueTable {
 			from: self.table,
 			joins: [],
 			where: SQLExpression.binary(.column(self.keyColumn), .equals, .literalString(key)),
-			distinct: false
+			distinct: false,
+			orders: []
 		))
 
 		let r = try self.database.perform(selectStatement.sql(dialect: self.database.dialect))
