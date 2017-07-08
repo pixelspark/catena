@@ -99,16 +99,18 @@ do {
 
 	// Initialize database if we have to
 	var rootCounter = 0
+	let rootIdentity = try Identity()
+
 	if initializeOption.value {
 		// Generate root keypair
-		let identity = try Identity()
-		Log.info("Root private key: \(identity.privateKey.stringValue)")
-		Log.info("Root public key: \(identity.publicKey.stringValue)")
-		Swift.print("\r\nPGPASSWORD=\(identity.privateKey.stringValue) psql -h localhost -p \(netPort+1) -U \(identity.publicKey.stringValue)\r\n")
+
+		Log.info("Root private key: \(rootIdentity.privateKey.stringValue)")
+		Log.info("Root public key: \(rootIdentity.publicKey.stringValue)")
+		Swift.print("\r\nPGPASSWORD=\(rootIdentity.privateKey.stringValue) psql -h localhost -p \(netPort+1) -U \(rootIdentity.publicKey.stringValue)\r\n")
 
 		// Create grants table, etc.
 		let create = SQLStatement.create(table: SQLTable(name: SQLMetadata.grantsTableName), schema: SQLGrants.schema)
-		let createTransaction = try SQLTransaction(statement: create, invoker: identity.publicKey, counter: rootCounter)
+		let createTransaction = try SQLTransaction(statement: create, invoker: rootIdentity.publicKey, counter: rootCounter)
 		rootCounter += 1
 
 		let grant = SQLStatement.insert(SQLInsert(
@@ -116,17 +118,17 @@ do {
 			into: SQLTable(name: SQLMetadata.grantsTableName),
 			columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
 			values: [
-				[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.create.rawValue), .null],
-				[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.drop.rawValue), .null],
-				[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString(SQLMetadata.grantsTableName)],
-				[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.delete.rawValue), .literalString(SQLMetadata.grantsTableName)]
+				[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.create.rawValue), .null],
+				[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.drop.rawValue), .null],
+				[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString(SQLMetadata.grantsTableName)],
+				[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.delete.rawValue), .literalString(SQLMetadata.grantsTableName)]
 			]
 		))
-		let grantTransaction = try SQLTransaction(statement: grant, invoker: identity.publicKey, counter: rootCounter)
+		let grantTransaction = try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey, counter: rootCounter)
 		rootCounter += 1
 
-		try node.receive(transaction: try createTransaction.sign(with: identity.privateKey), from: nil)
-		try node.receive(transaction: try grantTransaction.sign(with: identity.privateKey), from: nil)
+		try node.receive(transaction: try createTransaction.sign(with: rootIdentity.privateKey), from: nil)
+		try node.receive(transaction: try grantTransaction.sign(with: rootIdentity.privateKey), from: nil)
 	}
 
 	// Start submitting test blocks if that's what the user requested
@@ -135,19 +137,34 @@ do {
 
 		node.start(blocking: false)
 		let q = try SQLStatement("CREATE TABLE test (origin TEXT, x TEXT);");
-		Log.info("Submit \(q)")
-		try node.receive(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey, counter: rootCounter), from: nil)
+		try node.receive(transaction: try SQLTransaction(statement: q, invoker: rootIdentity.publicKey, counter: rootCounter).sign(with: rootIdentity.privateKey), from: nil)
 		rootCounter += 1
 
+		// Grant to user
+		let grant = SQLStatement.insert(SQLInsert(
+			orReplace: false,
+			into: SQLTable(name: SQLMetadata.grantsTableName),
+			columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
+			values: [
+				[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString("test")]
+			]
+		))
+		try node.receive(transaction: try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey, counter: rootCounter).sign(with: rootIdentity.privateKey), from: nil)
+		rootCounter += 1
+
+		sleep(10)
+
 		Log.info("Start submitting demo blocks")
+		var testCounter = 0
 		do {
 			var i = 0
 			while true {
 				i += 1
 				let q = try SQLStatement("INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));")
-				Log.info("Submit \(q)")
-				try node.receive(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey, counter: rootCounter).sign(with: identity.privateKey), from: nil)
-				rootCounter += 1
+				let tr = try SQLTransaction(statement: q, invoker: identity.publicKey, counter: testCounter).sign(with: identity.privateKey)
+				Log.info("[Test] submit \(tr)")
+				try node.receive(transaction: tr, from: nil)
+				testCounter += 1
 				sleep(10)
 			}
 		}
