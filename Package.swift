@@ -16,7 +16,7 @@ var deps: [Package.Dependency] = [
 ]
 
 #if !os(Linux)
-	deps.append(.Package(url: "https://github.com/pixelspark/Starscream.git", majorVersion: 2))
+	deps.append(.Package(url: "https://github.com/daltoniam/Starscream.git", majorVersion: 2))
 #endif
 
 let package = Package(
