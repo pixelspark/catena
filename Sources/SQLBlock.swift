@@ -294,15 +294,15 @@ extension SQLBlock {
 						if replay || transaction.shouldAlwaysBeReplayed {
 							_ = try database.perform(query)
 						}
-
-						// Update counter
-						try meta.users.setCounter(for: transaction.invoker, to: transaction.counter)
 					}
 				}
 				catch {
 					// Transactions can fail, this is not a problem - the block can be processed
 					Log.debug("Transaction failed, but block will continue to be processed: \(error.localizedDescription)")
 				}
+
+				// Update counter
+				try meta.users.setCounter(for: transaction.invoker, to: transaction.counter)
 			}
 
 			// Write the block itself to archive
