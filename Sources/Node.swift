@@ -59,19 +59,21 @@ class Node<BlockchainType: Blockchain> {
 	func receive(transaction: BlockType.TransactionType, from peer: Peer<BlockchainType>?) throws {
 		// Is this transaction in-order?
 		if try self.ledger.canAccept(transaction: transaction, pool: self.miner.block) {
-			try self.miner.append(transaction: transaction)
+			let isNew = try self.miner.append(transaction: transaction)
 
 			// Did we get this block from someone else and is it new? Then rebroadcast
-			Log.info("[Node] Re-broadcasting transaction \(transaction) to peers as it is new")
-			let transactionGossip = Gossip<BlockchainType>.transaction(transaction.json)
-			self.peers.forEach { (url, otherPeer) in
-				if peer == nil || otherPeer.url != peer!.url {
-					if case .connected = otherPeer.state, let otherConnection = otherPeer.connection {
-						do {
-							try otherConnection.request(gossip: transactionGossip)
-						}
-						catch {
-							// Not a problem if this fails
+			if isNew {
+				Log.info("[Node] Re-broadcasting transaction \(transaction) to peers as it is new")
+				let transactionGossip = Gossip<BlockchainType>.transaction(transaction.json)
+				self.peers.forEach { (url, otherPeer) in
+					if peer == nil || otherPeer.url != peer!.url {
+						if case .connected = otherPeer.state, let otherConnection = otherPeer.connection {
+							do {
+								try otherConnection.request(gossip: transactionGossip)
+							}
+							catch {
+								// Not a problem if this fails
+							}
 						}
 					}
 				}

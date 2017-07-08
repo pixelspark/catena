@@ -63,8 +63,9 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	/** Create a block with the given index, previous hash and payload data. */
 	init(index: UInt, previous: HashType, payload: Data) throws
 
-	/** Append a transaction to the payload data of this block. */
-	mutating func append(transaction: TransactionType) throws
+	/** Append a transaction to the payload data of this block. Returns true if the transaction was appended, and false
+	when it wasn't (e.g. when the block already contains the transaction). */
+	mutating func append(transaction: TransactionType) throws -> Bool
 
 	/** Perform validation on the payload itself (e.g. signatures on contained transactions) and returns whether the
 	payload is valid. */

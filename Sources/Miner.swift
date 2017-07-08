@@ -18,15 +18,20 @@ class Miner<BlockchainType: Blockchain> {
 		self.counter = UInt(abs(random(Int.self)))
 	}
 
-	func append(transaction: BlockType.TransactionType) throws {
-		try self.mutex.locked {
+	/** Returns true when the transaction is new, or false if it isn't. */
+	func append(transaction: BlockType.TransactionType) throws -> Bool {
+		let isNew = try self.mutex.locked { () -> Bool in
 			if self.block == nil {
 				self.block = BlockType()
 			}
-			try self.block!.append(transaction: transaction)
+
+			return try self.block!.append(transaction: transaction)
 		}
 
-		self.start()
+		if isNew {
+			self.start()
+		}
+		return isNew
 	}
 
 	private func start() {

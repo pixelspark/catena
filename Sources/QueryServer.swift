@@ -82,7 +82,7 @@ class NodeQueryServer: QueryServer {
 				let transaction = try SQLTransaction(statement: statement, invoker: identity.publicKey, counter: counter + 1)
 				try transaction.sign(with: identity.privateKey)
 				try self.node.receive(transaction: transaction, from: nil)
-				try connection.send(error: "OK \(transaction.signature!.base58encoded) \(transaction.statement.sql(dialect: SQLStandardDialect()))", severity: .info)
+				try connection.send(error: "OK \(transaction.counter) \(transaction.signature!.base58encoded) \(transaction.statement.sql(dialect: SQLStandardDialect()))", severity: .info)
 			}
 			else {
 				try ledger.longest.withUnverifiedTransactions { chain in

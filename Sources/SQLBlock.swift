@@ -129,14 +129,21 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 		return self.payload.isSignatureValid
 	}
 
-	mutating func append(transaction: SQLTransaction) throws {
+	mutating func append(transaction: SQLTransaction) throws -> Bool {
 		assert(self.seed == nil, "cannot append transactions to a genesis block")
+		assert(transaction.signature != nil, "transaction needs to have a signature")
 
 		if (self.payload.transactions.count+1) > self.maximumNumberOfTransactionsPerBlock {
 			throw SQLBlockError.tooManyTransactionsInBlockError
 		}
 
+		// Transaction already exists
+		if self.payload.transactions.contains(where: { $0.signature! == transaction.signature! }) {
+			return false
+		}
+
 		self.payload.transactions.append(transaction)
+		return true
 	}
 
 	var payloadData: Data {
