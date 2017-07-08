@@ -268,7 +268,7 @@ extension SQLBlock {
 					}
 				}
 				else {
-					let counter = try meta.users.counter(for: transaction.invoker) ?? 0
+					let counter = try meta.users.counter(for: transaction.invoker) ?? -1
 					if transaction.counter != (counter + 1) {
 						Log.debug("Block apply: denying transaction \(transaction.signature!) because counter mismatch \(counter+1) != \(transaction.counter)")
 						return false
