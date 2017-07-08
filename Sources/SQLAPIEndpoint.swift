@@ -41,11 +41,16 @@ class SQLAPIEndpoint {
 					case .querying(_): desc = "querying"
 					}
 
-					return [
+					var res = [
 						"url": url.absoluteString,
-						"state": desc,
-						"lastSeen": p.lastSeen?.iso8601FormattedLocalDate ?? "never"
+						"state": desc
 					]
+					
+					#if !os(Linux)
+						res["lastSeen"] = p.lastSeen?.iso8601FormattedLocalDate ?? "never"
+					#endif
+
+					return res
 				}
 			}
 		])
