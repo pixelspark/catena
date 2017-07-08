@@ -243,6 +243,7 @@ class SQLUsersTable {
 			columns: [self.userColumn, self.counterColumn],
 			values: [[SQLExpression.literalBlob(key.data.sha256), SQLExpression.literalInteger(to)]]
 		))
+
 		try _ = self.database.perform(insertStatement.sql(dialect: self.database.dialect))
 	}
 

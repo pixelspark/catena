@@ -2,7 +2,7 @@ import Foundation
 import LoggerAPI
 import Ed25519
 
-class SQLTransaction: Transaction {
+class SQLTransaction: Transaction, CustomDebugStringConvertible {
 	let invoker: PublicKey
 	let counter: Int
 	let statement: SQLStatement
@@ -88,6 +88,10 @@ class SQLTransaction: Transaction {
 		}
 
 		return json
+	}
+
+	var debugDescription: String {
+		return "\(self.invoker.data.sha256.base64EncodedString())@\(self.counter)"
 	}
 }
 

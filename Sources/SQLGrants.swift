@@ -82,7 +82,7 @@ class SQLGrants {
 
 				let r = try self.database.perform(select.sql(dialect: self.database.dialect))
 				if !r.hasRow {
-					Log.debug("[SQLGrants] privilege NOT present: \(p) for user \(user)")
+					Log.debug("[SQLGrants] privilege NOT present: \(p) for user \(user.data.sha256.base64EncodedString())")
 					return false
 				}
 				Log.debug("[SQLGrants] privilege present: \(p) for user \(user)")

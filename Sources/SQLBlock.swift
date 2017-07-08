@@ -353,7 +353,7 @@ class SQLLedger: Ledger<SQLBlockchain> {
 			}
 		}
 
-		Log.info("[Ledger] cannot accept tx \(transaction): not appendable (\(transaction.counter))")
+		Log.info("[Ledger] cannot accept tx \(transaction): not appendable (\(transaction.counter)) invoker hash=\(transaction.invoker.data.sha256.base64EncodedString())")
 		return false
 	}
 }

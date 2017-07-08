@@ -376,7 +376,7 @@ public class PeerOutgoingConnection<BlockchainType: Blockchain>: PeerConnection<
 	}
 
 	public func websocketDidDisconnect(socket: Starscream.WebSocket, error: NSError?) {
-		Log.info("[Gossip] Disconnected outgoing to \(socket.currentURL) \(error?.localizedDescription ?? "unknown error")")
+		Log.debug("[Gossip] Disconnected outgoing to \(socket.currentURL) \(error?.localizedDescription ?? "unknown error")")
 		self.delegate?.peer(disconnected: self)
 	}
 
@@ -422,7 +422,7 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 						ws.headers["X-Version"] = String(ProtocolConstants.version)
 						let pic = PeerOutgoingConnection<BlockchainType>(connection: ws)
 						pic.delegate = self
-						Log.info("[Peer] connect outgoing \(url)")
+						Log.debug("[Peer] connect outgoing \(url)")
 						ws.connect()
 						self.state = .connecting
 						self.connection = pic
