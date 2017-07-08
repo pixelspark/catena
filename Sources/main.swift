@@ -125,8 +125,8 @@ do {
 		let grantTransaction = try SQLTransaction(statement: grant, invoker: identity.publicKey, counter: rootCounter)
 		rootCounter += 1
 
-		try node.submit(transaction: try createTransaction.sign(with: identity.privateKey))
-		try node.submit(transaction: try grantTransaction.sign(with: identity.privateKey))
+		try node.receive(transaction: try createTransaction.sign(with: identity.privateKey), from: nil)
+		try node.receive(transaction: try grantTransaction.sign(with: identity.privateKey), from: nil)
 	}
 
 	// Start submitting test blocks if that's what the user requested
@@ -136,7 +136,7 @@ do {
 		node.start(blocking: false)
 		let q = try SQLStatement("CREATE TABLE test (origin TEXT, x TEXT);");
 		Log.info("Submit \(q)")
-		try node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey, counter: rootCounter))
+		try node.receive(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey, counter: rootCounter), from: nil)
 		rootCounter += 1
 
 		Log.info("Start submitting demo blocks")
@@ -146,7 +146,7 @@ do {
 				i += 1
 				let q = try SQLStatement("INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));")
 				Log.info("Submit \(q)")
-				try node.submit(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey, counter: rootCounter).sign(with: identity.privateKey))
+				try node.receive(transaction: try SQLTransaction(statement: q, invoker: identity.publicKey, counter: rootCounter).sign(with: identity.privateKey), from: nil)
 				rootCounter += 1
 				sleep(10)
 			}

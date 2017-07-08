@@ -75,16 +75,19 @@ class NodeQueryServer: QueryServer {
 			// Mutating statements are queued
 			if statement.isMutating {
 				// This needs to go to the ledger
-				let counter = try ledger.longest.meta.users.counter(for: identity.publicKey) ?? 0
+				let counter = try ledger.longest.withUnverifiedTransactions { chain in
+					return try chain.meta.users.counter(for: identity.publicKey) ?? 0
+				}
+
 				let transaction = try SQLTransaction(statement: statement, invoker: identity.publicKey, counter: counter + 1)
 				try transaction.sign(with: identity.privateKey)
-				try self.node.submit(transaction: transaction)
+				try self.node.receive(transaction: transaction, from: nil)
 				try connection.send(error: "OK \(transaction.signature!.base58encoded) \(transaction.statement.sql(dialect: SQLStandardDialect()))", severity: .info)
 			}
 			else {
-				try ledger.longest.withUnverifiedTransactions { db, meta in
-					let context = SQLContext(metadata: meta, invoker: identity.publicKey)
-					let result = try db.perform(statement.backendStatement(context: context).sql(dialect: db.dialect))
+				try ledger.longest.withUnverifiedTransactions { chain in
+					let context = SQLContext(metadata: chain.meta, invoker: identity.publicKey)
+					let result = try chain.database.perform(statement.backendStatement(context: context).sql(dialect: chain.database.dialect))
 					if case .row = result.state {
 						// Send columns
 						let fields = result.columns.map { col in

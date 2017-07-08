@@ -12,6 +12,7 @@ class SQLAPIEndpoint {
 		router.get("/api/orphans", handler: self.handleGetOrphans)
 		router.get("/api/head", handler: self.handleGetLast)
 		router.get("/api/journal", handler: self.handleGetJournal)
+		router.get("/api/pool", handler: self.handleGetPool)
 		router.get("/api/users", handler: self.handleGetUsers)
 	}
 
@@ -81,9 +82,19 @@ class SQLAPIEndpoint {
 		next()
 	}
 
+	private func handleGetPool(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+		let pool = self.node.miner.block?.payload.transactions.map { return $0.json } ?? []
+
+		response.send(json: [
+			"status": "ok",
+			"pool": pool
+		])
+		next()
+	}
+
 	private func handleGetUsers(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let data = try self.node.ledger.longest.withUnverifiedTransactions { db, meta in
-			return try meta.users.counters()
+		let data = try self.node.ledger.longest.withUnverifiedTransactions { chain in
+			return try chain.meta.users.counters()
 		}
 
 		var users: [String: Int] = [:]

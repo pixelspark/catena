@@ -19,16 +19,18 @@ class SQLTransaction: Transaction {
 		self.counter = counter
 	}
 
-	convenience init(data: [String: Any]) throws {
-		guard let tx = data["tx"] as? [String: Any] else { throw SQLTransactionError.formatError }
+	required init(json: [String: Any]) throws {
+		guard let tx = json["tx"] as? [String: Any] else { throw SQLTransactionError.formatError }
 		guard let sql = tx["sql"] as? String else { throw SQLTransactionError.formatError }
 		guard let invoker = tx["invoker"] as? String else { throw SQLTransactionError.formatError }
 		guard let counter = tx["counter"] as? Int else { throw SQLTransactionError.formatError }
 		guard let invokerKey = PublicKey(string: invoker) else { throw SQLTransactionError.formatError }
 
-		try self.init(statement: try SQLStatement(sql), invoker: invokerKey, counter: counter)
+		self.invoker = invokerKey
+		self.statement = try SQLStatement(sql)
+		self.counter = counter
 
-		if let sig = data["signature"] as? String, let sigData = Data(base64Encoded: sig) {
+		if let sig = json["signature"] as? String, let sigData = Data(base64Encoded: sig) {
 			self.signature = sigData
 		}
 	}
@@ -72,7 +74,7 @@ class SQLTransaction: Transaction {
 		}
 	}
 
-	var data: [String: Any] {
+	var json: [String: Any] {
 		var json: [String: Any] = [
 			"tx": [
 				"sql": self.statement.sql(dialect: SQLStandardDialect()),

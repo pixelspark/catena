@@ -56,13 +56,29 @@ class Node<BlockchainType: Blockchain> {
 	}
 
 	/** Append a transaction to the memory pool (maintained by the miner). */
-	func submit(transaction: BlockType.TransactionType) throws {
+	func receive(transaction: BlockType.TransactionType, from peer: Peer<BlockchainType>?) throws {
 		// Is this transaction in-order?
-		if try self.ledger.longest.canAccept(transaction: transaction, pool: self.miner.block) {
+		if try self.ledger.canAccept(transaction: transaction, pool: self.miner.block) {
 			try self.miner.append(transaction: transaction)
+
+			// Did we get this block from someone else and is it new? Then rebroadcast
+			Log.info("[Node] Re-broadcasting transaction \(transaction) to peers as it is new")
+			let transactionGossip = Gossip<BlockchainType>.transaction(transaction.json)
+			self.peers.forEach { (url, otherPeer) in
+				if peer == nil || otherPeer.url != peer!.url {
+					if case .connected = otherPeer.state, let otherConnection = otherPeer.connection {
+						do {
+							try otherConnection.request(gossip: transactionGossip)
+						}
+						catch {
+							// Not a problem if this fails
+						}
+					}
+				}
+			}
 		}
 		else {
-			Log.debug("[Node] Not appending transaction \(transaction) to memory pool: ledger says it isn't acceptable")
+			Log.error("[Node] Not appending transaction \(transaction) to memory pool: ledger says it isn't acceptable")
 		}
 	}
 
@@ -105,6 +121,7 @@ class Node<BlockchainType: Blockchain> {
 			}
 
 			let peer = Peer<BlockchainType>(url: url, state: isSelf ? .ignored(reason: "is ourselves") : .connected, connection: isSelf ? nil : connection, delegate: self)
+			connection.delegate = peer
 
 			self.mutex.locked {
 				self.peers[url] = peer
@@ -133,7 +150,7 @@ class Node<BlockchainType: Blockchain> {
 	}
 
 	/** Peer can be nil when the block originated from ourselves (i.e. was mined). */
-	func receive(block: BlockType, from peer: Peer<BlockchainType>?) throws {
+	func receive(block: BlockType, from peer: Peer<BlockchainType>?, wasRequested: Bool) throws {
 		Log.info("[Node] receive block #\(block.index) from \(peer?.url.absoluteString ?? "self")")
 
 		if block.isSignatureValid && block.isPayloadValid() {
@@ -144,13 +161,15 @@ class Node<BlockchainType: Blockchain> {
 			}
 
 			// Did we get this block from someone else and is it new? Then rebroadcast
-			if let p = peer, isNew {
+			if let p = peer, isNew && !wasRequested {
 				Log.info("[Node] Re-broadcasting block \(block) to peers as it is new")
+				let blockGossip = Gossip<BlockchainType>.block(block.json)
+
 				self.peers.forEach { (url, otherPeer) in
 					if otherPeer.url != p.url {
 						if case .connected = otherPeer.state, let otherConnection = otherPeer.connection {
 							do {
-								try otherConnection.request(gossip: Gossip.block(block.json))
+								try otherConnection.request(gossip: blockGossip)
 							}
 							catch {
 								// Not a problem if this fails
@@ -163,7 +182,7 @@ class Node<BlockchainType: Blockchain> {
 	}
 
 	func mined(block: BlockType) throws {
-		try self.receive(block: block, from: nil)
+		try self.receive(block: block, from: nil, wasRequested: false)
 
 		// Send our peers the good news!
 		self.mutex.locked {
@@ -230,7 +249,7 @@ class Node<BlockchainType: Blockchain> {
 									Log.debug("[Node] fetch returned valid block: \(block)")
 									try self.ledger.mutex.locked {
 										let peer = self.peers[candidate.peer]
-										try self.receive(block: block, from: peer)
+										try self.receive(block: block, from: peer, wasRequested: true)
 										if block.index > 0 &&
 											self.ledger.orphansByPreviousHash[block.previous] != nil &&
 											self.ledger.orphansByHash[block.previous] == nil {

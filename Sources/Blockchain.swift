@@ -25,14 +25,12 @@ public protocol Blockchain {
 	/** 'Rewind' the blockchain so that the `to` block becomes the new head. The `to` block needs to be on this chain, or
 	the function will throw an error. */
 	func unwind(to: BlockType) throws
-
-	/** Returns whether a transaction is valid for inclusion in the transaction memory pool (to be mined). The optional
-	`pool` argument may refer to a block that contains transactions currently in the memory pool (for mining). */
-	func canAccept(transaction: BlockType.TransactionType, pool: BlockType?) throws -> Bool
 }
 
 public protocol Transaction {
+	init(json: [String: Any]) throws
 	var isSignatureValid: Bool { get }
+	var json: [String: Any] { get }
 }
 
 public protocol Block: CustomDebugStringConvertible, Equatable {
@@ -272,6 +270,12 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 		}
 	}
 
+	/** Returns whether a transaction is valid for inclusion in the transaction memory pool (to be mined). The optional
+	`pool` argument may refer to a block that contains transactions currently in the memory pool (for mining). */
+	func canAccept(transaction: BlockType.TransactionType, pool: BlockType?) throws -> Bool {
+		fatalError("Needs to be implemented")
+	}
+
 	func receive(block: BlockType) throws -> Bool {
 		Log.debug("[Ledger] receive block #\(block.index) \(block.signature!.stringValue)")
 		return try self.mutex.locked { () -> Bool in
@@ -306,7 +310,7 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 										// We don't have an intermediate block. Save head block as orphan
 										self.orphansByHash[block.signature!] = block
 										self.orphansByPreviousHash[block.previous] = block
-										Log.info("[Ledger] missing intermediate block: \(r.index-1) with hash \(r.previous.stringValue)")
+										Log.debug("[Ledger] missing intermediate block: \(r.index-1) with hash \(r.previous.stringValue)")
 										return false
 									}
 								}
@@ -317,6 +321,7 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 								}
 							}
 							else {
+								Log.info("[Ledger] unrooted!")
 								break
 							}
 						}
@@ -324,27 +329,30 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 						// We found a root earlier in the chain. Unwind to the root and apply all blocks
 						if let r = root {
 							if let splice = try self.longest.get(block: r.previous) {
+								assert(splice.index == (r.index - 1))
+
 								if splice.signature! != self.longest.highest.signature! {
-									Log.info("[Ledger] splicing to \(r.index), then fast-forwarding to \(block.index)")
+									Log.debug("[Ledger] splicing to \(splice.index), then fast-forwarding to \(block.index)")
 									try self.longest.unwind(to: splice)
+									assert(self.longest.highest == splice)
 								}
 
 								Log.info("[Ledger] head is now at \(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)")
 								for b in stack.reversed() {
-									Log.info("[Ledger] appending \(b.index) \(b.signature!.stringValue)")
+									Log.debug("[Ledger] appending \(b.index) \(b.signature!.stringValue) prev=\(b.previous.stringValue)")
 									if !(try self.longest.append(block: b)) {
-										fatalError("this block should be appendable!")
+										fatalError("this block should be appendable! #\(b.index) hash=\(b.signature!.stringValue) prev=\(b.previous.stringValue), upon #\(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)")
 									}
 								}
 								return true
 							}
 							else {
-								Log.info("[Ledger] splicing not possible for root=\(r.signature!), which requires \(r.previous) to be in cahin")
+								Log.debug("[Ledger] splicing not possible for root=\(r.signature!), which requires \(r.previous) to be in cahin")
 								return false
 							}
 						}
 						else {
-							Log.info("[Ledger] splicing not possible (no root)")
+							Log.debug("[Ledger] splicing not possible (no root)")
 							return false
 						}
 					}

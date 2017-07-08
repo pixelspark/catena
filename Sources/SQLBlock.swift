@@ -9,10 +9,10 @@ struct SQLPayload {
 		case invalidVariableError
 	}
 
-	init(data: Data) throws {
-		if let arr = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
+	init(json: Data) throws {
+		if let arr = try JSONSerialization.jsonObject(with: json, options: []) as? [[String: Any]] {
 			self.transactions = try arr.map { item in
-				return try SQLTransaction(data: item)
+				return try SQLTransaction(json: item)
 			}
 		}
 		else {
@@ -25,7 +25,7 @@ struct SQLPayload {
 	}
 
 	var data: Data {
-		let d = self.transactions.map { $0.data }
+		let d = self.transactions.map { $0.json }
 		return try! JSONSerialization.data(withJSONObject: d, options: [])
 	}
 
@@ -94,7 +94,7 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 		}
 		else {
 			self.seed = nil
-			self.payload = try SQLPayload(data: payload)
+			self.payload = try SQLPayload(json: payload)
 		}
 	}
 
@@ -314,6 +314,40 @@ class SQLLedger: Ledger<SQLBlockchain> {
 	init(genesis: SQLBlock, database path: String, replay: Bool) throws {
 		let lb = try SQLBlockchain(genesis: genesis, database: path, replay: replay)
 		super.init(longest: lb)
+	}
+
+	override func canAccept(transaction: SQLTransaction, pool: SQLBlock?) throws -> Bool {
+		if !transaction.isSignatureValid {
+			Log.info("[Ledger] cannot accept tx \(transaction): signature invalid")
+			return false
+		}
+
+		/* A transaction is acceptable when its counter is one above the stored counter for the invoker key, or zero when
+		the invoker has no counter yet (not executed any transactions before on this chain). */
+		let appendable = try self.mutex.locked { () -> Bool in
+			return try self.longest.withUnverifiedTransactions { chain in
+				if let counter = try chain.meta.users.counter(for: transaction.invoker) {
+					return (counter + 1) == transaction.counter
+				}
+				return transaction.counter == 0
+			}
+		}
+
+		if appendable {
+			return true
+		}
+
+		// Perhaps the transaction is appendable to another pooled transaction?
+		if let p = pool {
+			for tr in p.payload.transactions {
+				if tr.invoker == transaction.invoker && (tr.counter + 1) == transaction.counter {
+					return true
+				}
+			}
+		}
+
+		Log.info("[Ledger] cannot accept tx \(transaction): not appendable (\(transaction.counter))")
+		return false
 	}
 }
 

@@ -65,13 +65,12 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 
 	func connected(connection: WebSocketConnection) {
 		Log.info("[Server] gossip connected \(connection.id)")
-		let pic = PeerIncomingConnection<BlockchainType>(connection: connection)
 
 		self.mutex.locked {
+			let pic = PeerIncomingConnection<BlockchainType>(connection: connection)
+			self.node?.add(peer: pic)
 			self.gossipConnections[connection.id] = pic
 		}
-
-		self.node?.add(peer: pic)
 	}
 
 	func disconnected(connection: WebSocketConnection, reason: WebSocketCloseReasonCode) {
@@ -180,6 +179,7 @@ public enum Gossip<BlockchainType: Blockchain> {
 	case block([String: Any]) // no reply
 	case fetch(BlockType.HashType) // -> block
 	case error(String)
+	case transaction([String: Any])
 
 	init?(json: [String: Any]) {
 		if let q = json[ProtocolConstants.actionKey] as? String {
@@ -197,6 +197,9 @@ public enum Gossip<BlockchainType: Blockchain> {
 			}
 			else if q == "error", let message = json["message"] as? String {
 				self = .error(message)
+			}
+			else if q == "tx", let tx = json["tx"] as? [String: Any] {
+				self = .transaction(tx)
 			}
 			else {
 				return nil
@@ -220,6 +223,9 @@ public enum Gossip<BlockchainType: Blockchain> {
 
 		case .fetch(let h):
 			return [ProtocolConstants.actionKey: "fetch", "hash": h.stringValue]
+
+		case .transaction(let tx):
+			return [ProtocolConstants.actionKey: "tx", "tx": tx]
 
 		case .error(let m):
 			return [ProtocolConstants.actionKey: "error", "message": m]
@@ -330,8 +336,7 @@ public class PeerIncomingConnection<BlockchainType: Blockchain>: PeerConnection<
 }
 
 #if !os(Linux)
-
-	public class PeerOutgoingConnection<BlockchainType: Blockchain>: PeerConnection<BlockchainType>, WebSocketDelegate {
+public class PeerOutgoingConnection<BlockchainType: Blockchain>: PeerConnection<BlockchainType>, WebSocketDelegate {
 	let connection: Starscream.WebSocket
 
 	init(connection: Starscream.WebSocket) {
@@ -383,6 +388,7 @@ public class PeerIncomingConnection<BlockchainType: Blockchain>: PeerConnection<
 
 public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 	typealias BlockType = BlockchainType.BlockType
+	typealias TransactionType = BlockType.TransactionType
 
 	let url: URL
 
@@ -489,10 +495,14 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 			self.lastSeen = Date()
 			Log.debug("[Peer] receive request \(counter)")
 			switch gossip {
+			case .transaction(let trData):
+				let tr = try TransactionType(json: trData)
+				try self.node?.receive(transaction: tr, from: self)
+
 			case .block(let blockData):
 				do {
 					let b = try BlockType.read(json: blockData)
-					try self.node?.receive(block: b, from: self)
+					try self.node?.receive(block: b, from: self, wasRequested: false)
 				}
 				catch {
 					self.fail(error: "Received invalid unsolicited block")

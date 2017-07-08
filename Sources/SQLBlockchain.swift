@@ -20,6 +20,15 @@ class SQLBlockchain: Blockchain {
 
 	let databasePath: String
 
+	private init(genesis: SQLBlock, highest: SQLBlock, database: Database, meta: SQLMetadata, replay: Bool, databasePath: String) {
+		self.genesis = genesis
+		self.highest = highest
+		self.database = database
+		self.meta = meta
+		self.replay = replay
+		self.databasePath = databasePath
+	}
+
 	/** Instantiate an SQL blockchain that starts at the indicated genesis block and is stored in the indicated database
 	file. When `replay` is true, the chain also processes database transactions. When it is false, only validation and
 	metadata operations are performed. */
@@ -83,36 +92,6 @@ class SQLBlockchain: Blockchain {
 		return self.genesis.signature!.difficulty
 	}
 
-	func canAccept(transaction: SQLTransaction, pool: SQLBlock?) throws -> Bool {
-		if !transaction.isSignatureValid {
-			return false
-		}
-
-		/* A transaction is acceptable when its counter is one above the stored counter for the invoker key, or zero when
-		the invoker has no counter yet (not executed any transactions before on this chain). */
-		let appendable = try self.mutex.locked { () -> Bool in
-			if let counter = try self.meta.users.counter(for: transaction.invoker) {
-				return (counter + 1) == transaction.counter
-			}
-			return transaction.counter == 0
-		}
-
-		if appendable {
-			return true
-		}
-
-		// Perhaps the transaction is appendable to another pooled transaction?
-		if let p = pool {
-			for tr in p.payload.transactions {
-				if tr.invoker == transaction.invoker && (tr.counter + 1) == transaction.counter {
-					return true
-				}
-			}
-		}
-
-		return false
-	}
-
 	func append(block: SQLBlock) throws -> Bool {
 		return try self.mutex.locked {
 			// Check if block can be appended
@@ -149,7 +128,8 @@ class SQLBlockchain: Blockchain {
 				if self.meta.headIndex! <= to.index {
 					// Unwinding within queue
 					self.queue = self.queue.filter { return $0.index <= to.index }
-					Log.info("[SQLBlockchain] Permanent is at \(self.meta.headIndex!), replayed up to+including \(to.index)")
+					self.highest = to
+					Log.debug("[SQLBlockchain] Permanent is at \(self.meta.headIndex!), replayed up to+including \(to.index), queue size is \(self.queue.count)")
 				}
 				else {
 					// To-block is earlier than the head of permanent storage. Need to replay the full chain
@@ -199,8 +179,7 @@ class SQLBlockchain: Blockchain {
 		}
 	}
 
-	func withUnverifiedTransactions<T>(_ block: ((Database, SQLMetadata) throws -> (T))) rethrows -> T {
-		// FIXME use a separate database connection!
+	func withUnverifiedTransactions<T>(_ block: ((SQLBlockchain) throws -> (T))) rethrows -> T {
 		return try self.mutex.locked {
 			return try self.database.hypothetical {
 				// Replay queued blocks
@@ -208,7 +187,8 @@ class SQLBlockchain: Blockchain {
 					try block.apply(database: self.database, meta: self.meta, replay: self.replay)
 				}
 
-				return try block(self.database, self.meta)
+				let unverifiedChain = SQLBlockchain(genesis: self.genesis, highest: self.highest, database: self.database, meta: self.meta, replay: self.replay, databasePath: self.databasePath)
+				return try block(unverifiedChain)
 			}
 		}
 	}
