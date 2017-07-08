@@ -60,7 +60,7 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 
 	private func handleIndex(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
 		response.headers.setLocation("/api")
-		response.send(status: .movedPermanently)
+		_ = response.send(status: .movedPermanently)
 	}
 
 	func connected(connection: WebSocketConnection) {
@@ -385,6 +385,10 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 	typealias BlockType = BlockchainType.BlockType
 
 	let url: URL
+
+	/** Time at which we last received a response or request from this peer. Nil when that never happened. */
+	var lastSeen: Date? = nil
+
 	fileprivate(set) var state: PeerState
 	fileprivate(set) var connection: PeerConnection<BlockchainType>? = nil
 	weak var node: Node<BlockchainType>?
@@ -450,6 +454,8 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 
 			try c.request(gossip: .query) { reply in
 				self.mutex.locked {
+					self.lastSeen = Date()
+
 					if case .index(let index) = reply {
 						Log.debug("[Peer] Receive index reply: \(index)")
 						// Update peer status
@@ -480,6 +486,7 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 
 	public func peer(connection: PeerConnection<BlockchainType>, requests gossip: Gossip<BlockchainType>, counter: Int) {
 		do {
+			self.lastSeen = Date()
 			Log.debug("[Peer] receive request \(counter)")
 			switch gossip {
 			case .block(let blockData):

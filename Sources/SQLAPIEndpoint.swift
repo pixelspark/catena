@@ -42,7 +42,8 @@ class SQLAPIEndpoint {
 
 					return [
 						"url": url.absoluteString,
-						"state": desc
+						"state": desc,
+						"lastSeen": p.lastSeen?.iso8601FormattedLocalDate ?? "never"
 					]
 				}
 			}
