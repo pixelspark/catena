@@ -13,12 +13,18 @@ struct Candidate<BlockType: Block>: Equatable {
 	let peer: URL
 }
 
+protocol PeerDatabase {
+	func rememberPeer(url: URL) throws
+}
+
 class Node<BlockchainType: Blockchain> {
 	typealias BlockType = BlockchainType.BlockType
 	private(set) var server: Server<BlockchainType>! = nil
 	private(set) var miner: Miner<BlockchainType>! = nil
 	let ledger: Ledger<BlockchainType>
 	let uuid: UUID
+
+	var peerDatabase: PeerDatabase? = nil
 
 	private let tickTimer: DispatchSourceTimer
 	private let mutex = Mutex()
@@ -64,6 +70,12 @@ class Node<BlockchainType: Blockchain> {
 		self.mutex.locked {
 			if self.peers[url] == nil {
 				self.peers[url] = Peer<BlockchainType>(url: url, state: .new, connection: nil, delegate: self)
+				do {
+					try self.peerDatabase?.rememberPeer(url: url)
+				}
+				catch {
+					Log.error("[Node] Peer database remember failed: \(error.localizedDescription)")
+				}
 				self.queryQueue.append(url)
 			}
 		}
@@ -97,6 +109,12 @@ class Node<BlockchainType: Blockchain> {
 			self.mutex.locked {
 				self.peers[url] = peer
 				if !isSelf {
+					do {
+						try self.peerDatabase?.rememberPeer(url: url)
+					}
+					catch {
+						Log.error("[Node] Peer database remember failed: \(error.localizedDescription)")
+					}
 					self.queryQueue.append(url)
 				}
 			}

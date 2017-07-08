@@ -426,6 +426,46 @@ struct SQLBlockArchive {
 	}
 }
 
+class SQLPeerDatabase: PeerDatabase {
+	let database: Database
+	let table: SQLTable
+	let urlColumn = SQLColumn(name: "url")
+
+	init(database: Database, table: SQLTable) throws {
+		self.database = database
+		self.table = table
+
+		if try !self.database.exists(table: table.name) {
+			let create = SQLStatement.create(table: self.table, schema: SQLSchema(primaryKey: urlColumn, columns:
+				(urlColumn, .text)
+			))
+			try _ = self.database.perform(create.sql(dialect: self.database.dialect))
+		}
+	}
+
+	func rememberPeer(url: URL) throws {
+		let insert = SQLStatement.insert(SQLInsert(orReplace: true, into: self.table, columns: [urlColumn], values: [[
+			SQLExpression.literalString(url.absoluteString)
+			]]))
+		try _ = self.database.perform(insert.sql(dialect: self.database.dialect))
+	}
+
+	func peers() throws -> [URL] {
+		let select = SQLStatement.select(SQLSelect(these: [SQLExpression.column(self.urlColumn)], from: self.table, joins: [], where: nil, distinct: false, orders: []))
+		let res = try self.database.perform(select.sql(dialect: self.database.dialect))
+		var urls: [URL] = []
+		while res.hasRow {
+			if case .text(let urlString) = res.values[0], let u = URL(string: urlString) {
+				urls.append(u)
+			}
+			res.step()
+		}
+
+		return urls
+	}
+}
+
+
 struct SQLMetadata {
 	static let grantsTableName = "grants"
 	static let infoTableName = "_info"

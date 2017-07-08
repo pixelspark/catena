@@ -15,9 +15,10 @@ let logOption = StringOption(shortFlag: "v", longFlag: "log", helpMessage: "The 
 let testOption = BoolOption(shortFlag: "t", longFlag: "test", helpMessage: "Submit test queries to the chain periodically (default: off)")
 let initializeOption = BoolOption(shortFlag: "i", longFlag: "initialize", helpMessage: "Generate transactions to initialize basic database structure (default: false)")
 let noReplayOption = BoolOption(shortFlag: "n", longFlag: "no-replay", helpMessage: "Do not replay database operations, just participate and validate transactions (default: false)")
+let peerDatabaseFileOption = StringOption(longFlag: "peer-database", required: false, helpMessage: "Backing database file for peer database (default: catena-peers.sqlite)")
 
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, peerDatabaseFileOption)
 
 do {
 	try cli.parse()
@@ -65,6 +66,21 @@ do {
 	let netPort = netPortOption.value ?? 8338
 	let node = Node<SQLBlockchain>(ledger: ledger, port: netPort)
 	let _ = SQLAPIEndpoint(node: node, router: node.server.router)
+
+	// Set up peer database
+	let peerDatabaseFile = peerDatabaseFileOption.value ?? "catena-peers.sqlite"
+	if !peerDatabaseFile.isEmpty {
+		let peerDatabase = SQLiteDatabase()
+		try peerDatabase.open(peerDatabaseFile)
+		let peerTable = try SQLPeerDatabase(database: peerDatabase, table: SQLTable(name: "_peers"))
+
+		// Add peers from database
+		for p in try peerTable.peers() {
+			node.add(peer: p)
+		}
+
+		node.peerDatabase = peerTable
+	}
 
 	// Add peers from command line
 	for p in peersOption.value ?? [] {
