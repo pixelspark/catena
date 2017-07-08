@@ -27,8 +27,8 @@ internal extension Block {
 			let previous = json["previous"] as? String,
 			let payloadBase64 = json["payload"] as? String,
 			let payload = Data(base64Encoded: payloadBase64),
-			let previousHash = Hash(string: previous),
-			let signatureHash = Hash(string: signature) {
+			let previousHash = HashType(hash: previous),
+			let signatureHash = HashType(hash: signature) {
 				var b = try Self.init(index: UInt(height), previous: previousHash, payload: payload)
 				b.nonce = UInt(nonce)
 				b.signature = signatureHash
@@ -47,7 +47,7 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 	let router = Router()
 	let port: Int
 	private let mutex = Mutex()
-	private var gossipConnections = [String: PeerIncomingConnection]()
+	private var gossipConnections = [String: PeerIncomingConnection<BlockchainType>]()
 	weak var node: Node<BlockchainType>?
 
 	init(node: Node<BlockchainType>, port: Int) {
@@ -63,7 +63,7 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 
 	func connected(connection: WebSocketConnection) {
 		Log.info("[Server] gossip connected \(connection.id)")
-		let pic = PeerIncomingConnection(connection: connection)
+		let pic = PeerIncomingConnection<BlockchainType>(connection: connection)
 
 		self.mutex.locked {
 			self.gossipConnections[connection.id] = pic
@@ -159,71 +159,74 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 	}
 }
 
-public enum Gossip {
-	static let version = 1
+struct ProtocolConstants {
+	static let actionKey: String = "t"
+	static let version: Int = 1
+}
 
-	public struct Index {
-		let genesis: Hash
-		let peers: [URL]
-		let highest: Hash
-		let height: UInt
+public struct Index<BlockType: Block> {
+	let genesis: BlockType.HashType
+	let peers: [URL]
+	let highest: BlockType.HashType
+	let height: UInt
 
-		init(genesis: Hash, peers: [URL], highest: Hash, height: UInt) {
+	init(genesis: BlockType.HashType, peers: [URL], highest: BlockType.HashType, height: UInt) {
+		self.genesis = genesis
+		self.peers = peers
+		self.highest = highest
+		self.height = height
+	}
+
+	init?(json: [String: Any]) {
+		if
+			let genesisHash = json["genesis"] as? String,
+			let highestHash = json["highest"] as? String,
+			let genesis = BlockType.HashType(hash: genesisHash),
+			let highest = BlockType.HashType(hash: highestHash),
+			let height = json["height"] as? Int,
+			let peers = json["peers"] as? [String]
+		{
 			self.genesis = genesis
-			self.peers = peers
 			self.highest = highest
-			self.height = height
+			self.height = UInt(height)
+			self.peers = peers.flatMap { return URL(string: $0) }
 		}
-
-		init?(json: [String: Any]) {
-			if
-				let genesisHash = json["genesis"] as? String,
-				let highestHash = json["highest"] as? String,
-				let genesis = Hash(string: genesisHash),
-				let highest = Hash(string: highestHash),
-				let height = json["height"] as? Int,
-				let peers = json["peers"] as? [String]
-			{
-				self.genesis = genesis
-				self.highest = highest
-				self.height = UInt(height)
-				self.peers = peers.flatMap { return URL(string: $0) }
-			}
-			else {
-				return nil
-			}
-		}
-
-		var json: [String: Any] {
-			return [
-				"highest": self.highest.stringValue,
-				"height": self.height,
-				"genesis": self.genesis.stringValue,
-				"peers": self.peers.flatMap { $0.absoluteString }
-			]
+		else {
+			return nil
 		}
 	}
 
+	var json: [String: Any] {
+		return [
+			"highest": self.highest.stringValue,
+			"height": self.height,
+			"genesis": self.genesis.stringValue,
+			"peers": self.peers.flatMap { $0.absoluteString }
+		]
+	}
+}
+
+public enum Gossip<BlockchainType: Blockchain> {
+	public typealias BlockType = BlockchainType.BlockType
+
 	case query // -> index
-	case index(Index)
+	case index(Index<BlockType>)
 	case block([String: Any]) // no reply
-	case fetch(Hash) // -> block
+	case fetch(BlockType.HashType) // -> block
 	case error(String)
 
-	static let actionKey = "t"
-
 	init?(json: [String: Any]) {
-		if let q = json[Gossip.actionKey] as? String {
+		if let q = json[ProtocolConstants.actionKey] as? String {
 			if q == "query" {
 				self = .query
 			}
 			else if q == "block", let blockData = json["block"] as? [String: Any] {
 				self = .block(blockData)
 			}
-			else if q == "fetch", let hash = json["hash"] as? String, let hashValue = Hash(string: hash) {
+			else if q == "fetch", let hash = json["hash"] as? String, let hashValue = BlockType.HashType(hash: hash) {
 				self = .fetch(hashValue)
 			}
-			else if q == "index", let idx = json["index"] as? [String: Any], let index = Index(json: idx) {
+			else if q == "index", let idx = json["index"] as? [String: Any], let index = Index<BlockType>(json: idx) {
 				self = .index(index)
 			}
 			else if q == "error", let message = json["message"] as? String {
@@ -241,29 +244,38 @@ public enum Gossip {
 	var json: [String: Any] {
 		switch self {
 		case .query:
-			return [Gossip.actionKey: "query"]
+			return [ProtocolConstants.actionKey: "query"]
 
 		case .block(let b):
-			return [Gossip.actionKey: "block", "block": b]
+			return [ProtocolConstants.actionKey: "block", "block": b]
 
 		case .index(let i):
-			return [Gossip.actionKey: "index", "index": i.json]
+			return [ProtocolConstants.actionKey: "index", "index": i.json]
 
 		case .fetch(let h):
-			return [Gossip.actionKey: "fetch", "hash": h.stringValue]
+			return [ProtocolConstants.actionKey: "fetch", "hash": h.stringValue]
 
 		case .error(let m):
-			return [Gossip.actionKey: "error", "message": m]
+			return [ProtocolConstants.actionKey: "error", "message": m]
 		}
 	}
 }
 
-public class PeerConnection {
-	public typealias Callback = (Gossip) -> ()
+public protocol PeerConnectionDelegate {
+	associatedtype BlockchainType: Blockchain
+	func peer(connection: PeerConnection<BlockchainType>, requests gossip: Gossip<BlockchainType>, counter: Int)
+	func peer(connected _: PeerConnection<BlockchainType>)
+	func peer(disconnected _: PeerConnection<BlockchainType>)
+}
+
+public class PeerConnection<BlockchainType: Blockchain> {
+	public typealias GossipType = Gossip<BlockchainType>
+	public typealias Callback = (Gossip<BlockchainType>) -> ()
+
 	public let mutex = Mutex()
 	private var counter = 0
 	private var callbacks: [Int: Callback] = [:]
-	public weak var delegate: PeerConnectionDelegate?
+	public weak var delegate: Peer<BlockchainType>? = nil
 
 	fileprivate init(isIncoming: Bool) {
 		self.counter = isIncoming ? 1 : 0
@@ -271,7 +283,7 @@ public class PeerConnection {
 
 	public func receive(data: [Any]) {
 		if data.count == 2, let counter = data[0] as? Int, let gossipData = data[1] as? [String: Any] {
-			if let g = Gossip(json: gossipData) {
+			if let g = GossipType(json: gossipData) {
 				self.mutex.locked {
 					if counter != 0, let cb = callbacks[counter] {
 						self.callbacks.removeValue(forKey: counter)
@@ -302,14 +314,14 @@ public class PeerConnection {
 		}
 	}
 
-	public final func reply(counter: Int, gossip: Gossip) throws {
+	public final func reply(counter: Int, gossip: GossipType) throws {
 		try self.mutex.locked {
 			let d = try JSONSerialization.data(withJSONObject: [counter, gossip.json], options: [])
 			try self.send(data: d)
 		}
 	}
 
-	public final func request(gossip: Gossip, callback: Callback? = nil) throws {
+	public final func request(gossip: GossipType, callback: Callback? = nil) throws {
 		let c = self.mutex.locked { () -> Int in
 			counter += 2
 			if let c = callback {
@@ -330,7 +342,7 @@ public class PeerConnection {
 	}
 }
 
-public class PeerIncomingConnection: PeerConnection {
+public class PeerIncomingConnection<BlockchainType: Blockchain>: PeerConnection<BlockchainType> {
 	let connection: WebSocketConnection
 
 	init(connection: WebSocketConnection) {
@@ -351,15 +363,9 @@ public class PeerIncomingConnection: PeerConnection {
 	}
 }
 
-public protocol PeerConnectionDelegate: class {
-	func peer(connection: PeerConnection, requests: Gossip, counter: Int)
-	func peer(connected: PeerConnection)
-	func peer(disconnected: PeerConnection)
-}
-
 #if !os(Linux)
 
-public class PeerOutgoingConnection: PeerConnection, WebSocketDelegate {
+	public class PeerOutgoingConnection<BlockchainType: Blockchain>: PeerConnection<BlockchainType>, WebSocketDelegate {
 	let connection: Starscream.WebSocket
 
 	init(connection: Starscream.WebSocket) {
@@ -409,21 +415,21 @@ public class PeerOutgoingConnection: PeerConnection, WebSocketDelegate {
 }
 #endif
 
-class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
+public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 	typealias BlockType = BlockchainType.BlockType
+
 	let url: URL
 	fileprivate(set) var state: PeerState
+	fileprivate(set) var connection: PeerConnection<BlockchainType>? = nil
 	weak var node: Node<BlockchainType>?
 	public let mutex = Mutex()
 
-	public var connection: PeerConnection? {
-		return self.state.connection
-	}
-
-	init(url: URL, state: PeerState, delegate: Node<BlockchainType>) {
+	init(url: URL, state: PeerState, connection: PeerConnection<BlockchainType>?, delegate: Node<BlockchainType>) {
 		self.url = url
 		self.state = state
+		self.connection = connection
 		self.node = delegate
+		connection?.delegate = self
 	}
 
 	public func advance() {
@@ -437,12 +443,13 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 						let ws = Starscream.WebSocket(url: url)
 						ws.headers["X-UUID"] = n.uuid.uuidString
 						ws.headers["X-Port"] = String(n.server.port)
-						ws.headers["X-Version"] = String(Gossip.version)
-						let pic = PeerOutgoingConnection(connection: ws)
+						ws.headers["X-Version"] = String(ProtocolConstants.version)
+						let pic = PeerOutgoingConnection<BlockchainType>(connection: ws)
 						pic.delegate = self
 						Log.info("[Peer] connect outgoing \(url)")
 						ws.connect()
-						self.state = .connecting(pic)
+						self.state = .connecting
+						self.connection = pic
 						#endif
 
 					case .connected(_), .queried(_):
@@ -455,6 +462,7 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 				}
 			}
 			catch {
+				self.connection = nil
 				self.state = .failed(error: "advance error: \(error.localizedDescription)")
 			}
 		}
@@ -463,14 +471,15 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 	public func fail(error: String) {
 		Log.info("[Peer] \(self.url.absoluteString) failing: \(error)")
 		self.mutex.locked {
+			self.connection = nil
 			self.state = .failed(error: error)
 		}
 	}
 
 	private func query() throws {
-		if let n = self.node, let c = self.state.connection {
+		if let n = self.node, let c = self.connection {
 			self.mutex.locked {
-				self.state = .querying(c)
+				self.state = .querying
 			}
 
 			try c.request(gossip: .query) { reply in
@@ -480,10 +489,11 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 						// Update peer status
 						if index.genesis != n.ledger.longest.genesis.signature! {
 							// Peer believes in another genesis, ignore him
+							self.connection = nil
 							self.state = .ignored(reason: "believes in other genesis")
 						}
 						else {
-							self.state = .queried(c)
+							self.state = .queried
 						}
 
 						// New peers?
@@ -494,6 +504,7 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 						n.receive(candidate: Candidate(hash: index.highest, height: index.height, peer: self.url))
 					}
 					else {
+						self.connection = nil
 						self.state = .failed(error: "Invalid reply received to query request")
 					}
 				}
@@ -501,7 +512,7 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 		}
 	}
 
-	public func peer(connection: PeerConnection, requests gossip: Gossip, counter: Int) {
+	public func peer(connection: PeerConnection<BlockchainType>, requests gossip: Gossip<BlockchainType>, counter: Int) {
 		do {
 			Log.debug("[Peer] receive request \(counter)")
 			switch gossip {
@@ -528,7 +539,7 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 				// We received a query from the other end
 				if let n = self.node {
 					let idx = n.ledger.mutex.locked {
-						return Gossip.Index(
+						return Index<BlockchainType.BlockType>(
 							genesis: n.ledger.longest.genesis.signature!,
 							peers: Array(n.validPeers),
 							highest: n.ledger.longest.highest.signature!,
@@ -550,11 +561,11 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 		}
 	}
 
-	public func peer(connected _: PeerConnection) {
+	public func peer(connected _: PeerConnection<BlockchainType>) {
 		self.mutex.locked {
-			if case .connecting(let c) = self.state {
+			if case .connecting = self.state {
 				Log.info("[Peer] \(url) connected outgoing")
-				self.state = .connected(c)
+				self.state = .connected
 			}
 			else {
 				Log.error("[Peer] \(url) connected while not connecting")
@@ -562,30 +573,21 @@ class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 		}
 	}
 
-	public func peer(disconnected _: PeerConnection) {
+	public func peer(disconnected _: PeerConnection<BlockchainType>) {
 		self.mutex.locked {
 			Log.info("[Peer] \(url) disconnected outgoing")
 			self.state = .new
+			self.connection = nil
 		}
 	}
 }
 
 public enum PeerState {
 	case new // Peer has not yet connected
-	case connecting(PeerConnection)
-	case connected(PeerConnection) // The peer is connected but has not been queried yet
-	case querying(PeerConnection) // The peer is currently being queried
-	case queried(PeerConnection) // The peer has last been queried successfully
+	case connecting
+	case connected // The peer is connected but has not been queried yet
+	case querying // The peer is currently being queried
+	case queried // The peer has last been queried successfully
 	case ignored(reason: String) // The peer is ourselves or believes in another genesis, ignore it forever
 	case failed(error: String) // Talking to the peer failed for some reason, ignore it for a while
-
-	var connection: PeerConnection? {
-		switch self {
-		case .connected(let c), .queried(let c), .querying(let c):
-			return c
-
-		case .new, .failed(error: _), .ignored, .connecting(_):
-			return nil
-		}
-	}
 }

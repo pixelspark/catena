@@ -2,7 +2,7 @@ import Foundation
 import Cryptor
 import LoggerAPI
 
-protocol Blockchain {
+public protocol Blockchain {
 	associatedtype BlockType: Block
 
 	/** The block currently at the head of this blockchain. */
@@ -16,7 +16,7 @@ protocol Blockchain {
 
 	/** Returns the block with the given signature hash, if it is on this chain. Returns nil when there is no block on
 	this chain with the given hash. */
-	func get(block: Hash) throws -> BlockType?
+	func get(block: BlockType.HashType) throws -> BlockType?
 
 	/** Append the given block to the head of this chain. The block needs to have the current head block as previous block,
 	and needs to be valid. Will return true when the block was actually appended, and false if it wasn't. */
@@ -37,6 +37,7 @@ public protocol Transaction {
 
 public protocol Block: CustomDebugStringConvertible, Equatable {
 	associatedtype TransactionType: Transaction
+	associatedtype HashType: Hash
 
 	/** The position of this block in the blockchain. The block with index 0 is considered the genesis block, and has a
 	zero previous hash. For all other blocks, the index of the block with the previous hash should have an index that is
@@ -44,13 +45,13 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	var index: UInt { get set }
 
 	/** The hash of the previous block in this chain, or a zero hash in case this block is the genesis block (index=0). */
-	var previous: Hash { get set }
+	var previous: HashType { get set }
 
 	/** The nonce used to generate a valid proof-of-work signature for this block. */
 	var nonce: UInt { get set }
 
 	/** The signature hash for this block, or nil if the block has not been signed yet. */
-	var signature: Hash? { get set }
+	var signature: HashType? { get set }
 
 	/** The payload of this block. */
 	var payloadData: Data { get }
@@ -62,7 +63,7 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	init()
 
 	/** Create a block with the given index, previous hash and payload data. */
-	init(index: UInt, previous: Hash, payload: Data) throws
+	init(index: UInt, previous: HashType, payload: Data) throws
 
 	/** Append a transaction to the payload data of this block. */
 	mutating func append(transaction: TransactionType) throws
@@ -72,27 +73,16 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	func isPayloadValid() -> Bool
 }
 
-extension Data {
-	var hash: Hash {
-		return Hash(self.sha256)
-	}
-}
+public protocol Hash: Hashable, CustomDebugStringConvertible {
+	var hash: Data { get }
+	var difficulty: Int { get }
 
-extension UInt8 {
-	var numberOfLeadingZeroBits: Int {
-		var n = 0
-		var b = self
-		if b == 0 {
-			n += 8
-		}
-		else {
-			while (b & 0x80) == 0 {
-				b <<= 1
-				n += 1
-			}
-		}
-		return n
-	}
+	static var zeroHash: Self { get }
+
+	init(hash: Data)
+	init(of: Data)
+	init?(hash: String)
+	var stringValue: String { get }
 }
 
 extension String {
@@ -116,14 +106,32 @@ extension String {
 	}
 }
 
-public struct Hash: Equatable, Hashable, CustomDebugStringConvertible {
-	let hash: Data
 
-	static var zeroHash: Hash {
-		return Hash(Data(bytes: [UInt8](repeating: 0,  count: Int(32))))
+extension UInt8 {
+	var numberOfLeadingZeroBits: Int {
+		var n = 0
+		var b = self
+		if b == 0 {
+			n += 8
+		}
+		else {
+			while (b & 0x80) == 0 {
+				b <<= 1
+				n += 1
+			}
+		}
+		return n
+	}
+}
+
+public struct SHA256Hash: Hash {
+	public let hash: Data
+
+	public static var zeroHash: SHA256Hash {
+		return SHA256Hash(hash: Data(bytes: [UInt8](repeating: 0,  count: Int(32))))
 	}
 
-	init?(string: String) {
+	public init?(hash string: String) {
 		if let d = string.hexDecoded, d.count == Int(32) {
 			self.hash = d
 		}
@@ -132,12 +140,12 @@ public struct Hash: Equatable, Hashable, CustomDebugStringConvertible {
 		}
 	}
 
-	init(_ hash: Data) {
+	public init(hash: Data) {
 		assert(hash.count == Int(32))
 		self.hash = hash
 	}
 
-	init(of: Data) {
+	public init(of: Data) {
 		self.hash = of.sha256
 	}
 
@@ -145,11 +153,11 @@ public struct Hash: Equatable, Hashable, CustomDebugStringConvertible {
 		return self.stringValue
 	}
 
-	var stringValue: String {
+	public var stringValue: String {
 		return self.hash.map { String(format: "%02hhx", $0) }.joined()
 	}
 
-	var difficulty: Int {
+	public var difficulty: Int {
 		var n = 0
 		for byte in self.hash {
 			n += byte.numberOfLeadingZeroBits
@@ -165,7 +173,7 @@ public struct Hash: Equatable, Hashable, CustomDebugStringConvertible {
 	}
 }
 
-public func == (lhs: Hash, rhs: Hash) -> Bool {
+public func == (lhs: SHA256Hash, rhs: SHA256Hash) -> Bool {
 	return lhs.hash == rhs.hash
 }
 
@@ -192,13 +200,13 @@ extension Data {
 extension Block {
 	var isSignatureValid: Bool {
 		if let s = self.signature {
-			return self.dataForSigning.hash == s
+			return HashType(of: self.dataForSigning) == s
 		}
 		return false
 	}
 
 	var isAGenesisBlock: Bool {
-		return self.previous == Hash.zeroHash
+		return self.previous == HashType.zeroHash
 	}
 
 	var dataForSigning: Data {
@@ -223,7 +231,7 @@ extension Block {
 	mutating func mine(difficulty: Int) {
 		while true {
 			self.nonce += 1
-			let hash = self.dataForSigning.hash
+			let hash = HashType(of: self.dataForSigning)
 			if hash.difficulty >= difficulty {
 				self.signature = hash
 				return
@@ -234,11 +242,12 @@ extension Block {
 
 class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 	typealias BlockType = BlockchainType.BlockType
+	typealias HashType = BlockType.HashType
 
 	var longest: BlockchainType
 	let mutex = Mutex()
-	var orphansByHash: [Hash: BlockType] = [:]
-	var orphansByPreviousHash: [Hash: BlockType] = [:]
+	var orphansByHash: [HashType: BlockType] = [:]
+	var orphansByPreviousHash: [HashType: BlockType] = [:]
 
 	init(longest: BlockchainType) {
 		self.longest = longest

@@ -57,7 +57,7 @@ class SQLBlockchain: Blockchain {
 		}
 	}
 
-	func get(block hash: Hash) throws -> SQLBlock? {
+	func get(block hash: BlockType.HashType) throws -> SQLBlock? {
 		if let b =  try self.meta.get(block: hash) {
 			return b
 		}
@@ -384,12 +384,12 @@ struct SQLBlockArchive {
 		_ = try database.perform(insertStatement.sql(dialect: database.dialect))
 	}
 
-	func remove(block hash: Hash) throws {
+	func remove(block hash: SQLBlock.HashType) throws {
 		let stmt = SQLStatement.delete(from: self.table, where: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)))
 		_ = try self.database.perform(stmt.sql(dialect: self.database.dialect))
 	}
 
-	func get(block hash: Hash) throws -> SQLBlock? {
+	func get(block hash: SQLBlock.HashType) throws -> SQLBlock? {
 		let stmt = SQLStatement.select(SQLSelect(
 			these: ["signature", "index", "nonce", "previous", "payload"].map { return SQLExpression.column(SQLColumn(name: $0)) },
 			from: self.table,
@@ -403,7 +403,7 @@ struct SQLBlockArchive {
 			case .int(let index) = res.values[1],
 			case .int(let nonce) = res.values[2],
 			case .blob(let previousData) = res.values[3] {
-			let previous = Hash(previousData)
+			let previous = SQLBlock.HashType(hash: previousData)
 			assert(index >= 0, "Index must be positive")
 
 			// Payload can be null or block
@@ -459,10 +459,10 @@ struct SQLMetadata {
 		self.users = try SQLUsersTable(database: database, table: SQLTable(name: SQLMetadata.usersTableName))
 	}
 
-	var headHash: Hash? {
+	var headHash: SQLBlock.HashType? {
 		do {
 			if let h = try self.info.get(self.infoHeadHashKey) {
-				return Hash(string: h)
+				return SQLBlock.HashType(hash: h)
 			}
 			return nil
 		}
@@ -483,7 +483,7 @@ struct SQLMetadata {
 		}
 	}
 
-	func set(head: Hash, index: UInt) throws {
+	func set(head: SQLBlock.HashType, index: UInt) throws {
 		try self.database.transaction(name: "metadata-set-\(index)-\(head.stringValue)") {
 			try self.info.set(key: infoHeadHashKey, value: head.stringValue)
 			try self.info.set(key: infoHeadIndexKey, value: String(index))
@@ -512,11 +512,11 @@ struct SQLMetadata {
 		try self.archive.archive(block: block)
 	}
 
-	func remove(block hash: Hash) throws {
+	func remove(block hash: SQLBlock.HashType) throws {
 		try self.archive.remove(block: hash)
 	}
 
-	func get(block hash: Hash) throws -> SQLBlock? {
+	func get(block hash: SQLBlock.HashType) throws -> SQLBlock? {
 		return try self.archive.get(block: hash)
 	}
 }

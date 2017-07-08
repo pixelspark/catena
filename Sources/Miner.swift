@@ -4,6 +4,7 @@ import LoggerAPI
 
 class Miner<BlockchainType: Blockchain> {
 	typealias BlockType = BlockchainType.BlockType
+	typealias HashType = BlockType.HashType
 
 	private weak var node: Node<BlockchainType>?
 	private(set) var block: BlockType? = nil
@@ -72,7 +73,7 @@ class Miner<BlockchainType: Blockchain> {
 								b.nonce = self.counter
 
 								// See if this combination is good enough
-								let hash = b.dataForSigning.hash
+								let hash = HashType(of: b.dataForSigning)
 								if hash.difficulty >= difficulty {
 									// We found a block!
 									b.signature = hash

@@ -8,7 +8,7 @@ struct Candidate<BlockType: Block>: Equatable {
 		return lhs.hash == rhs.hash && lhs.peer == rhs.peer
 	}
 
-	let hash: Hash
+	let hash: BlockType.HashType
 	let height: UInt
 	let peer: URL
 }
@@ -63,13 +63,13 @@ class Node<BlockchainType: Blockchain> {
 	func add(peer url: URL) {
 		self.mutex.locked {
 			if self.peers[url] == nil {
-				self.peers[url] = Peer<BlockchainType>(url: url, state: .new, delegate: self)
+				self.peers[url] = Peer<BlockchainType>(url: url, state: .new, connection: nil, delegate: self)
 				self.queryQueue.append(url)
 			}
 		}
 	}
 
-	func add(peer connection: PeerIncomingConnection) {
+	func add(peer connection: PeerIncomingConnection<BlockchainType>) {
 		var uc = URLComponents()
 		uc.scheme = "ws"
 		uc.host = connection.connection.request.remoteAddress
@@ -81,7 +81,7 @@ class Node<BlockchainType: Blockchain> {
 			let connectingPort = Int(connectingPortString),
 			let connectingVersionString = connection.connection.request.headers["X-Version"]?.first,
 			let connectingVersion = Int(connectingVersionString),
-			connectingVersion == Gossip.version,
+			connectingVersion == ProtocolConstants.version,
 			connectingPort > 0, connectingPort < 65535 {
 			uc.user = connectingUUIDString
 			uc.port = connectingPort
@@ -92,8 +92,7 @@ class Node<BlockchainType: Blockchain> {
 				connection.close()
 			}
 
-			let peer = Peer<BlockchainType>(url: url, state: isSelf ? .ignored(reason: "is ourselves") : .connected(connection), delegate: self)
-			connection.delegate = peer
+			let peer = Peer<BlockchainType>(url: url, state: isSelf ? .ignored(reason: "is ourselves") : .connected, connection: isSelf ? nil : connection, delegate: self)
 
 			self.mutex.locked {
 				self.peers[url] = peer
@@ -131,9 +130,9 @@ class Node<BlockchainType: Blockchain> {
 				Log.info("[Node] Re-broadcasting block \(block) to peers as it is new")
 				self.peers.forEach { (url, otherPeer) in
 					if otherPeer.url != p.url {
-						if case .connected(let c) = otherPeer.state {
+						if case .connected = otherPeer.state, let otherConnection = otherPeer.connection {
 							do {
-								try c.request(gossip: Gossip.block(block.json))
+								try otherConnection.request(gossip: Gossip.block(block.json))
 							}
 							catch {
 								// Not a problem if this fails
@@ -152,18 +151,20 @@ class Node<BlockchainType: Blockchain> {
 		self.mutex.locked {
 			for (_, peer) in self.peers {
 				switch peer.state {
-				case .queried(let ps), .connected(let ps):
-					self.workerQueue.async {
-						do {
-							Log.debug("[Node] posting mined block \(block.index) to peer \(peer)")
-							try ps.request(gossip: .block(block.json))
-						}
-						catch {
-							Log.error("[Node] Error sending mined block post: \(error.localizedDescription)")
+				case .queried, .connected:
+					if let peerConnection = peer.connection {
+						self.workerQueue.async {
+							do {
+								Log.debug("[Node] posting mined block \(block.index) to peer \(peer)")
+								try peerConnection.request(gossip: .block(block.json))
+							}
+							catch {
+								Log.error("[Node] Error sending mined block post: \(error.localizedDescription)")
+							}
 						}
 					}
 
-				case .failed(error: _), .ignored, .querying, .connecting(_), .new:
+				case .failed(error: _), .ignored, .querying, .connecting, .new:
 					break
 				}
 			}
@@ -202,7 +203,7 @@ class Node<BlockchainType: Blockchain> {
 			if let p = self.peers[candidate.peer], let c = p.mutex.locked(block: { return p.connection }) {
 
 				do {
-					try c.request(gossip: .fetch(candidate.hash)) { reply in
+					try c.request(gossip: Gossip<BlockchainType>.fetch(candidate.hash)) { reply in
 						if case .block(let blockData) = reply {
 							do {
 								let block = try BlockType.read(json: blockData)

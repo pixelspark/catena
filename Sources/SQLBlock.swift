@@ -54,6 +54,7 @@ struct SQLPayload {
 
 struct SQLBlock: Block, CustomDebugStringConvertible {
 	typealias TransactionType = SQLTransaction
+	typealias HashType = SHA256Hash
 
 	/// The maximum number of transactions a block is allowed to contain
 	let maximumNumberOfTransactionsPerBlock = 100
@@ -62,15 +63,15 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 	let maximumPayloadSizeBytes = 1024 * 1024 // 1 MiB
 
 	var index: UInt
-	var previous: Hash
+	var previous: HashType
 	var payload: SQLPayload
 	var nonce: UInt = 0
-	var signature: Hash? = nil
+	var signature: HashType? = nil
 	private let seed: String! // Only used for genesis blocks, in which case hash==zeroHash and payload is empty
 
 	init() {
 		self.index = 0
-		self.previous = Hash.zeroHash
+		self.previous = HashType.zeroHash
 		self.payload = SQLPayload()
 		self.seed = nil
 	}
@@ -79,15 +80,15 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 		self.index = 0
 		self.seed = seed
 		self.payload = SQLPayload()
-		self.previous = Hash.zeroHash
+		self.previous = HashType.zeroHash
 	}
 
-	init(index: UInt, previous: Hash, payload: Data) throws {
+	init(index: UInt, previous: HashType, payload: Data) throws {
 		self.index = index
 		self.previous = previous
 
 		// If this is a genesis block, the payload is used as seed
-		if self.previous == Hash.zeroHash {
+		if self.previous == HashType.zeroHash {
 			self.payload = SQLPayload()
 			self.seed = String(data: payload, encoding: .utf8)!
 		}
@@ -97,7 +98,7 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 		}
 	}
 
-	init(index: UInt, previous: Hash, payload: SQLPayload) {
+	init(index: UInt, previous: HashType, payload: SQLPayload) {
 		self.index = index
 		self.previous = previous
 		self.payload = payload
