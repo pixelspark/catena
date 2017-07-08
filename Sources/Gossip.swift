@@ -43,7 +43,6 @@ internal extension Block {
 class Server<BlockchainType: Blockchain>: WebSocketService {
 	typealias BlockType = BlockchainType.BlockType
 
-	private let version = 1
 	let router = Router()
 	let port: Int
 	private let mutex = Mutex()
@@ -55,10 +54,13 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 		self.port = port
 
 		WebSocket.register(service: self, onPath: "/")
-
-		// Not part of the API used between nodes
-		router.get("/", handler: self.handleIndex)
+		router.get("/", handler: handleIndex)
 		Kitura.addHTTPServer(onPort: port, with: router)
+	}
+
+	private func handleIndex(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+		response.headers.setLocation("/api")
+		response.send(status: .movedPermanently)
 	}
 
 	func connected(connection: WebSocketConnection) {
@@ -120,42 +122,6 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 				Log.error("[Server] received gossip data for non-connection: \(from.id)")
 			}
 		}
-	}
-
-	/** Other peers will GET this, or POST with a JSON object containing their own UUID (string) and port (number). */
-	private func handleIndex(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let longest = self.node!.ledger.longest
-
-		response.send(json: [
-			"version": self.version,
-			"uuid": self.node!.uuid.uuidString,
-
-			"longest": [
-				"highest": longest.highest.json,
-				"genesis": longest.genesis.json
-			],
-
-			"peers": self.node!.peers.map { (url, p) -> [String: Any] in
-				return p.mutex.locked {
-					let desc: String
-					switch p.state {
-					case .new: desc = "new"
-					case .connected(_): desc = "connected"
-					case .connecting(_): desc = "connecting"
-					case .failed(error: let e): desc = "error(\(e))"
-					case .ignored(reason: let e): desc = "ignored(\(e))"
-					case .queried(_): desc = "queried"
-					case .querying(_): desc = "querying"
-					}
-
-					return [
-						"url": url.absoluteString,
-						"state": desc
-					]
-				}
-			}
-		])
-		next()
 	}
 }
 

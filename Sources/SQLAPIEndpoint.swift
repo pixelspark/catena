@@ -7,11 +7,47 @@ class SQLAPIEndpoint {
 	init(node: Node<SQLBlockchain>, router: Router) {
 		self.node = node
 
+		router.get("/api", handler: self.handleIndex)
 		router.get("/api/block/:hash", handler: self.handleGetBlock)
 		router.get("/api/orphans", handler: self.handleGetOrphans)
 		router.get("/api/head", handler: self.handleGetLast)
 		router.get("/api/journal", handler: self.handleGetJournal)
 		router.get("/api/users", handler: self.handleGetUsers)
+	}
+
+	private func handleIndex(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+		let longest = self.node.ledger.longest
+
+		response.send(json: [
+			"version": ProtocolConstants.version,
+			"uuid": self.node.uuid.uuidString,
+
+			"longest": [
+				"highest": longest.highest.json,
+				"genesis": longest.genesis.json
+			],
+
+			"peers": self.node.peers.map { (url, p) -> [String: Any] in
+				return p.mutex.locked {
+					let desc: String
+					switch p.state {
+					case .new: desc = "new"
+					case .connected(_): desc = "connected"
+					case .connecting(_): desc = "connecting"
+					case .failed(error: let e): desc = "error(\(e))"
+					case .ignored(reason: let e): desc = "ignored(\(e))"
+					case .queried(_): desc = "queried"
+					case .querying(_): desc = "querying"
+					}
+
+					return [
+						"url": url.absoluteString,
+						"state": desc
+					]
+				}
+			}
+		])
+		next()
 	}
 
 	private func handleGetBlock(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
