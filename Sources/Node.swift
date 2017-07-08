@@ -51,10 +51,12 @@ class Node<BlockchainType: Blockchain> {
 
 	/** Append a transaction to the memory pool (maintained by the miner). */
 	func submit(transaction: BlockType.TransactionType) throws {
-		try self.miner.append { (b : BlockType?) -> BlockType in
-			var block = b ?? BlockType()
-			try block.append(transaction: transaction)
-			return block
+		// Is this transaction in-order?
+		if try self.ledger.longest.canAccept(transaction: transaction, pool: self.miner.block) {
+			try self.miner.append(transaction: transaction)
+		}
+		else {
+			Log.debug("[Node] Not appending transaction \(transaction) to memory pool: ledger says it isn't acceptable")
 		}
 	}
 

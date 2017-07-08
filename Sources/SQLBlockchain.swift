@@ -83,6 +83,36 @@ class SQLBlockchain: Blockchain {
 		return self.genesis.signature!.difficulty
 	}
 
+	func canAccept(transaction: SQLTransaction, pool: SQLBlock?) throws -> Bool {
+		if !transaction.isSignatureValid {
+			return false
+		}
+
+		/* A transaction is acceptable when its counter is one above the stored counter for the invoker key, or zero when
+		the invoker has no counter yet (not executed any transactions before on this chain). */
+		let appendable = try self.mutex.locked { () -> Bool in
+			if let counter = try self.meta.users.counter(for: transaction.invoker) {
+				return (counter + 1) == transaction.counter
+			}
+			return transaction.counter == 0
+		}
+
+		if appendable {
+			return true
+		}
+
+		// Perhaps the transaction is appendable to another pooled transaction?
+		if let p = pool {
+			for tr in p.payload.transactions {
+				if tr.invoker == transaction.invoker && (tr.counter + 1) == transaction.counter {
+					return true
+				}
+			}
+		}
+
+		return false
+	}
+
 	func append(block: SQLBlock) throws -> Bool {
 		return try self.mutex.locked {
 			// Check if block can be appended

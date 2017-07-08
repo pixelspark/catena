@@ -6,7 +6,7 @@ class Miner<BlockchainType: Blockchain> {
 	typealias BlockType = BlockchainType.BlockType
 
 	private weak var node: Node<BlockchainType>?
-	private var block: BlockType? = nil
+	private(set) var block: BlockType? = nil
 	private let mutex = Mutex()
 	private var counter: UInt = 0
 	public var isEnabled = true
@@ -17,10 +17,14 @@ class Miner<BlockchainType: Blockchain> {
 		self.counter = UInt(abs(random(Int.self)))
 	}
 
-	func append(callback: ((BlockType?) throws -> BlockType)) rethrows {
+	func append(transaction: BlockType.TransactionType) throws {
 		try self.mutex.locked {
-			self.block = try callback(self.block)
+			if self.block == nil {
+				self.block = BlockType()
+			}
+			try self.block!.append(transaction: transaction)
 		}
+
 		self.start()
 	}
 
