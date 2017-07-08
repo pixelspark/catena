@@ -2,6 +2,76 @@ import Foundation
 import Cryptor
 import LoggerAPI
 
+protocol Blockchain {
+	associatedtype BlockType: Block
+
+	/** The block currently at the head of this blockchain. */
+	var highest: BlockType { get }
+
+	/** The genesis block (is required to have index=0). */
+	var genesis: BlockType { get }
+
+	/** The number of zero bits a signature is required to have at the beginning to be considered a valid proof of work. */
+	var difficulty: Int { get }
+
+	/** Returns the block with the given signature hash, if it is on this chain. Returns nil when there is no block on
+	this chain with the given hash. */
+	func get(block: Hash) throws -> BlockType?
+
+	/** Append the given block to the head of this chain. The block needs to have the current head block as previous block,
+	and needs to be valid. Will return true when the block was actually appended, and false if it wasn't. */
+	func append(block: BlockType) throws -> Bool
+
+	/** 'Rewind' the blockchain so that the `to` block becomes the new head. The `to` block needs to be on this chain, or
+	the function will throw an error. */
+	func unwind(to: BlockType) throws
+
+	/** Returns whether a transaction is valid for inclusion in the transaction memory pool (to be mined). The optional
+	`pool` argument may refer to a block that contains transactions currently in the memory pool (for mining). */
+	func canAccept(transaction: BlockType.TransactionType, pool: BlockType?) throws -> Bool
+}
+
+public protocol Transaction {
+	var isSignatureValid: Bool { get }
+}
+
+public protocol Block: CustomDebugStringConvertible, Equatable {
+	associatedtype TransactionType: Transaction
+
+	/** The position of this block in the blockchain. The block with index 0 is considered the genesis block, and has a
+	zero previous hash. For all other blocks, the index of the block with the previous hash should have an index that is
+	exactly one lower than the index of this block. */
+	var index: UInt { get set }
+
+	/** The hash of the previous block in this chain, or a zero hash in case this block is the genesis block (index=0). */
+	var previous: Hash { get set }
+
+	/** The nonce used to generate a valid proof-of-work signature for this block. */
+	var nonce: UInt { get set }
+
+	/** The signature hash for this block, or nil if the block has not been signed yet. */
+	var signature: Hash? { get set }
+
+	/** The payload of this block. */
+	var payloadData: Data { get }
+
+	/** The payload data of this block actually used for signing. */
+	var payloadDataForSigning: Data { get }
+
+	/** Create a new, empty block with index=0 and previous set to the zero hash. */
+	init()
+
+	/** Create a block with the given index, previous hash and payload data. */
+	init(index: UInt, previous: Hash, payload: Data) throws
+
+	/** Append a transaction to the payload data of this block. */
+	mutating func append(transaction: TransactionType) throws
+
+	/** Perform validation on the payload itself (e.g. signatures on contained transactions) and returns whether the
+	payload is valid. */
+	func isPayloadValid() -> Bool
+}
+
 extension Data {
 	var hash: Hash {
 		return Hash(self.sha256)
@@ -107,38 +177,6 @@ enum BlockError: LocalizedError {
 		case .formatError: return "block format error"
 		}
 	}
-}
-
-public protocol Transaction {
-	var isSignatureValid: Bool { get }
-}
-
-protocol Blockchain {
-	associatedtype BlockType: Block
-
-	var highest: BlockType { get }
-	var genesis: BlockType { get }
-	var difficulty: Int { get }
-
-	func get(block: Hash) throws -> BlockType?
-	func append(block: BlockType) throws -> Bool
-	func unwind(to: BlockType) throws
-}
-
-public protocol Block: CustomDebugStringConvertible, Equatable {
-	associatedtype TransactionType: Transaction
-
-	var index: UInt { get set }
-	var previous: Hash { get set }
-	var nonce: UInt { get set }
-	var signature: Hash? { get set }
-	var payloadData: Data { get }
-	var payloadDataForSigning: Data { get }
-
-	init()
-	init(index: UInt, previous: Hash, payload: Data) throws
-	mutating func append(transaction: TransactionType) throws
-	func isPayloadValid() -> Bool
 }
 
 extension Data {
