@@ -295,6 +295,11 @@ enum SQLBinary {
 	}
 }
 
+struct SQLWhen {
+	var when: SQLExpression
+	var then: SQLExpression
+}
+
 enum SQLExpression {
 	case literalInteger(Int)
 	case literalString(String)
@@ -303,6 +308,7 @@ enum SQLExpression {
 	case allColumns
 	case null
 	case variable(String)
+	indirect case when([SQLWhen], else: SQLExpression?)
 	indirect case binary(SQLExpression, SQLBinary, SQLExpression)
 	indirect case unary(SQLUnary, SQLExpression)
 
@@ -334,6 +340,21 @@ enum SQLExpression {
 
 		case .unary(let unary, let ex):
 			return unary.sql(expression: ex.sql(dialect: dialect), dialect: dialect)
+
+		case .when(let whens, else: let elseOutcome):
+			let whensString = whens.map { w in
+				return " WHEN \(w.when.sql(dialect: dialect)) THEN \(w.then.sql(dialect: dialect))"
+			}.joined()
+
+			let elseString: String
+			if let e = elseOutcome {
+				elseString = " ELSE \(e.sql(dialect: dialect))"
+			}
+			else {
+				elseString = ""
+			}
+
+			return "CASE\(whensString)\(elseString) END"
 		}
 	}
 }
@@ -531,7 +552,27 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			self.stack.append(.expression(.binary(left, op, right)))
 		})/~)
 
-		add_named_rule("ex", rule: ^"ex-equality")
+		add_named_rule("ex-case-when", rule:
+			Parser.matchLiteralInsensitive("CASE") => {
+				self.stack.append(.expression(SQLExpression.when([], else: nil)))
+			}
+			~~ ((Parser.matchLiteralInsensitive("WHEN") ~~ ^"ex-equality" ~~ Parser.matchLiteralInsensitive("THEN") ~~ ^"ex-equality") => {
+				guard case .expression(let then) = self.stack.popLast()! else { fatalError() }
+				guard case .expression(let when) = self.stack.popLast()! else { fatalError() }
+				guard case .expression(let caseExpression) = self.stack.popLast()! else { fatalError() }
+				guard case .when(var whens, else: _) = caseExpression else { fatalError() }
+				whens.append(SQLWhen(when: when, then: then))
+				self.stack.append(.expression(SQLExpression.when(whens, else: nil)))
+			})+
+			~~ (((Parser.matchLiteralInsensitive("ELSE") ~~ ^"ex-equality") => {
+				guard case .expression(let then) = self.stack.popLast()! else { fatalError() }
+				guard case .expression(let caseExpression) = self.stack.popLast()! else { fatalError() }
+				guard case .when(let whens, else: _) = caseExpression else { fatalError() }
+				self.stack.append(.expression(SQLExpression.when(whens, else: then)))
+			})/~)
+			~~ Parser.matchLiteralInsensitive("END"))
+
+		add_named_rule("ex", rule: ^"ex-case-when" | ^"ex-equality")
 
 		add_named_rule("order-direction", rule:
 			(Parser.matchLiteralInsensitive("ASC") => {
@@ -999,6 +1040,11 @@ extension SQLExpression {
 
 		case .unary(let unary, let ex):
 			newSelf = .unary(try unary.visit(visitor), try ex.visit(visitor))
+
+		case .when(let whens, else: let e):
+			newSelf = .when(try whens.map {
+				return SQLWhen(when: try $0.when.visit(visitor), then: try $0.then.visit(visitor))
+			}, else: try e?.visit(visitor))
 		}
 
 		return try visitor.visit(expression: newSelf)
