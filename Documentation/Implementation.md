@@ -77,8 +77,9 @@ A transaction signature is the Ed25519 signature of the following data, using th
 
 The following limits are currently enforced;
 
-* _Block size_: a block's payload may not be larger than 1 MiB
+* _Block size_: a block's payload may not be larger than 1 MiB (measured against the data to be signed)
 * _Transactions per block_: a block may not contain more than 100 transactions
+* _Transaction size_: a transaction may not be larger than 10 KiB (measured against the data to be signed)
 
 ## Genesis blocks
 

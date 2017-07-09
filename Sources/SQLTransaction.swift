@@ -9,6 +9,9 @@ class SQLTransaction: Transaction, CustomDebugStringConvertible {
 	let statement: SQLStatement
 	var signature: Data? = nil
 
+	/** The maximum size of a transaction (as measured by `dataForSigning`) */
+	static let maximumSize = 1024 * 10 // 10 KiB
+
 	enum SQLTransactionError: Error {
 		case formatError
 		case syntaxError
@@ -66,7 +69,13 @@ class SQLTransaction: Transaction, CustomDebugStringConvertible {
 	var isSignatureValid: Bool {
 		do {
 			if let s = self.signature {
-				return try self.invoker.verify(message: self.dataForSigning, signature: s)
+				let sd = self.dataForSigning
+
+				// Check transaction size
+				if sd.count > SQLTransaction.maximumSize {
+					return false
+				}
+				return try self.invoker.verify(message: sd, signature: s)
 			}
 			return false
 		}
