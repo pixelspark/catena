@@ -164,6 +164,7 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 struct SQLContext {
 	let metadata: SQLMetadata
 	let invoker: PublicKey
+	let block: SQLBlock
 }
 
 struct SQLBackendVisitor: SQLVisitor {
@@ -188,6 +189,9 @@ struct SQLBackendVisitor: SQLVisitor {
 			// Replace variables with corresponding literals
 			switch v {
 			case "invoker": return SQLExpression.literalBlob(context.invoker.data.sha256)
+			case "blockSignature": return SQLExpression.literalBlob(context.block.signature!.hash)
+			case "previousBlockSignature": return SQLExpression.literalBlob(context.block.previous.hash)
+			case "blockHeight": return SQLExpression.literalInteger(Int(context.block.index))
 			default: throw SQLPayload.SQLPayloadError.invalidVariableError
 			}
 
@@ -296,7 +300,7 @@ extension SQLBlock {
 					let transactionSavepointName = "tr-\(transaction.signature?.base58encoded ?? "unsigned")"
 
 					try database.transaction(name: transactionSavepointName) {
-						let context = SQLContext(metadata: meta, invoker: transaction.invoker)
+						let context = SQLContext(metadata: meta, invoker: transaction.invoker, block: self)
 						let statement = transaction.statement
 						let query = try statement.backendStatement(context: context).sql(dialect: database.dialect)
 

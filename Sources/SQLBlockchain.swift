@@ -499,10 +499,10 @@ struct SQLMetadata {
 		}
 	}
 
-	var headIndex: UInt? {
+	var headIndex: SQLBlock.IndexType? {
 		do {
-			if let h = try self.info.get(self.infoHeadIndexKey) {
-				return UInt(h)
+			if let h = try self.info.get(self.infoHeadIndexKey), let hi = UInt(h) {
+				return SQLBlock.IndexType(hi)
 			}
 			return nil
 		}
@@ -511,7 +511,7 @@ struct SQLMetadata {
 		}
 	}
 
-	func set(head: SQLBlock.HashType, index: UInt64) throws {
+	func set(head: SQLBlock.HashType, index: SQLBlock.IndexType) throws {
 		try self.database.transaction(name: "metadata-set-\(index)-\(head.stringValue)") {
 			try self.info.set(key: infoHeadHashKey, value: head.stringValue)
 			try self.info.set(key: infoHeadIndexKey, value: String(index))

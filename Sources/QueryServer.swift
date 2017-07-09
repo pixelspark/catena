@@ -86,7 +86,7 @@ class NodeQueryServer: QueryServer {
 			}
 			else {
 				try ledger.longest.withUnverifiedTransactions { chain in
-					let context = SQLContext(metadata: chain.meta, invoker: identity.publicKey)
+					let context = SQLContext(metadata: chain.meta, invoker: identity.publicKey, block: chain.highest)
 					let result = try chain.database.perform(statement.backendStatement(context: context).sql(dialect: chain.database.dialect))
 					if case .row = result.state {
 						// Send columns
