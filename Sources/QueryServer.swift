@@ -79,7 +79,7 @@ class NodeQueryServer: QueryServer {
 					return try chain.meta.users.counter(for: identity.publicKey) ?? 0
 				}
 
-				let transaction = try SQLTransaction(statement: statement, invoker: identity.publicKey, counter: counter + 1)
+				let transaction = try SQLTransaction(statement: statement, invoker: identity.publicKey, counter: counter + SQLTransaction.CounterType(1))
 				try transaction.sign(with: identity.privateKey)
 				try self.node.receive(transaction: transaction, from: nil)
 				try connection.send(error: "OK \(transaction.counter) \(transaction.signature!.base58encoded) \(transaction.statement.sql(dialect: SQLStandardDialect()))", severity: .info)

@@ -34,19 +34,22 @@ public protocol Transaction {
 }
 
 public protocol Block: CustomDebugStringConvertible, Equatable {
+	typealias NonceType = UInt64
+	typealias IndexType = UInt64
+
 	associatedtype TransactionType: Transaction
 	associatedtype HashType: Hash
 
 	/** The position of this block in the blockchain. The block with index 0 is considered the genesis block, and has a
 	zero previous hash. For all other blocks, the index of the block with the previous hash should have an index that is
 	exactly one lower than the index of this block. */
-	var index: UInt { get set }
+	var index: IndexType { get set }
 
 	/** The hash of the previous block in this chain, or a zero hash in case this block is the genesis block (index=0). */
 	var previous: HashType { get set }
 
 	/** The nonce used to generate a valid proof-of-work signature for this block. */
-	var nonce: UInt { get set }
+	var nonce: NonceType { get set }
 
 	/** The signature hash for this block, or nil if the block has not been signed yet. */
 	var signature: HashType? { get set }
@@ -61,7 +64,7 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	init()
 
 	/** Create a block with the given index, previous hash and payload data. */
-	init(index: UInt, previous: HashType, payload: Data) throws
+	init(index: UInt64, previous: HashType, payload: Data) throws
 
 	/** Append a transaction to the payload data of this block. Returns true if the transaction was appended, and false
 	when it wasn't (e.g. when the block already contains the transaction). */

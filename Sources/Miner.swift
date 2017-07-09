@@ -9,13 +9,13 @@ class Miner<BlockchainType: Blockchain> {
 	private weak var node: Node<BlockchainType>?
 	private(set) var block: BlockType? = nil
 	private let mutex = Mutex()
-	private var counter: UInt = 0
+	private var counter: BlockType.NonceType = 0
 	public var isEnabled = true
 	private(set) var isMining = false
 
 	init(node: Node<BlockchainType>) {
 		self.node = node
-		self.counter = UInt(abs(random(Int.self)))
+		self.counter = random(BlockType.NonceType.self)
 	}
 
 	/** Returns true when the transaction is new, or false if it isn't. */
@@ -71,7 +71,7 @@ class Miner<BlockchainType: Blockchain> {
 
 						if let base = self.node?.ledger.longest.highest {
 							// Set up the block
-							self.counter += 1
+							self.counter += BlockType.NonceType(1)
 							if var b = self.block {
 								b.index = base.index + 1
 								b.previous = base.signature!

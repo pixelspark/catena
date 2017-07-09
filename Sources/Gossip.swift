@@ -29,8 +29,8 @@ internal extension Block {
 			let payload = Data(base64Encoded: payloadBase64),
 			let previousHash = HashType(hash: previous),
 			let signatureHash = HashType(hash: signature) {
-				var b = try Self.init(index: UInt(height), previous: previousHash, payload: payload)
-				b.nonce = UInt(nonce)
+				var b = try Self.init(index: IndexType(height), previous: previousHash, payload: payload)
+				b.nonce = NonceType(nonce)
 				b.signature = signatureHash
 				return b
 			}
@@ -133,9 +133,9 @@ public struct Index<BlockType: Block> {
 	let genesis: BlockType.HashType
 	let peers: [URL]
 	let highest: BlockType.HashType
-	let height: UInt
+	let height: BlockType.IndexType
 
-	init(genesis: BlockType.HashType, peers: [URL], highest: BlockType.HashType, height: UInt) {
+	init(genesis: BlockType.HashType, peers: [URL], highest: BlockType.HashType, height: BlockType.IndexType) {
 		self.genesis = genesis
 		self.peers = peers
 		self.highest = highest
@@ -153,7 +153,7 @@ public struct Index<BlockType: Block> {
 		{
 			self.genesis = genesis
 			self.highest = highest
-			self.height = UInt(height)
+			self.height = BlockType.IndexType(height)
 			self.peers = peers.flatMap { return URL(string: $0) }
 		}
 		else {

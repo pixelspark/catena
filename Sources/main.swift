@@ -98,7 +98,7 @@ do {
 	node.miner.isEnabled = mineOption.value
 
 	// Initialize database if we have to
-	var rootCounter = 0
+	var rootCounter: SQLTransaction.CounterType = 0
 	let rootIdentity = try Identity()
 
 	if initializeOption.value {
@@ -155,7 +155,7 @@ do {
 		sleep(10)
 
 		Log.info("Start submitting demo blocks")
-		var testCounter = 0
+		var testCounter: SQLTransaction.CounterType = 0
 		do {
 			var i = 0
 			while true {

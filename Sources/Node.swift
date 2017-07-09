@@ -9,7 +9,7 @@ struct Candidate<BlockType: Block>: Equatable {
 	}
 
 	let hash: BlockType.HashType
-	let height: UInt
+	let height: UInt64
 	let peer: URL
 }
 

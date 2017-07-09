@@ -219,7 +219,7 @@ class SQLUsersTable {
 		}
 	}
 
-	func counter(for key: PublicKey) throws -> Int? {
+	func counter(for key: PublicKey) throws -> SQLTransaction.CounterType? {
 		let selectStatement = SQLStatement.select(SQLSelect(
 			these: [.column(self.counterColumn)],
 			from: self.table,
@@ -231,17 +231,17 @@ class SQLUsersTable {
 
 		let r = try self.database.perform(selectStatement.sql(dialect: self.database.dialect))
 		if r.hasRow, case .int(let value) = r.values[0] {
-			return value
+			return SQLTransaction.CounterType(value)
 		}
 		return nil
 	}
 
-	func setCounter(for key: PublicKey, to: Int) throws {
+	func setCounter(for key: PublicKey, to: SQLTransaction.CounterType) throws {
 		let insertStatement = SQLStatement.insert(SQLInsert(
 			orReplace: true,
 			into: self.table,
 			columns: [self.userColumn, self.counterColumn],
-			values: [[SQLExpression.literalBlob(key.data.sha256), SQLExpression.literalInteger(to)]]
+			values: [[SQLExpression.literalBlob(key.data.sha256), SQLExpression.literalInteger(Int(to))]]
 		))
 
 		try _ = self.database.perform(insertStatement.sql(dialect: self.database.dialect))
@@ -390,15 +390,15 @@ struct SQLBlockArchive {
 			// Payload can be null or block
 			var block: SQLBlock
 			if case .blob(let payloadData) = res.values[4] {
-				block = try SQLBlock(index: UInt(index), previous: previous, payload: payloadData)
+				block = try SQLBlock(index: SQLBlock.IndexType(index), previous: previous, payload: payloadData)
 			}
 			else if case .null = res.values[4] {
-				block = try SQLBlock(index: UInt(index), previous: previous, payload: Data())
+				block = try SQLBlock(index: SQLBlock.IndexType(index), previous: previous, payload: Data())
 			}
 			else {
 				fatalError("invalid payload")
 			}
-			block.nonce = UInt(nonce)
+			block.nonce = SQLBlock.NonceType(nonce)
 			block.signature = hash
 			assert(block.isSignatureValid, "persisted block signature is invalid! \(block)")
 			return block
@@ -511,7 +511,7 @@ struct SQLMetadata {
 		}
 	}
 
-	func set(head: SQLBlock.HashType, index: UInt) throws {
+	func set(head: SQLBlock.HashType, index: UInt64) throws {
 		try self.database.transaction(name: "metadata-set-\(index)-\(head.stringValue)") {
 			try self.info.set(key: infoHeadHashKey, value: head.stringValue)
 			try self.info.set(key: infoHeadIndexKey, value: String(index))

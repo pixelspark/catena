@@ -55,6 +55,8 @@ struct SQLPayload {
 struct SQLBlock: Block, CustomDebugStringConvertible {
 	typealias TransactionType = SQLTransaction
 	typealias HashType = SHA256Hash
+	typealias NonceType = UInt64
+	typealias IndexType = UInt64
 
 	/// The maximum number of transactions a block is allowed to contain
 	let maximumNumberOfTransactionsPerBlock = 100
@@ -62,10 +64,10 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 	/// Maximum size of the payload data in a block (the 'data for signing' is used as reference)
 	let maximumPayloadSizeBytes = 1024 * 1024 // 1 MiB
 
-	var index: UInt
+	var index: UInt64
 	var previous: HashType
 	var payload: SQLPayload
-	var nonce: UInt = 0
+	var nonce: UInt64 = 0
 	var signature: HashType? = nil
 	private let seed: String! // Only used for genesis blocks, in which case hash==zeroHash and payload is empty
 
@@ -83,7 +85,7 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 		self.previous = HashType.zeroHash
 	}
 
-	init(index: UInt, previous: HashType, payload: Data) throws {
+	init(index: UInt64, previous: HashType, payload: Data) throws {
 		self.index = index
 		self.previous = previous
 
@@ -98,7 +100,7 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 		}
 	}
 
-	init(index: UInt, previous: HashType, payload: SQLPayload) {
+	init(index: UInt64, previous: HashType, payload: SQLPayload) {
 		self.index = index
 		self.previous = previous
 		self.payload = payload
@@ -236,7 +238,7 @@ extension SQLBlock {
 
 			/* Check transaction grants (only grants from previous blocks 'count'; as transactions can potentially change
 			the grants, we need to check them up front) */
-			var counterChanges: [PublicKey: Int] = [:]
+			var counterChanges: [PublicKey: SQLTransaction.CounterType] = [:]
 			let privilegedTransactions = try sortedTransactions.filter { transaction -> Bool in
 				if self.index == 1 {
 					/* Block 1 is special in that it doesn't enforce grants - so that you can actually set them for the
@@ -263,15 +265,22 @@ extension SQLBlock {
 				counter is exactly (counter+1).*/
 				if let counter = counterChanges[transaction.invoker] {
 					if transaction.counter != (counter + 1) {
-						Log.debug("Block apply: denying transaction \(transaction.signature!) because counter mismatch \(counter+1) != \(transaction.counter) inside block")
+						Log.debug("Block apply: denying transaction \(transaction) because counter mismatch \(counter+1) != \(transaction.counter) inside block")
 						return false
 					}
 				}
 				else {
-					let counter = try meta.users.counter(for: transaction.invoker) ?? -1
-					if transaction.counter != (counter + 1) {
-						Log.debug("Block apply: denying transaction \(transaction.signature!) because counter mismatch \(counter+1) != \(transaction.counter)")
-						return false
+					if let counter = try meta.users.counter(for: transaction.invoker) {
+						if transaction.counter != (counter + 1) {
+							Log.debug("Block apply: denying transaction \(transaction) because counter mismatch \(counter+1) != \(transaction.counter)")
+							return false
+						}
+					}
+					else {
+						if transaction.counter != 0 {
+							Log.debug("Block apply: denying transaction \(transaction) because counter is >0 while there is no counter for user yet")
+							return false
+						}
 					}
 				}
 

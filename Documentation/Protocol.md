@@ -1,6 +1,25 @@
 #  Protocol
 
-Clients communicate over WebSocket connections using a bidirectional request-response protocol.
+Nodes use a Gossip protocol to perform the following tasks:
+
+* Notify other nodes of their presence, temporary id (UUID) and incoming port ("query")
+* Return information about their current view on the chain ("index")
+* Notify other nodes of the successful mining of a new block ("block")
+* Fetch blocks from other nodes by hash ("fetch" and "block")
+
+## Data format
+
+Clients communicate over WebSocket connections using a bidirectional request-response protocol. The protoocol is message-based, encoded in JSON, and transported over WebSocket. Messages can be sent either as binary
+or (UTF-8) text frames. The WebSocket ping/pong mechanism may be used to test connection liveness.
+
+## Connection set-up
+
+A connection can be initiated by either node, and on a single connection, queries and responses may flow both ways.
+The peer that initiates the connection is required to send two headers when connecting:
+
+* X-UUID, set to the UUID of the connecting peer. This is needed to prevent nodes from accidentally connecting with themselves. Any peer will deny connections with a UUID that is equal to their own.
+* X-Port, set to the port number of the server on the connecting peer's side that accepts connections. This is used for peer exchange. Note that the port may not be reachable from other peers.
+* X-Version, set to the protocol version number (currently 1). Peers may reject incompatible versions (older or newer)
 
 ## Packet format
 
@@ -10,7 +29,7 @@ Packets are encoded as JSON objects. A request and response packet has the follo
 [n, {"t": type, ...}]
 ````
 
-Each request has a counter value (`n`) that is unique for this connection. Responses are correlated with their requests using the counter value; the peer responding to a request returns the response with the same counter value. The peer that initiated the socket connection uses uneven counter values (starting at 1) for its requests, whereas the accepting peer uses even counter values for its requests.
+Each request has a counter value (`n`) that is unique for this connection. Responses are correlated with their requests using the counter value; the peer responding to a request returns the response with the same counter value. The peer that initiated the socket connection uses even counter values (starting at 0) for its requests, whereas the accepting peer uses uneven counter values (starting at 1) for its requests.
 
 The packet contents are encoded as a JSON object, with the special "t" key indicating the type of message.
 

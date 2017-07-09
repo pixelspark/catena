@@ -3,8 +3,9 @@ import LoggerAPI
 import Ed25519
 
 class SQLTransaction: Transaction, CustomDebugStringConvertible {
+	typealias CounterType = UInt64
 	let invoker: PublicKey
-	let counter: Int
+	let counter: CounterType
 	let statement: SQLStatement
 	var signature: Data? = nil
 
@@ -13,7 +14,7 @@ class SQLTransaction: Transaction, CustomDebugStringConvertible {
 		case syntaxError
 	}
 
-	init(statement: SQLStatement, invoker: PublicKey, counter: Int) throws {
+	init(statement: SQLStatement, invoker: PublicKey, counter: CounterType) throws {
 		self.invoker = invoker
 		self.statement = statement
 		self.counter = counter
@@ -28,7 +29,7 @@ class SQLTransaction: Transaction, CustomDebugStringConvertible {
 
 		self.invoker = invokerKey
 		self.statement = try SQLStatement(sql)
-		self.counter = counter
+		self.counter = CounterType(counter)
 
 		if let sig = json["signature"] as? String, let sigData = Data(base64Encoded: sig) {
 			self.signature = sigData
@@ -38,7 +39,7 @@ class SQLTransaction: Transaction, CustomDebugStringConvertible {
 	private var dataForSigning: Data {
 		var d = Data()
 		d.append(self.invoker.data)
-		d.appendRaw(self.counter)
+		d.appendRaw(self.counter.littleEndian)
 		d.append(self.statement.sql(dialect: SQLStandardDialect()).data(using: .utf8)!)
 		return d
 	}

@@ -53,6 +53,33 @@ protection is present in Bitcoin (where transaction outputs are linked to a hash
 
 A transaction includes a counter. A transaction will only execute if its counter is exactly equal to the counter value of the previous transaction executed by the invoker (in previous blocks or within the current block), or 0 when the invoker has not yet executed a transaction. When multiple transactions from the same invoker are in the same block, they are executed in the order of increasing counter. The relative ordering of the execution of transactions from different invokers is undefined.
 
+## Proof of Work
+
+A block signature is the SHA-256 hash of the following:
+
+* _block index_ (64-bit, unsigned, little endian)
+* _block nonce_ (64-bit, unsigned, little endian)
+* _previous block hash_ (32 bytes)
+* _payload data for signing_ (see below)
+
+The payload data for signing is constructed as follows:
+
+* If the block is a genesis block, the payload data for signing is the seed string encoded as UTF-8 without zero termination.
+* If the block is a regular block, the payload data for signing is the concatenation of the transaction signatures
+
+A transaction signature is the Ed25519 signature of the following data, using the private key of the invoker:
+
+* _invoker key_: The public key of the invoker
+* _transaction counter_: the transaction counter (64-bit, unsigned, little endian)
+* _transaction statement_: the SQL statement for the transaction, encoded as UTF-8.
+
+## Limits
+
+The following limits are currently enforced;
+
+* _Block size_: a block's payload may not be larger than 1 MiB
+* _Transactions per block_: a block may not contain more than 100 transactions
+
 ## Genesis blocks
 
 In Catena, two blocks are 'special':
@@ -70,68 +97,3 @@ replay the full set of transactions from block #0 to the splice point.
 All read queries (sent over the Postgres wire protocol) execute in a 'hypothetical' transaction - this is a transaction that is started
 before the query and in which the queued block transactions have been executed already. The transaction is automatically
 rolled back after the query is finished, such that the changes from the queued blocks are not persisted to disk.
-
-## Protocol
-
-Nodes use a Gossip protocol to perform the following tasks:
-
-* Notify other nodes of their presence, temporary id (UUID) and incoming port ("query")
-* Return information about their current view on the chain ("index")
-* Notify other nodes of the successful mining of a new block ("block")
-* Fetch blocks from other nodes by hash ("fetch" and "block")
-
-The protoocol is message-based, encoded in JSON, and transported over WebSocket. Messages can be sent either as binary
-or (UTF-8) text frames. The WebSocket ping/pong mechanism may be used to test connection liveness.
-
-A connection can be initiated by either node, and on a single connection, queries and responses may flow both ways. 
-The peer that initiates the connection is required to send two headers when connecting:
-
-* X-UUID, set to the UUID of the connecting peer. This is needed to prevent nodes from accidentally connecting with themselves. Any peer will deny connections with a UUID that is equal to their own.
-* X-Port, set to the port number of the server on the connecting peer's side that accepts connections. This is used for peer exchange. Note that the port may not be reachable from other peers.
-* X-Version, set to the protocol version number (currently 1). Peers may reject incompatible versions (older or newer)
-
-Each message has a counter, which allows the sender to correlate responses with requests. Multiple requests may be active
-in both ways at any time. Counter values may be re-used or wrap around at any time, as long as the client can still correlate
-requests (e.g. if a client never allows more than 10 simultaneous outgoing requests, counter values 0...9 can be used). 
-
-The peer that initiated the connection uses even counters (starting at 0 and incrementing with 2 each time) whereas the
-peer that accepted the connection uses uneven counters (starting at 1 and also incrementing with 2).
-
-A message also contains a payload,  which is a dictionary with (at least) the key 't' in it,  associated with the request type.
-
-````
-[counter, {"t": "action", ...}]
-````
-
-If there is more data in the payload than expected, receiving peers may reject the message. 
-
-### query (Request)
-
-Requests the peer on the other side to return a summary of their current view on the chain (the 'index'). This request has
-no additional payload data.
-
-
-### index (Reply)
-
-Response that contains a summary of the peer's view on the chain ('index'). The payload includes the following keys:
-
-* "genesis" (String): the hash of the genesis block 
-* "peers" (Array containing String): an array of URLs (as string) to other peers known
-* "highest" (String): the hash of the highest block on the longest chain
-* "height" (Integer): the height (index) of the highest block on the longest chain
-
-### fetch (Request)
-
-Request a block from the other peer with a certain signature hash.
-
-### block (Request/Reply)
-
-Sends a block to the peer on the other side. The message may be in response to a "fetch" request (in which case this must
-be the requested block and it's signature must match the one requested) or it may be unsolicited (i.e. sent as request),
-in which case this is a new block (e.g. mined by the sending peer) proposed for consideration by the receiving peer.
-
-### error (Reply)
-
-Sent in reply to requests that couldn't be fulfilled. Fields:
-
-* "message" (String): human-readable description of why the request failed.

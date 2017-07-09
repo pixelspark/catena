@@ -45,7 +45,7 @@ class SQLAPIEndpoint {
 						"url": url.absoluteString,
 						"state": desc
 					]
-					
+
 					#if !os(Linux)
 						res["lastSeen"] = p.lastSeen?.iso8601FormattedLocalDate ?? "never"
 					#endif
