@@ -3,6 +3,21 @@ import LoggerAPI
 import Ed25519
 
 class SQLTransaction: Transaction, CustomDebugStringConvertible {
+	var hashValue: Int {
+		return self.dataForSigning.hashValue
+	}
+
+	static func ==(lhs: SQLTransaction, rhs: SQLTransaction) -> Bool {
+		if let ls = lhs.signature, let rs = rhs.signature {
+			return ls == rs
+		}
+
+		return
+			lhs.counter == rhs.counter &&
+			lhs.invoker == rhs.invoker &&
+			lhs.dataForSigning == rhs.dataForSigning
+	}
+
 	typealias CounterType = UInt64
 	let invoker: PublicKey
 	let counter: CounterType

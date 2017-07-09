@@ -3,6 +3,17 @@ import Dispatch
 import LoggerAPI
 
 class Miner<BlockchainType: Blockchain> {
+	enum MinerError: LocalizedError {
+		case unsignedTransactionCannotBeMined
+
+		var localizedDescription: String {
+			switch self {
+			case .unsignedTransactionCannotBeMined:
+				return "an unsigned transaction cannot be mined"
+			}
+		}
+	}
+
 	typealias BlockType = BlockchainType.BlockType
 	typealias HashType = BlockType.HashType
 
@@ -12,6 +23,8 @@ class Miner<BlockchainType: Blockchain> {
 	private var counter: BlockType.NonceType = 0
 	public var isEnabled = true
 	private(set) var isMining = false
+
+	private var aside = OrderedSet<BlockType.TransactionType>()
 
 	init(node: Node<BlockchainType>) {
 		self.node = node
@@ -25,7 +38,20 @@ class Miner<BlockchainType: Blockchain> {
 				self.block = BlockType()
 			}
 
-			return try self.block!.append(transaction: transaction)
+			// Only signed transactions can be mined. This also checks the transaction maximum size
+			if !transaction.isSignatureValid {
+				throw MinerError.unsignedTransactionCannotBeMined
+			}
+
+			// Is there room left in the block?
+			if self.block!.hasRoomFor(transaction: transaction) {
+				return try self.block!.append(transaction: transaction)
+			}
+			else {
+				// Not now
+				self.aside.append(transaction)
+				return false
+			}
 		}
 
 		if isNew {
@@ -54,6 +80,37 @@ class Miner<BlockchainType: Blockchain> {
 				self.mutex.locked {
 					self.isMining = false
 				}
+			}
+		}
+	}
+
+	private func restart() {
+		self.mutex.locked {
+			if self.block == nil {
+				self.block = BlockType()
+			}
+
+			// Do we have transactions set aside for the next block?
+			if !self.aside.isEmpty {
+				// Keep adding transactions until block is full or set is empty
+				while let next = self.aside.first {
+					if self.block!.hasRoomFor(transaction: next) {
+						do {
+							// This can fail, but transactions in the 'aside' set just get one chance
+							_ = try self.append(transaction: next)
+						}
+						catch {
+							// For some reason this transaction fails to append, and it is not about the size. Just forget it
+							Log.error("[Miner] transaction \(next) failed to add from aside: \(error.localizedDescription)")
+						}
+						_ = self.aside.removeFirst()
+					}
+					else {
+						break
+					}
+				}
+
+				self.start()
 			}
 		}
 	}
@@ -108,5 +165,7 @@ class Miner<BlockchainType: Blockchain> {
 				}
 			}
 		}
+
+		self.restart()
 	}
 }

@@ -27,7 +27,7 @@ public protocol Blockchain {
 	func unwind(to: BlockType) throws
 }
 
-public protocol Transaction {
+public protocol Transaction: Hashable {
 	init(json: [String: Any]) throws
 	var isSignatureValid: Bool { get }
 	var json: [String: Any] { get }
@@ -69,6 +69,9 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	/** Append a transaction to the payload data of this block. Returns true if the transaction was appended, and false
 	when it wasn't (e.g. when the block already contains the transaction). */
 	mutating func append(transaction: TransactionType) throws -> Bool
+
+	/** Whether the block can accomodate the `transaction`, disregarding any validation of the transaction itself. */
+	func hasRoomFor(transaction: TransactionType) -> Bool
 
 	/** Perform validation on the payload itself (e.g. signatures on contained transactions) and returns whether the
 	payload is valid. */

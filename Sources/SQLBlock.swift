@@ -131,6 +131,24 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 		return self.payload.isSignatureValid
 	}
 
+	/** Whether the block can accomodate the `transaction`, disregarding any validation of the transaction itself. */
+	func hasRoomFor(transaction: SQLTransaction) -> Bool {
+		assert(self.seed == nil, "cannot append transactions to a genesis block")
+		assert(transaction.signature != nil, "transaction needs to have a signature")
+
+		if (self.payload.transactions.count+1) > self.maximumNumberOfTransactionsPerBlock {
+			return false
+		}
+
+		// Would adding the transaction increase payload size beyond the limit?
+		let newSize = self.payloadDataForSigning.count + transaction.signature!.count
+		if newSize > self.maximumPayloadSizeBytes {
+			return false
+		}
+
+		return true
+	}
+
 	mutating func append(transaction: SQLTransaction) throws -> Bool {
 		assert(self.seed == nil, "cannot append transactions to a genesis block")
 		assert(transaction.signature != nil, "transaction needs to have a signature")
