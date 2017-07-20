@@ -5,6 +5,7 @@ import LoggerAPI
 import HeliumLogger
 
 let databaseFileOption = StringOption(shortFlag: "d", longFlag: "database", required: false, helpMessage: "Backing database file (default: catena.sqlite)")
+let memoryDatabaseFileOption = BoolOption(longFlag: "in-memory-database", helpMessage: "Use an in-memory (transient) database. Cannot be used with -d")
 let seedOption = StringOption(shortFlag: "s", longFlag: "seed", required: false, helpMessage: "Genesis block seed string (default: empty)")
 let helpOption = BoolOption(shortFlag: "h", longFlag: "help", helpMessage: "Show usage")
 let netPortOption = IntOption(shortFlag: "p", longFlag: "gossip-port", helpMessage: "Listen port for peer-to-peer communications (default: 8338)")
@@ -18,7 +19,7 @@ let noReplayOption = BoolOption(shortFlag: "n", longFlag: "no-replay", helpMessa
 let peerDatabaseFileOption = StringOption(longFlag: "peer-database", required: false, helpMessage: "Backing database file for peer database (default: catena-peers.sqlite)")
 
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, peerDatabaseFileOption)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, peerDatabaseFileOption, memoryDatabaseFileOption)
 
 do {
 	try cli.parse()
@@ -51,13 +52,18 @@ logger.details = false
 Log.logger = logger
 
 // Generate genesis block
-let databaseFile = databaseFileOption.value ?? "catena.sqlite"
+if memoryDatabaseFileOption.value && databaseFileOption.value != nil {
+	fatalError("The -dm and -d flags cannot be set at the same time.")
+}
+
+let databaseFile = memoryDatabaseFileOption.value ? ":memory:" : (databaseFileOption.value ?? "catena.sqlite")
 let seedValue = seedOption.value ?? ""
 var genesisBlock = SQLBlock(genesisBlockWith: seedValue)
 genesisBlock.mine(difficulty: 10)
 Log.info("Genesis block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
 
-if initializeOption.value {
+// If the database is in a file and we are initializing, remove anything that was there before
+if initializeOption.value && !memoryDatabaseFileOption.value {
 	_ = unlink(databaseFile.cString(using: .utf8)!)
 }
 
