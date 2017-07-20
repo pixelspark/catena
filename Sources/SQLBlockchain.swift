@@ -56,7 +56,7 @@ class SQLBlockchain: Blockchain {
 		// Load chain from storage
 		if let hh = self.meta.headHash {
 			self.highest = try self.meta.get(block: hh)!
-			Log.info("Get highest: \(self.highest.signature!.stringValue)")
+			Log.info("[SQLLedger] Get highest: \(self.highest.signature!.stringValue)")
 		}
 		else {
 			try self.meta.database.transaction {
@@ -136,6 +136,9 @@ class SQLBlockchain: Blockchain {
 					Log.info("[SQLBlockchain] Unwind requires a replay of the full chain, because target block (\(to.index)) << head of permanent history (\(self.meta.headIndex!)) ")
 					try self.replayPermanentStorage(to: to)
 				}
+
+				// Right now we should be at the desired point
+				assert(self.highest == to)
 			}
 		}
 		catch {
@@ -149,10 +152,10 @@ class SQLBlockchain: Blockchain {
 			// TODO: refactor so we can just walk the chain from old to new without creating a giant array
 			var replay: [SQLBlock] = []
 			var current = to
-			while current.index != 0 {
+			repeat {
 				replay.append(current)
 				current = try self.get(block: current.previous)!
-			}
+			} while current.index != 0
 
 			// Remove database
 			self.database.close()
@@ -173,9 +176,12 @@ class SQLBlockchain: Blockchain {
 			try self.database.transaction {
 				for block in replay.reversed() {
 					try self.process(block: block)
+					self.highest = block
 				}
 				Log.info("[SQLLedger] replay on permanent storage is complete")
 			}
+
+			assert(self.highest == to, "replay should end up at desired block")
 		}
 	}
 

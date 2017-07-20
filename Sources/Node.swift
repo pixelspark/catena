@@ -173,7 +173,7 @@ class Node<BlockchainType: Blockchain> {
 		}
 	}
 
-	func receive(candidate: Candidate<BlockType>) {
+	func queueRequest(candidate: Candidate<BlockType>) {
 		self.mutex.locked {
 			if candidate.height > self.ledger.longest.highest.index {
 				self.candidateQueue.append(candidate)
@@ -183,12 +183,25 @@ class Node<BlockchainType: Blockchain> {
 
 	/** Peer can be nil when the block originated from ourselves (i.e. was mined). */
 	func receive(block: BlockType, from peer: Peer<BlockchainType>?, wasRequested: Bool) throws {
-		Log.info("[Node] receive block #\(block.index) from \(peer?.url.absoluteString ?? "self")")
-
 		if block.isSignatureValid && block.isPayloadValid() {
+			Log.info("[Node] receive block #\(block.index) from \(peer?.url.absoluteString ?? "self")")
+
 			let isNew = try self.mutex.locked { () -> Bool in
-				let isNew = try self.ledger.isNew(block: block)
-				try _ = self.ledger.receive(block: block)
+				let isNew = try self.ledger.isNew(block: block) && self.ledger.longest.highest.index < block.index
+				let wasAppended = try self.ledger.receive(block: block)
+				if let p = peer, wasRequested && !wasAppended && block.index > 0 {
+					var fetchHash = block.previous
+					var fetchIndex = block.index - 1
+					while let orphan = self.ledger.orphansByHash[fetchHash], orphan.index > 0 {
+						fetchHash = orphan.previous
+						fetchIndex = orphan.index - 1
+					}
+
+					if fetchIndex > 0 {
+						Log.info("[Node] received an orphan block #\(block.index), let's see if peer has its predecessor \(fetchHash) at #\(fetchIndex)")
+						self.queueRequest(candidate: Candidate<BlockType>(hash: fetchHash, height: fetchIndex, peer: p.url))
+					}
+				}
 				return isNew
 			}
 
@@ -210,6 +223,9 @@ class Node<BlockchainType: Blockchain> {
 					}
 				}
 			}
+		}
+		else {
+			Log.info("[Node] received invalid block #\(block.index) from \(peer?.url.absoluteString ?? "self")")
 		}
 	}
 
@@ -269,60 +285,72 @@ class Node<BlockchainType: Blockchain> {
 
 	private func fetch(candidate: Candidate<BlockType>) {
 		self.workerQueue.async {
-			if let p = self.peers[candidate.peer], let c = p.mutex.locked(block: { return p.connection }) {
+			if let p = self.peers[candidate.peer] {
+				if let c = p.mutex.locked(block: { return p.connection }) {
+					do {
+						try c.request(gossip: Gossip<BlockchainType>.fetch(candidate.hash)) { reply in
+							if case .block(let blockData) = reply {
+								do {
+									let block = try BlockType.read(json: blockData)
 
-				do {
-					try c.request(gossip: Gossip<BlockchainType>.fetch(candidate.hash)) { reply in
-						if case .block(let blockData) = reply {
-							do {
-								let block = try BlockType.read(json: blockData)
-
-								if block.isSignatureValid {
-									Log.debug("[Node] fetch returned valid block: \(block)")
-									try self.ledger.mutex.locked {
-										let peer = self.peers[candidate.peer]
-										try self.receive(block: block, from: peer, wasRequested: true)
-										if block.index > 0 &&
-											self.ledger.orphansByPreviousHash[block.previous] != nil &&
-											self.ledger.orphansByHash[block.previous] == nil {
-											let pb = try self.ledger.longest.get(block: block.previous)
-											if pb == nil {
-												// Ledger is looking for the previous block for this block, go get it from the peer we got this from
-												self.workerQueue.async {
-													self.fetch(candidate: Candidate(hash: block.previous, height: block.index-1, peer: candidate.peer))
+									if block.isSignatureValid {
+										Log.debug("[Node] fetch returned valid block: \(block)")
+										try self.ledger.mutex.locked {
+											let peer = self.peers[candidate.peer]
+											try self.receive(block: block, from: peer, wasRequested: true)
+											if block.index > 0 {
+												// Do we already have the previous block?
+												if let orphan = self.ledger.orphansByHash[block.previous] {
+													Log.info("[Node] fetch previous block is in cache, remind node")
+													try self.receive(block: orphan, from: peer, wasRequested: true)
+												}
+												else {
+													let pb = try self.ledger.longest.get(block: block.previous)
+													if pb == nil {
+														// Ledger is looking for the previous block for this block, go get it from the peer we got this from
+														self.workerQueue.async {
+															self.fetch(candidate: Candidate(hash: block.previous, height: block.index-1, peer: candidate.peer))
+														}
+													}
 												}
 											}
 										}
 									}
+									else {
+										Log.warning("[Node] fetch returned invalid block (signature invalid); setting peer \(candidate.peer) invalid")
+										self.mutex.locked {
+											self.peers[candidate.peer]?.fail(error: "invalid block")
+										}
+									}
 								}
-								else {
-									Log.warning("[Node] fetch returned invalid block (signature invalid); setting peer \(candidate.peer) invalid")
+								catch {
+									Log.error("[Gossip] Error parsing result from fetch: \(error.localizedDescription)")
 									self.mutex.locked {
-										self.peers[candidate.peer]?.fail(error: "invalid block")
+										self.peers[candidate.peer]?.fail(error: "invalid reply to fetch")
 									}
 								}
 							}
-							catch {
-								Log.error("[Gossip] Error parsing result from fetch: \(error.localizedDescription)")
+							else {
+								Log.error("[Gossip] Received invalid reply to fetch: \(reply)")
 								self.mutex.locked {
 									self.peers[candidate.peer]?.fail(error: "invalid reply to fetch")
 								}
 							}
 						}
-						else {
-							Log.error("[Gossip] Received invalid reply to fetch: \(reply)")
-							self.mutex.locked {
-								self.peers[candidate.peer]?.fail(error: "invalid reply to fetch")
-							}
+					}
+					catch {
+						Log.error("[Node] Fetch error: \(error)")
+						self.mutex.locked {
+							self.peers[candidate.peer]?.fail(error: "fetch error: \(error)")
 						}
 					}
 				}
-				catch {
-					Log.error("[Node] Fetch error: \(error)")
-					self.mutex.locked {
-						self.peers[candidate.peer]?.fail(error: "fetch error: \(error)")
-					}
+				else {
+					Log.info("[Node] fetch candidate peer is not connected: \(candidate)")
 				}
+			}
+			else {
+				Log.info("[Node] fetch candidate peer has disappeared: \(candidate)")
 			}
 		}
 	}
