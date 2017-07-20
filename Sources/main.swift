@@ -171,7 +171,7 @@ do {
 				Log.info("[Test] submit \(tr)")
 				try node.receive(transaction: tr, from: nil)
 				testCounter += 1
-				sleep(10)
+				sleep(2)
 			}
 		}
 		catch {
