@@ -302,6 +302,7 @@ struct SQLWhen {
 
 enum SQLExpression {
 	case literalInteger(Int)
+	case literalUnsigned(UInt)
 	case literalString(String)
 	case literalBlob(Data)
 	case column(SQLColumn)
@@ -318,6 +319,9 @@ enum SQLExpression {
 			return dialect.literalString(s)
 
 		case .literalInteger(let i):
+			return "\(i)"
+
+		case .literalUnsigned(let i):
 			return "\(i)"
 
 		case .literalBlob(let d):
@@ -1027,7 +1031,7 @@ extension SQLExpression {
 		let newSelf: SQLExpression
 
 		switch self {
-		case .allColumns, .null, .literalInteger(_), .literalString(_), .literalBlob(_), .variable(_):
+		case .allColumns, .null, .literalInteger(_), .literalString(_), .literalBlob(_), .variable(_), .literalUnsigned(_):
 			// Literals are not currently visited separately
 			newSelf = self
 			break

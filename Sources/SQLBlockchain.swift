@@ -358,10 +358,10 @@ struct SQLBlockArchive {
 			values: [[
 				.literalBlob(block.signature!.hash),
 				.literalInteger(Int(block.index)),
-				.literalInteger(Int(block.nonce)),
+				.literalUnsigned(UInt(block.nonce)),
 				.literalBlob(block.previous.hash),
 				.literalBlob(block.payloadData)
-				]]))
+			]]))
 		_ = try database.perform(insertStatement.sql(dialect: database.dialect))
 	}
 
