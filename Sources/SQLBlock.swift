@@ -72,7 +72,7 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 	private let seed: String! // Only used for genesis blocks, in which case hash==zeroHash and payload is empty
 
 	init() {
-		self.index = 0
+		self.index = 1
 		self.previous = HashType.zeroHash
 		self.payload = SQLPayload()
 		self.seed = nil

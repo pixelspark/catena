@@ -211,7 +211,7 @@ extension Block {
 	}
 
 	var isAGenesisBlock: Bool {
-		return self.previous == HashType.zeroHash
+		return self.previous == HashType.zeroHash && self.index == 0
 	}
 
 	var dataForSigning: Data {
@@ -341,7 +341,6 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 								if splice.signature! != self.longest.highest.signature! {
 									Log.debug("[Ledger] splicing to \(splice.index), then fast-forwarding to \(block.index)")
 									try self.longest.unwind(to: splice)
-									assert(self.longest.highest == splice)
 								}
 
 								Log.info("[Ledger] head is now at \(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)")
