@@ -340,7 +340,7 @@ struct SQLBlockArchive {
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "signature"))
 				cols.append(SQLType.int, forKey: SQLColumn(name: "index"))
-				cols.append(SQLType.int, forKey: SQLColumn(name: "nonce"))
+				cols.append(SQLType.blob, forKey: SQLColumn(name: "nonce")) // Needs to be stored as blob because SQLite does not fully support Uint64s
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "previous"))
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "payload"))
 
@@ -351,6 +351,8 @@ struct SQLBlockArchive {
 	}
 
 	func archive(block: SQLBlock) throws {
+		var nonce = block.nonce
+
 		let insertStatement = SQLStatement.insert(SQLInsert(
 			orReplace: false,
 			into: self.table,
@@ -358,7 +360,7 @@ struct SQLBlockArchive {
 			values: [[
 				.literalBlob(block.signature!.hash),
 				.literalInteger(Int(block.index)),
-				.literalUnsigned(UInt(block.nonce)),
+				.literalBlob(Data(bytes: &nonce, count: MemoryLayout<SQLBlock.NonceType>.size)),
 				.literalBlob(block.previous.hash),
 				.literalBlob(block.payloadData)
 			]]))
@@ -382,10 +384,15 @@ struct SQLBlockArchive {
 		let res = try self.database.perform(stmt.sql(dialect: self.database.dialect))
 		if res.hasRow,
 			case .int(let index) = res.values[1],
-			case .int(let nonce) = res.values[2],
-			case .blob(let previousData) = res.values[3] {
+			case .blob(let nonce) = res.values[2],
+			case .blob(let previousData) = res.values[3],
+			nonce.count == MemoryLayout<SQLBlock.NonceType>.size {
 			let previous = SQLBlock.HashType(hash: previousData)
 			assert(index >= 0, "Index must be positive")
+
+			var nonceValue: SQLBlock.NonceType = 0
+			let buffer = UnsafeMutableBufferPointer(start: &nonceValue, count: 1)
+			_ = nonce.copyBytes(to: buffer)
 
 			// Payload can be null or block
 			var block: SQLBlock
@@ -398,11 +405,13 @@ struct SQLBlockArchive {
 			else {
 				fatalError("invalid payload")
 			}
-			block.nonce = SQLBlock.NonceType(nonce)
+			block.nonce = nonceValue
 			block.signature = hash
 			assert(block.isSignatureValid, "persisted block signature is invalid! \(block)")
 			return block
 		}
+
+		assert(!res.hasRow, "invalid block data from storage")
 		return nil
 	}
 }
