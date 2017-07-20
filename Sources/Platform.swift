@@ -134,3 +134,20 @@ extension Date {
 	}
 }
 
+extension URL {
+	var parameters: [String: String] {
+		if let uc = URLComponents(url: self, resolvingAgainstBaseURL: false), let items = uc.queryItems {
+			var values: [String: String] = [:]
+
+			for item in items {
+				if let v = item.value {
+					values[item.name] = v
+				}
+			}
+			return values
+		}
+		else {
+			return [:]
+		}
+	}
+}

@@ -64,12 +64,17 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 	}
 
 	func connected(connection: WebSocketConnection) {
-		Log.info("[Server] gossip connected \(connection.id)")
+		Log.info("[Server] gossip connected incoming \(connection.request.remoteAddress) \(connection.request.urlURL.absoluteString)")
 
 		self.mutex.locked {
-			let pic = PeerIncomingConnection<BlockchainType>(connection: connection)
-			self.node?.add(peer: pic)
-			self.gossipConnections[connection.id] = pic
+			do {
+				let pic = try PeerIncomingConnection<BlockchainType>(connection: connection)
+				self.node?.add(peer: pic)
+				self.gossipConnections[connection.id] = pic
+			}
+			catch {
+				Log.error("[Server] \(error.localizedDescription)")
+			}
 		}
 	}
 
@@ -125,8 +130,17 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 }
 
 struct ProtocolConstants {
+	/** Key that is used in gossip messages to indicate the mssage type */
 	static let actionKey: String = "t"
-	static let version: Int = 1
+
+	/** WebSocket protocol version string */
+	static let protocolVersion = "catena-v1"
+
+	/** Query string key name used to send own UUID */
+	static let uuidRequestKey = "uuid"
+
+	/** Query string key name used to send own port */
+	static let portRequestKey = "port"
 }
 
 public struct Index<BlockType: Block> {
@@ -272,7 +286,7 @@ public class PeerConnection<BlockchainType: Blockchain> {
 							}
 						}
 						else {
-							Log.error("[Server] cannot handle gossip \(counter): no delegate")
+							Log.error("[Server] cannot handle gossip \(counter) for \(self): no delegate")
 						}
 					}
 				}
@@ -314,10 +328,27 @@ public class PeerConnection<BlockchainType: Blockchain> {
 	}
 }
 
-public class PeerIncomingConnection<BlockchainType: Blockchain>: PeerConnection<BlockchainType> {
+enum PeerConnectionError: LocalizedError {
+	case protocolVersionMissing
+	case protocolVersionUnsupported(version: String)
+
+	var errorDescription: String? {
+		switch self {
+		case .protocolVersionMissing: return "the client did not indicate a protocol version"
+		case .protocolVersionUnsupported(version: let v): return "protocol version '\(v)' is not supported"
+		}
+	}
+}
+
+public class PeerIncomingConnection<BlockchainType: Blockchain>: PeerConnection<BlockchainType>, CustomDebugStringConvertible {
 	let connection: WebSocketConnection
 
-	init(connection: WebSocketConnection) {
+	init(connection: WebSocketConnection) throws {
+		guard let protocolVersion = connection.request.headers["Sec-WebSocket-Protocol"]?.first else { throw PeerConnectionError.protocolVersionMissing }
+		if protocolVersion != ProtocolConstants.protocolVersion {
+			throw PeerConnectionError.protocolVersionUnsupported(version: protocolVersion)
+		}
+
 		self.connection = connection
 		super.init(isIncoming: true)
 	}
@@ -332,6 +363,10 @@ public class PeerIncomingConnection<BlockchainType: Blockchain>: PeerConnection<
 
 	public override func send(data: Data) throws {
 		self.connection.send(message: data)
+	}
+
+	public var debugDescription: String {
+		return "PeerIncomingConnection(\(self.connection.request.remoteAddress) -> \(self.connection.request.urlURL.absoluteString)";
 	}
 }
 
@@ -353,7 +388,9 @@ public class PeerOutgoingConnection<BlockchainType: Blockchain>: PeerConnection<
 	}
 
 	public override func send(data: Data) throws {
-		self.connection.write(data: data)
+		if self.connection.isConnected {
+			self.connection.write(data: data)
+		}
 	}
 
 	public func websocketDidConnect(socket: Starscream.WebSocket) {
@@ -378,6 +415,8 @@ public class PeerOutgoingConnection<BlockchainType: Blockchain>: PeerConnection<
 	public func websocketDidDisconnect(socket: Starscream.WebSocket, error: NSError?) {
 		Log.debug("[Gossip] Disconnected outgoing to \(socket.currentURL) \(error?.localizedDescription ?? "unknown error")")
 		self.delegate?.peer(disconnected: self)
+		self.delegate = nil
+		connection.delegate = nil
 	}
 
 	public func websocketDidReceiveMessage(socket: Starscream.WebSocket, text: String) {
@@ -416,16 +455,20 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 					switch self.state {
 					case .new, .failed(_):
 						#if !os(Linux)
-						let ws = Starscream.WebSocket(url: url)
-						ws.headers["X-UUID"] = n.uuid.uuidString
-						ws.headers["X-Port"] = String(n.server.port)
-						ws.headers["X-Version"] = String(ProtocolConstants.version)
-						let pic = PeerOutgoingConnection<BlockchainType>(connection: ws)
-						pic.delegate = self
-						Log.debug("[Peer] connect outgoing \(url)")
-						ws.connect()
-						self.state = .connecting
-						self.connection = pic
+							if var uc = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+								uc.queryItems = [
+									URLQueryItem(name: ProtocolConstants.uuidRequestKey, value: n.uuid.uuidString),
+									URLQueryItem(name: ProtocolConstants.portRequestKey, value: String(n.server.port))
+								]
+
+								let ws = Starscream.WebSocket(url: uc.url!, protocols: [ProtocolConstants.protocolVersion])
+								let pic = PeerOutgoingConnection<BlockchainType>(connection: ws)
+								pic.delegate = self
+								Log.debug("[Peer] connect outgoing \(url)")
+								ws.connect()
+								self.state = .connecting
+								self.connection = pic
+							}
 						#endif
 
 					case .connected(_), .queried(_):
@@ -479,7 +522,7 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 							n.add(peer: p)
 						}
 
-						n.receive(candidate: Candidate(hash: index.highest, height: index.height, peer: self.url))
+						n.queueRequest(candidate: Candidate(hash: index.highest, height: index.height, peer: self.url))
 					}
 					else {
 						self.connection = nil
@@ -515,6 +558,9 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 						assert(try! BlockType.read(json: block.json).isSignatureValid, "JSON goes wild")
 
 						try connection.reply(counter: counter, gossip: .block(block.json))
+					}
+					else {
+						try connection.reply(counter: counter, gossip: .error("not found"))
 					}
 				}
 

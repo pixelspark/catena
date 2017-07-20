@@ -100,46 +100,76 @@ class Node<BlockchainType: Blockchain> {
 	}
 
 	func add(peer connection: PeerIncomingConnection<BlockchainType>) {
-		var uc = URLComponents()
-		uc.scheme = "ws"
-		uc.host = connection.connection.request.remoteAddress
+		var reverseURL = URLComponents()
+		reverseURL.scheme = "ws"
+		reverseURL.host = connection.connection.request.remoteAddress
+
+		let queryParameters = connection.connection.request.urlURL.parameters
 
 		if
-			let connectingUUIDString = connection.connection.request.headers["X-UUID"]?.first,
+			let connectingUUIDString = queryParameters[ProtocolConstants.uuidRequestKey],
 			let connectingUUID = UUID(uuidString: connectingUUIDString),
-			let connectingPortString = connection.connection.request.headers["X-Port"]?.first,
+			let connectingPortString = queryParameters[ProtocolConstants.portRequestKey],
 			let connectingPort = Int(connectingPortString),
-			let connectingVersionString = connection.connection.request.headers["X-Version"]?.first,
-			let connectingVersion = Int(connectingVersionString),
-			connectingVersion == ProtocolConstants.version,
 			connectingPort > 0, connectingPort < 65535 {
-			uc.user = connectingUUIDString
-			uc.port = connectingPort
-			let url = uc.url!
+			reverseURL.user = connectingUUIDString
+			reverseURL.port = connectingPort
+			let url = reverseURL.url!
 
+			// Check whether the connecting peer is ourselves
 			let isSelf = connectingUUID == self.uuid
 			if isSelf {
+				Log.info("[Server] dropping connection \(reverseURL): is ourselves")
 				connection.close()
+				return
+			}
+
+			// Check whether the connecting peer is looking for someone else
+			if let user = connection.connection.request.urlURL.user {
+				if let userUUID = UUID(uuidString: user) {
+					if userUUID != self.uuid {
+						Log.info("[Server] dropping connection \(reverseURL): is looking for different UUID \(userUUID)")
+						connection.close()
+						return
+					}
+				}
+				else {
+					// Requested node UUID is invalid
+					Log.info("[Server] dropping connection \(reverseURL): invalid UUID '\(user)'")
+					connection.close()
+					return
+				}
 			}
 
 			let peer = Peer<BlockchainType>(url: url, state: isSelf ? .ignored(reason: "is ourselves") : .connected, connection: isSelf ? nil : connection, delegate: self)
 			connection.delegate = peer
 
 			self.mutex.locked {
-				self.peers[url] = peer
-				if !isSelf {
-					do {
-						try self.peerDatabase?.rememberPeer(url: url)
+				if let alreadyConnected = self.peers[url] {
+					switch alreadyConnected.state {
+					case .connected, .queried, .querying:
+						// Reject connection because we are already connected!
+						return
+
+					default:
+						Log.info("Replacing connection \(alreadyConnected) (state=\(alreadyConnected.state)) with \(peer)")
+						// Accept new connection as it is better than what we have
+						break
 					}
-					catch {
-						Log.error("[Node] Peer database remember failed: \(error.localizedDescription)")
-					}
-					self.queryQueue.append(url)
 				}
+
+				self.peers[url] = peer
+				do {
+					try self.peerDatabase?.rememberPeer(url: url)
+				}
+				catch {
+					Log.error("[Node] Peer database remember failed: \(error.localizedDescription)")
+				}
+				self.queryQueue.append(url)
 			}
 		}
 		else {
-			Log.warning("[Node] not accepting incoming peer \(uc.host!): it has no UUID or the UUID is equal to ours, or is incompatible")
+			Log.warning("[Node] not accepting incoming peer \(reverseURL.host!): it has no UUID or the UUID is equal to ours, or is incompatible")
 		}
 	}
 

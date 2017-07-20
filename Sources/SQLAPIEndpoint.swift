@@ -20,7 +20,6 @@ class SQLAPIEndpoint {
 		let longest = self.node.ledger.longest
 
 		response.send(json: [
-			"version": ProtocolConstants.version,
 			"uuid": self.node.uuid.uuidString,
 
 			"longest": [

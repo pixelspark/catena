@@ -15,11 +15,14 @@ or (UTF-8) text frames. The WebSocket ping/pong mechanism may be used to test co
 ## Connection set-up
 
 A connection can be initiated by either node, and on a single connection, queries and responses may flow both ways.
-The peer that initiates the connection is required to send two headers when connecting:
+The peer that initiates the connection is required to send the following URL query parameters when initializing the WebSocket:
 
-* X-UUID, set to the UUID of the connecting peer. This is needed to prevent nodes from accidentally connecting with themselves. Any peer will deny connections with a UUID that is equal to their own.
-* X-Port, set to the port number of the server on the connecting peer's side that accepts connections. This is used for peer exchange. Note that the port may not be reachable from other peers.
-* X-Version, set to the protocol version number (currently 1). Peers may reject incompatible versions (older or newer)
+* uuid, set to the UUID of the connecting peer. This is needed to prevent nodes from accidentally connecting with themselves. Any peer will deny connections with a UUID that is equal to their own.
+* port, set to the port number of the server on the connecting peer's side that accepts connections. This is used for peer exchange. Note that the port may not be reachable from other peers.
+
+The WebSocket request must include the following headers:
+
+* Sec-WebSocket-Protocol, set to the protocol version string (currently "catena-v1"). Peers may reject incompatible versions (older or newer).
 
 ## Packet format
 
