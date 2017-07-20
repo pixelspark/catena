@@ -142,10 +142,19 @@ class SQLAPIEndpoint {
 		var b: SQLBlock? = chain.highest
 		var data: [String] = [];
 		while let block = b {
+			data.append("")
+
 			for tr in block.payload.transactions.reversed() {
 				data.append(tr.statement.sql(dialect: SQLStandardDialect()))
 			}
+
+			data.append("-- #\(block.index): \(block.signature!.stringValue)")
+
+			if block.index == 0 {
+				break
+			}
 			b = try chain.get(block: block.previous)
+			assert(b != nil, "Could not find block #\(block.index-1):\(block.previous.stringValue) in storage while on-chain!")
 		}
 
 		response.headers.setType("text/plain", charset: "utf8")
