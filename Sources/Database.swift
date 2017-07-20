@@ -206,6 +206,7 @@ class SQLiteDatabase: Database {
 	private var db: OpaquePointer? = nil
 	private let mutex = Mutex()
 	private var counter = 0
+	private var hypotheticalCounter = 0
 	let dialect: SQLDialect = SQLStandardDialect()
 
 	enum DatabaseError: LocalizedError {
@@ -250,38 +251,61 @@ class SQLiteDatabase: Database {
 		return String(cString: sqlite3_errmsg(self.db))
 	}
 
-	func snapshot() -> Snapshot? {
-		return self.mutex.locked {
-			var sn: UnsafeMutablePointer<sqlite3_snapshot>? = nil
-			return withUnsafeMutablePointer(to: &sn) { ptr in
-				if sqlite3_snapshot_get(self.db, self.schema, ptr) != SQLITE_OK {
-					return nil
-				}
-				return Snapshot(snapshot: sn!)
-			}
-		}
-	}
-
 	func transaction<T>(name: String? = nil, alwaysRollback: Bool, callback: (() throws -> (T))) throws -> T {
-		let savepointName = self.dialect.literalString(name ?? "tx-\(self.counter)")
-
-		try _ = self.perform("SAVEPOINT \(savepointName)")
-
-		do {
-			let t = try callback()
-
+		return try self.mutex.locked { () -> T in
 			if alwaysRollback {
-				try _ = self.perform("ROLLBACK TO SAVEPOINT \(savepointName)")
+				self.hypotheticalCounter += 1
+			}
+			self.counter += 1
+
+			defer {
+				self.counter -= 1
+
+				if alwaysRollback {
+					self.hypotheticalCounter -= 1
+				}
+			}
+
+			let savepointName = self.dialect.literalString("tx\(self.hypotheticalCounter)c\(self.counter)")
+
+			if self.counter == 1 {
+				try _ = self.perform("BEGIN")
 			}
 			else {
-				try _ = self.perform("RELEASE SAVEPOINT \(savepointName)")
+				try _ = self.perform("SAVEPOINT \(savepointName)")
 			}
 
-			return t
-		}
-		catch {
-			try! _ = self.perform("ROLLBACK TO SAVEPOINT \(savepointName)")
-			throw error
+			do {
+				let t = try callback()
+
+				if alwaysRollback {
+					if self.counter == 1 {
+						try _ = self.perform("ROLLBACK")
+					}
+					else {
+						try _ = self.perform("ROLLBACK TO SAVEPOINT \(savepointName)")
+					}
+				}
+				else {
+					if self.counter == 1 {
+						try _ = self.perform("COMMIT")
+					}
+					else {
+						try _ = self.perform("RELEASE SAVEPOINT \(savepointName)")
+					}
+				}
+
+				return t
+			}
+			catch {
+				if self.counter == 1 {
+					try _ = self.perform("COMMIT")
+				}
+				else {
+					try _ = self.perform("RELEASE SAVEPOINT \(savepointName)")
+				}
+				throw error
+			}
 		}
 	}
 
@@ -301,10 +325,12 @@ class SQLiteDatabase: Database {
 						return SQLiteResult(database: self, resultset: resultSet!, rows: true)
 
 					default:
+						Log.debug("[SQL] ERROR: \(self.lastError)")
 						throw DatabaseError.error(self.lastError)
 					}
 				}
 				else {
+					Log.debug("[SQL] ERROR in prepare: \(self.lastError)")
 					throw DatabaseError.error(self.lastError)
 				}
 			}
