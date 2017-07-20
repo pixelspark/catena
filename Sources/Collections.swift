@@ -152,8 +152,9 @@ public struct OrderedDictionary<KeyType: Hashable, ValueType>: Sequence {
 	}
 
 	public mutating func sortPairsInPlace(_ isOrderedBefore: (PairType, PairType) -> Bool) {
+		let values = self.values
 		self.keys.sort { a, b in
-			return isOrderedBefore((a, self.values[a]!), (b, self.values[b]!))
+			return isOrderedBefore((a, values[a]!), (b, values[b]!))
 		}
 	}
 
