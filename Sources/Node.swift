@@ -108,12 +108,22 @@ class Node<BlockchainType: Blockchain> {
 
 		if
 			let connectingUUIDString = queryParameters[ProtocolConstants.uuidRequestKey],
-			let connectingUUID = UUID(uuidString: connectingUUIDString),
-			let connectingPortString = queryParameters[ProtocolConstants.portRequestKey],
+			let connectingUUID = UUID(uuidString: connectingUUIDString) {
+
+			// Did the connecting peer specify a port?
+			let reversePort: Int
+			if let connectingPortString = queryParameters[ProtocolConstants.portRequestKey],
 			let connectingPort = Int(connectingPortString),
 			connectingPort > 0, connectingPort < 65535 {
+				reversePort = connectingPort
+			}
+			else {
+				// Set reverse port to '0' to indicate an outgoing connection is not possible
+				reversePort = 0
+			}
+
 			reverseURL.user = connectingUUIDString
-			reverseURL.port = connectingPort
+			reverseURL.port = reversePort
 			let url = reverseURL.url!
 
 			// Check whether the connecting peer is ourselves

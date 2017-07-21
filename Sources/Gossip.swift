@@ -454,22 +454,32 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 				if let n = node {
 					switch self.state {
 					case .new, .failed(_):
-						#if !os(Linux)
-							if var uc = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-								uc.queryItems = [
-									URLQueryItem(name: ProtocolConstants.uuidRequestKey, value: n.uuid.uuidString),
-									URLQueryItem(name: ProtocolConstants.portRequestKey, value: String(n.server.port))
-								]
+						// Perhaps reconnect to this peer
+						if var uc = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+							uc.queryItems = [
+								URLQueryItem(name: ProtocolConstants.uuidRequestKey, value: n.uuid.uuidString),
+								URLQueryItem(name: ProtocolConstants.portRequestKey, value: String(n.server.port))
+							]
 
-								let ws = Starscream.WebSocket(url: uc.url!, protocols: [ProtocolConstants.protocolVersion])
-								let pic = PeerOutgoingConnection<BlockchainType>(connection: ws)
-								pic.delegate = self
-								Log.debug("[Peer] connect outgoing \(url)")
-								ws.connect()
-								self.state = .connecting
-								self.connection = pic
+							// If the peer's URL has an empty or 0 port, this indicates the peer can only connect to us
+							if uc.port == nil || uc.port! == 0 {
+								self.state = .ignored(reason: "disconnected, and peer does not accept incoming connections")
 							}
-						#endif
+							else {
+								#if !os(Linux)
+									let ws = Starscream.WebSocket(url: uc.url!, protocols: [ProtocolConstants.protocolVersion])
+									let pic = PeerOutgoingConnection<BlockchainType>(connection: ws)
+									pic.delegate = self
+									Log.debug("[Peer] connect outgoing \(url)")
+									ws.connect()
+									self.state = .connecting
+									self.connection = pic
+								#else
+									// Outgoing connections are not supported on Linux (yet!)
+									self.state == .ignored(reason: "disconnected, and cannot make outgoing connections")
+								#endif
+							}
+						}
 
 					case .connected(_), .queried(_):
 						try self.query()

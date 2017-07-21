@@ -18,9 +18,9 @@ A connection can be initiated by either node, and on a single connection, querie
 The peer that initiates the connection is required to send the following URL query parameters when initializing the WebSocket:
 
 * uuid, set to the UUID of the connecting peer. This is needed to prevent nodes from accidentally connecting with themselves. Any peer will deny connections with a UUID that is equal to their own.
-* port, set to the port number of the server on the connecting peer's side that accepts connections. This is used for peer exchange. Note that the port may not be reachable from other peers.
+* port, set to the port number of the server on the connecting peer's side that accepts connections. This is used for peer exchange. Note that the port may not be reachable from other peers. When the connecting peer does not support incoming connections ('client only'), it may send port=0 or omit the port parameter.
 
-The WebSocket request must include the following headers:
+The WebSocket request *must* include the following headers:
 
 * Sec-WebSocket-Protocol, set to the protocol version string (currently "catena-v1"). Peers may reject incompatible versions (older or newer).
 
