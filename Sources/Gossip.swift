@@ -363,7 +363,7 @@ public class PeerIncomingConnection<BlockchainType: Blockchain>: PeerConnection<
 	}
 
 	public override func send(data: Data) throws {
-		self.connection.send(message: data)
+		self.connection.send(message: data, asBinary: false)
 	}
 
 	public var debugDescription: String {
