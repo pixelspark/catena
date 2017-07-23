@@ -33,11 +33,12 @@ class Node<BlockchainType: Blockchain> {
 	private var queryQueue: [URL] = []
 	private var candidateQueue: [Candidate<BlockType>] = []
 
+	/** The list of peers that can be advertised to other nodes for peer exchange. */
 	var validPeers: Set<URL> {
 		return Set(peers.flatMap { (url, peer) -> URL? in
 			return peer.mutex.locked {
 				switch peer.state {
-				case .failed(_), .querying(_), .new, .ignored, .connected(_), .connecting(_):
+				case .failed(_), .querying(_), .new, .ignored, .connected(_), .connecting(_), .passive:
 					return nil
 
 				case .queried(_):
@@ -67,13 +68,20 @@ class Node<BlockchainType: Blockchain> {
 				let transactionGossip = Gossip<BlockchainType>.transaction(transaction.json)
 				self.peers.forEach { (url, otherPeer) in
 					if peer == nil || otherPeer.url != peer!.url {
-						if case .connected = otherPeer.state, let otherConnection = otherPeer.connection {
-							do {
-								try otherConnection.request(gossip: transactionGossip)
+						switch otherPeer.state {
+						case .queried, .passive:
+							if let otherConnection = otherPeer.connection {
+								do {
+									try otherConnection.request(gossip: transactionGossip)
+								}
+								catch {
+									// Not a problem if this fails
+								}
 							}
-							catch {
-								// Not a problem if this fails
-							}
+
+						default:
+							// Do not send
+							break
 						}
 					}
 				}
@@ -246,7 +254,7 @@ class Node<BlockchainType: Blockchain> {
 		self.mutex.locked {
 			for (_, peer) in self.peers {
 				switch peer.state {
-				case .queried, .connected:
+				case .queried, .connected, .passive:
 					if let peerConnection = peer.connection {
 						self.workerQueue.async {
 							do {

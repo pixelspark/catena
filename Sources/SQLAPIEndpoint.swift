@@ -38,6 +38,7 @@ class SQLAPIEndpoint {
 					case .ignored(reason: let e): desc = "ignored(\(e))"
 					case .queried(_): desc = "queried"
 					case .querying(_): desc = "querying"
+					case .passive: desc = "passive"
 					}
 
 					var res = [

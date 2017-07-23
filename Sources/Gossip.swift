@@ -9,6 +9,75 @@ import Dispatch
 import Starscream
 #endif
 
+public enum Gossip<BlockchainType: Blockchain> {
+	public typealias BlockType = BlockchainType.BlockType
+
+	case query // -> index or passive
+	case index(Index<BlockType>)
+	case block([String: Any]) // no reply
+	case fetch(BlockType.HashType) // -> block
+	case error(String)
+	case transaction([String: Any])
+	case passive
+
+	init?(json: [String: Any]) {
+		if let q = json[ProtocolConstants.actionKey] as? String {
+			if q == "query" {
+				self = .query
+			}
+			else if q == "block", let blockData = json["block"] as? [String: Any] {
+				self = .block(blockData)
+			}
+			else if q == "fetch", let hash = json["hash"] as? String, let hashValue = BlockType.HashType(hash: hash) {
+				self = .fetch(hashValue)
+			}
+			else if q == "index", let idx = json["index"] as? [String: Any], let index = Index<BlockType>(json: idx) {
+				self = .index(index)
+			}
+			else if q == "error", let message = json["message"] as? String {
+				self = .error(message)
+			}
+			else if q == "tx", let tx = json["tx"] as? [String: Any] {
+				self = .transaction(tx)
+			}
+			else if q == "passive" {
+				self = .passive
+			}
+			else {
+				return nil
+			}
+		}
+		else {
+			return nil
+		}
+	}
+
+	var json: [String: Any] {
+		switch self {
+		case .query:
+			return [ProtocolConstants.actionKey: "query"]
+
+		case .block(let b):
+			return [ProtocolConstants.actionKey: "block", "block": b]
+
+		case .index(let i):
+			return [ProtocolConstants.actionKey: "index", "index": i.json]
+
+		case .fetch(let h):
+			return [ProtocolConstants.actionKey: "fetch", "hash": h.stringValue]
+
+		case .transaction(let tx):
+			return [ProtocolConstants.actionKey: "tx", "tx": tx]
+
+		case .error(let m):
+			return [ProtocolConstants.actionKey: "error", "message": m]
+
+		case .passive:
+			return [ProtocolConstants.actionKey: "passive"]
+		}
+	}
+}
+
 internal extension Block {
 	var json: [String: Any] {
 		return [
@@ -183,68 +252,6 @@ public struct Index<BlockType: Block> {
 			"genesis": self.genesis.stringValue,
 			"peers": self.peers.flatMap { $0.absoluteString }
 		]
-	}
-}
-
-public enum Gossip<BlockchainType: Blockchain> {
-	public typealias BlockType = BlockchainType.BlockType
-
-	case query // -> index
-	case index(Index<BlockType>)
-	case block([String: Any]) // no reply
-	case fetch(BlockType.HashType) // -> block
-	case error(String)
-	case transaction([String: Any])
-
-	init?(json: [String: Any]) {
-		if let q = json[ProtocolConstants.actionKey] as? String {
-			if q == "query" {
-				self = .query
-			}
-			else if q == "block", let blockData = json["block"] as? [String: Any] {
-				self = .block(blockData)
-			}
-			else if q == "fetch", let hash = json["hash"] as? String, let hashValue = BlockType.HashType(hash: hash) {
-				self = .fetch(hashValue)
-			}
-			else if q == "index", let idx = json["index"] as? [String: Any], let index = Index<BlockType>(json: idx) {
-				self = .index(index)
-			}
-			else if q == "error", let message = json["message"] as? String {
-				self = .error(message)
-			}
-			else if q == "tx", let tx = json["tx"] as? [String: Any] {
-				self = .transaction(tx)
-			}
-			else {
-				return nil
-			}
-		}
-		else {
-			return nil
-		}
-	}
-
-	var json: [String: Any] {
-		switch self {
-		case .query:
-			return [ProtocolConstants.actionKey: "query"]
-
-		case .block(let b):
-			return [ProtocolConstants.actionKey: "block", "block": b]
-
-		case .index(let i):
-			return [ProtocolConstants.actionKey: "index", "index": i.json]
-
-		case .fetch(let h):
-			return [ProtocolConstants.actionKey: "fetch", "hash": h.stringValue]
-
-		case .transaction(let tx):
-			return [ProtocolConstants.actionKey: "tx", "tx": tx]
-
-		case .error(let m):
-			return [ProtocolConstants.actionKey: "error", "message": m]
-		}
 	}
 }
 
@@ -485,8 +492,8 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 					case .connected(_), .queried(_):
 						try self.query()
 
-					default:
-						// Do nothing
+					case .passive, .ignored(reason: _), .connecting, .querying:
+						// Do nothing (perhaps ping in the future?)
 						break
 					}
 				}
@@ -534,6 +541,9 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 						}
 
 						n.queueRequest(candidate: Candidate(hash: index.highest, height: index.height, peer: self.url))
+					}
+					else if case .passive = reply {
+						self.state = .passive
 					}
 					else {
 						self.connection = nil
@@ -628,6 +638,7 @@ public enum PeerState {
 	case connected // The peer is connected but has not been queried yet
 	case querying // The peer is currently being queried
 	case queried // The peer has last been queried successfully
+	case passive // Peer is active, but should not be queried (only listens passively)
 	case ignored(reason: String) // The peer is ourselves or believes in another genesis, ignore it forever
 	case failed(error: String) // Talking to the peer failed for some reason, ignore it for a while
 }

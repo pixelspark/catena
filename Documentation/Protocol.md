@@ -7,6 +7,19 @@ Nodes use a Gossip protocol to perform the following tasks:
 * Notify other nodes of the successful mining of a new block ("block")
 * Fetch blocks from other nodes by hash ("fetch" and "block")
 
+## Peer states
+
+A peer can be in any of the following states:
+
+* `new`: the address (and possibly UUID) of a peer are known, but no connection attempt has been made by either party.
+* `connecting`: the address (and possibly UUID) of a peer is known and an outgoing connection is being set up.
+* `connected`: a connection (incoming or outgoing) has been established with the peer, but the peer has not been queried yet.
+* `querying`: a query request was sent to the peer and the sender is awaiting the reply.
+* `queried`: the peer sent a reply in response to the most recent `query` request.
+* `ignored`: the peer is ignored forever (either because it did not comply with the protocol or it is a loopback)
+* `failed`: connecting to the peer failed. A new connection attempt may be performed later on.
+* `passive`: the peer has, in reply to a `query` request, indicated that it is a passive peer. This means the peer should not be queried, but wants to be informed of new blocks and transactions. The peer might initiate other queries.
+
 ## Data format
 
 Clients communicate over WebSocket connections using a bidirectional request-response protocol. The protoocol is message-based, encoded in JSON, and transported over WebSocket. Messages can be sent either as binary
@@ -42,10 +55,12 @@ Hashes are encoded as hexadecimal strings.
 
 | Message type | Reply type(s) | Description |
 |------------------|----------------|---------------|
-| query               | index or error | Request peer status (index) |
+| query               | index or passive or error | Request peer status (index) |
+| passive           |                        | Indicate that the peer is passive in response to a query request |
 | fetch                | block or error | Request a specific block from the recipient's chain |
 | block               |                       | Send a block to the recipient, either in response to a fetch request, or unsolicited (newly mined blocks) |
 | transaction      |                       | Send a transaction to the recipient for addition to its memory pool |
+| error           |                        | Indicate an error (in reply to a request) |
 
 ### query
 
@@ -107,6 +122,14 @@ A `block` message is sent in reply to a `fetch` message, or sent as request (`un
 * hash: the hash signature of this block (hash as String)
 * nonce: the nonce value for this block (Integer)
 * payload: the payload of this block (as Base-64 encoded String). The format of the payload is application-specific; for Catena SQL blocks, it is a JSON array of transactions for all blocks except the genesis block. The transaction JSON format is described below.
+
+### passive
+
+````
+{"t":"passive"}
+````
+
+Sent in reply to a `query` request to let the other side know that this peer is only passively participating (e.g. does not maintain a tree or transaction cache, just wants to be able to query the peer and be notified of new blocks/transactions).
 
 ### transaction
 
