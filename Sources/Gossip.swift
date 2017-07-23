@@ -29,8 +29,9 @@ internal extension Block {
 			let payload = Data(base64Encoded: payloadBase64),
 			let previousHash = HashType(hash: previous),
 			let signatureHash = HashType(hash: signature) {
-				var b = try Self.init(index: IndexType(height), previous: previousHash, payload: payload)
-				b.nonce = NonceType(nonce)
+				// FIXME: .uint64 is not generic (NonceType/IndexType may change to something else
+				var b = try Self.init(index: IndexType(height.uint64Value), previous: previousHash, payload: payload)
+				b.nonce = NonceType(nonce.uint64Value)
 				b.signature = signatureHash
 				return b
 			}
@@ -476,7 +477,7 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 									self.connection = pic
 								#else
 									// Outgoing connections are not supported on Linux (yet!)
-									self.state == .ignored(reason: "disconnected, and cannot make outgoing connections")
+									self.state = .ignored(reason: "disconnected, and cannot make outgoing connections")
 								#endif
 							}
 						}
