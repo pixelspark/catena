@@ -232,12 +232,21 @@ extension SQLBlock {
 	/** This is where the magic happens! When replay is false, do not process actual transaction queries, only validate
 	transactions and perform metadata housekeeping. **/
 	func apply(database: Database, meta: SQLMetadata, replay: Bool) throws {
-		// Obtain current chain state
-		guard let headIndex = meta.headIndex else { throw SQLBlockError.metadataError }
-		guard let headHash = meta.headHash else { throw SQLBlockError.metadataError }
+		// Obtain current chain state. If there is no state, this is only allowable when this block has index 0 (genesis block)
+		var headIndex: SQLBlock.IndexType! = meta.headIndex
+		var headHash: SQLBlock.HashType! = meta.headHash
+		if headIndex == nil || headHash == nil {
+			if self.index == 0 {
+				headIndex = 0
+				headHash = SQLBlock.HashType.zeroHash
+			}
+			else {
+				throw SQLBlockError.metadataError
+			}
+		}
 
 		// Check whether block is valid and consecutive
-		if self.index != (headIndex + 1) || self.previous != headHash {
+		if self.index != 0 && (self.index != (headIndex + 1) || self.previous != headHash) {
 			throw SQLBlockError.inconsecutiveBlockError
 		}
 

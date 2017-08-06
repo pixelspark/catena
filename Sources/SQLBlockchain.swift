@@ -154,8 +154,14 @@ class SQLBlockchain: Blockchain {
 			var current = to
 			repeat {
 				replay.append(current)
-				current = try self.get(block: current.previous)!
-			} while current.index != 0
+
+				if current.index != 0 {
+					current = try self.get(block: current.previous)!
+				}
+				else {
+					break
+				}
+			} while true
 
 			// Remove database
 			self.database.close()
