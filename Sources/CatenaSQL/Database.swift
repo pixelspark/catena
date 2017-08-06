@@ -1,8 +1,9 @@
 import Foundation
 import LoggerAPI
 import CSQLite
+import CatenaCore
 
-enum ResultState {
+public enum ResultState {
 	case row
 	case done
 	case error(String)
@@ -27,7 +28,7 @@ class Snapshot {
 	}
 }
 
-enum Value {
+public enum Value {
 	case int(Int)
 	case text(String)
 	case blob(Data)
@@ -36,7 +37,7 @@ enum Value {
 	case null
 }
 
-protocol Result {
+public protocol Result {
 	var hasRow: Bool { get }
 	var columns: [String] { get }
 	var values: [Value] { get }
@@ -44,8 +45,8 @@ protocol Result {
 	@discardableResult func step() -> ResultState
 }
 
-class SQLiteResult: Result {
-	private(set) var state: ResultState
+public class SQLiteResult: Result {
+	public private(set) var state: ResultState
 	let database: SQLiteDatabase
 	private let resultset: OpaquePointer
 
@@ -55,11 +56,11 @@ class SQLiteResult: Result {
 		self.state = rows ? .row : .done
 	}
 
-	var hasRow: Bool {
+	public var hasRow: Bool {
 		return self.state.hasRow
 	}
 
-	var columns: [String] {
+	public var columns: [String] {
 		let n = sqlite3_column_count(resultset)
 
 		var cns: [String] = []
@@ -71,8 +72,7 @@ class SQLiteResult: Result {
 		return cns
 	}
 
-	// TODO: use a more appropriate type than string (variant type)
-	var values: [Value] {
+	public var values: [Value] {
 		let n = sqlite3_column_count(resultset)
 
 		var cns: [Value] = []
@@ -113,7 +113,7 @@ class SQLiteResult: Result {
 		return cns
 	}
 
-	@discardableResult func step() -> ResultState {
+	@discardableResult public func step() -> ResultState {
 		switch self.state {
 		case .row:
 			switch sqlite3_step(self.resultset) {
@@ -148,66 +148,66 @@ class SQLiteResult: Result {
 	}
 }
 
-protocol SQLDialect {
+public protocol SQLDialect {
 	func literalString(_ string: String) -> String
 	func tableIdentifier(_ table: String) -> String
 	func columnIdentifier(_ column: String) -> String
 	func literalBlob(_ blob: Data) -> String
 }
 
-struct SQLStandardDialect: SQLDialect {
+public struct SQLStandardDialect: SQLDialect {
 	let stringEscape = "\\"
 	let stringQualifierEscape = "\'\'"
 	let stringQualifier = "\'"
 	let identifierQualifier = "\""
 	let identifierQualifierEscape = "\\\""
 
-	func literalString(_ string: String) -> String {
+	public func literalString(_ string: String) -> String {
 		let escaped = string
 			.replacingOccurrences(of: stringEscape, with: stringEscape+stringEscape)
 			.replacingOccurrences(of: stringQualifier, with: stringQualifierEscape)
 		return "\(stringQualifier)\(escaped)\(stringQualifier)"
 	}
 
-	func literalBlob(_ blob: Data) -> String {
+	public func literalBlob(_ blob: Data) -> String {
 		let hex = blob.map { String(format: "%02hhx", $0) }.joined()
 		return "X\(self.stringQualifier)\(hex)\(self.stringQualifier)"
 	}
 
-	func tableIdentifier(_ table: String) -> String {
+	public func tableIdentifier(_ table: String) -> String {
 		return "\(identifierQualifier)\(table.replacingOccurrences(of: identifierQualifier, with: identifierQualifierEscape))\(identifierQualifier)"
 	}
 
-	func columnIdentifier(_ column: String) -> String {
+	public func columnIdentifier(_ column: String) -> String {
 		return "\(identifierQualifier)\(column.replacingOccurrences(of: identifierQualifier, with: identifierQualifierEscape))\(identifierQualifier)"
 	}
 }
 
-protocol Database {
+public protocol Database {
 	var dialect: SQLDialect { get }
-	func transaction<T>(name: String?, alwaysRollback: Bool, callback: (() throws -> (T))) throws -> T
+	func transaction<T>(name: String?, alwaysRollback: Bool, callback: @escaping (() throws -> (T))) throws -> T
 	func perform(_ sql: String) throws -> Result
 	func close()
 	func exists(table: String) throws -> Bool
 }
 
-extension Database {
-	func transaction<T>(name: String? = nil, callback: (() throws -> (T))) throws -> T {
+public extension Database {
+	func transaction<T>(name: String? = nil, callback: @escaping (() throws -> (T))) throws -> T {
 		return try self.transaction(name: name, alwaysRollback: false, callback: callback)
 	}
 
-	func hypothetical<T>(callback: (() throws -> (T))) throws -> T {
+	func hypothetical<T>(callback: @escaping (() throws -> (T))) throws -> T {
 		return try self.transaction(name: nil, alwaysRollback: true, callback: callback)
 	}
 }
 
-class SQLiteDatabase: Database {
+public class SQLiteDatabase: Database {
 	private let schema = "main"
 	private var db: OpaquePointer? = nil
 	private let mutex = Mutex()
 	private var counter = 0
 	private var hypotheticalCounter = 0
-	let dialect: SQLDialect = SQLStandardDialect()
+	public let dialect: SQLDialect = SQLStandardDialect()
 
 	enum DatabaseError: LocalizedError {
 		case error(String)
@@ -219,7 +219,10 @@ class SQLiteDatabase: Database {
 		}
 	}
 
-	func open(_ path: String) throws {
+	public init() {
+	}
+
+	public func open(_ path: String) throws {
 		try self.mutex.locked {
 			assert(self.db == nil, "database is already opened")
 			try path.withCString { cs in
@@ -233,7 +236,7 @@ class SQLiteDatabase: Database {
 		}
 	}
 
-	func close() {
+	public func close() {
 		self.mutex.locked {
 			if self.db != nil {
 				sqlite3_close(self.db)
@@ -242,7 +245,7 @@ class SQLiteDatabase: Database {
 		}
 	}
 
-	func exists(table: String) throws -> Bool {
+	public func exists(table: String) throws -> Bool {
 		let r = try self.perform("SELECT type FROM sqlite_master WHERE name=\(self.dialect.literalString(table))")
 		return r.hasRow
 	}
@@ -251,7 +254,7 @@ class SQLiteDatabase: Database {
 		return String(cString: sqlite3_errmsg(self.db))
 	}
 
-	func transaction<T>(name: String? = nil, alwaysRollback: Bool, callback: (() throws -> (T))) throws -> T {
+	public func transaction<T>(name: String? = nil, alwaysRollback: Bool, callback: @escaping (() throws -> (T))) throws -> T {
 		return try self.mutex.locked { () -> T in
 			if alwaysRollback {
 				self.hypotheticalCounter += 1
@@ -309,7 +312,7 @@ class SQLiteDatabase: Database {
 		}
 	}
 
-	func perform(_ sql: String) throws -> Result {
+	public func perform(_ sql: String) throws -> Result {
 		return try self.mutex.locked { () -> Result in
 			Log.debug("[SQL] \(sql)")
 

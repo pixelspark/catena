@@ -1,7 +1,8 @@
 import Foundation
 import LoggerAPI
+import CatenaCore
 
-struct SQLPayload {
+public struct SQLPayload {
 	var transactions: [SQLTransaction]
 
 	enum SQLPayloadError: Error {
@@ -52,9 +53,9 @@ struct SQLPayload {
 	}
 }
 
-struct SQLBlock: Block, CustomDebugStringConvertible {
-	typealias TransactionType = SQLTransaction
-	typealias HashType = SHA256Hash
+public struct SQLBlock: Block, CustomDebugStringConvertible {
+	public typealias TransactionType = SQLTransaction
+	public typealias HashType = SHA256Hash
 	typealias NonceType = UInt64
 	typealias IndexType = UInt64
 
@@ -64,28 +65,28 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 	/// Maximum size of the payload data in a block (the 'data for signing' is used as reference)
 	let maximumPayloadSizeBytes = 1024 * 1024 // 1 MiB
 
-	var index: UInt64
-	var previous: HashType
-	var payload: SQLPayload
-	var nonce: UInt64 = 0
-	var signature: HashType? = nil
+	public var index: UInt64
+	public var previous: HashType
+	public var payload: SQLPayload
+	public var nonce: UInt64 = 0
+	public var signature: HashType? = nil
 	private let seed: String! // Only used for genesis blocks, in which case hash==zeroHash and payload is empty
 
-	init() {
+	public init() {
 		self.index = 1
 		self.previous = HashType.zeroHash
 		self.payload = SQLPayload()
 		self.seed = nil
 	}
 
-	init(genesisBlockWith seed: String) {
+	public init(genesisBlockWith seed: String) {
 		self.index = 0
 		self.seed = seed
 		self.payload = SQLPayload()
 		self.previous = HashType.zeroHash
 	}
 
-	init(index: UInt64, previous: HashType, payload: Data) throws {
+	public init(index: UInt64, previous: HashType, payload: Data) throws {
 		self.index = index
 		self.previous = previous
 
@@ -107,11 +108,11 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 		self.seed = nil
 	}
 
-	static func ==(lhs: SQLBlock, rhs: SQLBlock) -> Bool {
+	public static func ==(lhs: SQLBlock, rhs: SQLBlock) -> Bool {
 		return lhs.dataForSigning == rhs.dataForSigning
 	}
 
-	func isPayloadValid() -> Bool {
+	public func isPayloadValid() -> Bool {
 		// Payload must not contain too much transactions
 		if self.payload.transactions.count > self.maximumNumberOfTransactionsPerBlock {
 			return false
@@ -132,7 +133,7 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 	}
 
 	/** Whether the block can accomodate the `transaction`, disregarding any validation of the transaction itself. */
-	func hasRoomFor(transaction: SQLTransaction) -> Bool {
+	public func hasRoomFor(transaction: SQLTransaction) -> Bool {
 		assert(self.seed == nil, "cannot append transactions to a genesis block")
 		assert(transaction.signature != nil, "transaction needs to have a signature")
 
@@ -149,7 +150,7 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 		return true
 	}
 
-	mutating func append(transaction: SQLTransaction) throws -> Bool {
+	public mutating func append(transaction: SQLTransaction) throws -> Bool {
 		assert(self.seed == nil, "cannot append transactions to a genesis block")
 		assert(transaction.signature != nil, "transaction needs to have a signature")
 
@@ -166,15 +167,15 @@ struct SQLBlock: Block, CustomDebugStringConvertible {
 		return true
 	}
 
-	var payloadData: Data {
+	public var payloadData: Data {
 		return self.isAGenesisBlock ? self.seed.data(using: .utf8)! : self.payload.data
 	}
 
-	var payloadDataForSigning: Data {
+	public var payloadDataForSigning: Data {
 		return self.isAGenesisBlock ? self.seed.data(using: .utf8)! : self.payload.dataForSigning
 	}
 
-	var debugDescription: String {
+	public var debugDescription: String {
 		return "#\(self.index) [nonce=\(self.nonce), previous=\(self.previous.stringValue), sig=\(self.signature?.stringValue ?? "")]";
 	}
 }

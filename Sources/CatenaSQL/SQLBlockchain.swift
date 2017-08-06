@@ -1,22 +1,23 @@
 import Foundation
 import LoggerAPI
+import CatenaCore
 
-class SQLLedger: Ledger {
-	typealias BlockchainType = SQLBlockchain
+public class SQLLedger: Ledger {
+	public typealias BlockchainType = SQLBlockchain
 
-	let mutex = Mutex()
-	let orphans = Orphans<SQLBlock>()
-	var longest: SQLBlockchain
-	let spliceLimit: UInt = 1
+	public let mutex = Mutex()
+	public let orphans = Orphans<SQLBlock>()
+	public var longest: SQLBlockchain
+	public let spliceLimit: UInt = 1
 
 	/** Instantiate an SQLLedger that tracks chains starting at the indicated genesis block and uses the indicated database
 	file for storage. When`replay` is true, the ledger will process database transactions, whereas if it is false, the
 	ledger will only validate transactions and participate in grant and other metadata processing. */
-	init(genesis: SQLBlock, database path: String, replay: Bool) throws {
+	public init(genesis: SQLBlock, database path: String, replay: Bool) throws {
 		self.longest = try SQLBlockchain(genesis: genesis, database: path, replay: replay)
 	}
 
-	func canAccept(transaction: SQLTransaction, pool: SQLBlock?) throws -> Bool {
+	public func canAccept(transaction: SQLTransaction, pool: SQLBlock?) throws -> Bool {
 		if !transaction.isSignatureValid {
 			Log.info("[Ledger] cannot accept tx \(transaction): signature invalid")
 			return false
@@ -52,11 +53,11 @@ class SQLLedger: Ledger {
 }
 
 
-class SQLBlockchain: Blockchain {
-	typealias BlockType = SQLBlock
+public class SQLBlockchain: Blockchain {
+	public typealias BlockType = SQLBlock
 
-	let genesis: SQLBlock
-	var highest: SQLBlock
+	public let genesis: SQLBlock
+	public var highest: SQLBlock
 
 	/** The SQL blockchain maintains a database (permanent) and a queue. When transactions are received, they are inserted
 	in a queue. When this queue exceeds a certain size (`maxQueueSize`), the transactions are processed in the permanent
@@ -117,7 +118,7 @@ class SQLBlockchain: Blockchain {
 		}
 	}
 
-	func get(block hash: BlockType.HashType) throws -> SQLBlock? {
+	public func get(block hash: BlockType.HashType) throws -> SQLBlock? {
 		if let b =  try self.meta.get(block: hash) {
 			return b
 		}
@@ -138,15 +139,14 @@ class SQLBlockchain: Blockchain {
 		}
 	}
 
-	var difficulty: Int {
+	public var difficulty: Int {
 		// TODO: this should be made dynamic. Can potentially store required difficulty in SQL (info table)?
 		return self.genesis.signature!.difficulty
 	}
 
-	func append(block: SQLBlock) throws -> Bool {
+	public func append(block: SQLBlock) throws -> Bool {
 		return try self.mutex.locked {
-			// Check if block can be appended
-			if block.previous == self.highest.signature! && block.index == (self.highest.index + 1) && block.isSignatureValid && block.signature!.difficulty >= self.difficulty {
+			if self.canAppend(block: block, to: self.highest) {
 				self.queue.append(block)
 				self.highest = block
 
@@ -165,13 +165,11 @@ class SQLBlockchain: Blockchain {
 
 				return true
 			}
-			else {
-				return false
-			}
+			return false
 		}
 	}
 
-	func unwind(to: SQLBlock) throws {
+	public func unwind(to: SQLBlock) throws {
 		do {
 			try self.mutex.locked {
 				Log.info("[SQLBlockchain] Unwind from #\(self.highest.index) to #\(to.index)")
@@ -247,7 +245,7 @@ class SQLBlockchain: Blockchain {
 		}
 	}
 
-	func withUnverifiedTransactions<T>(_ block: ((SQLBlockchain) throws -> (T))) rethrows -> T {
+	func withUnverifiedTransactions<T>(_ block: @escaping ((SQLBlockchain) throws -> (T))) rethrows -> T {
 		return try self.mutex.locked {
 			return try self.database.hypothetical {
 				// Replay queued blocks
@@ -277,11 +275,12 @@ class SQLUsersTable {
 		try database.transaction {
 			if !(try database.exists(table: self.table.name)) {
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
-				cols.append(.blob, forKey: userColumn)
-				cols.append(.int, forKey: counterColumn)
+				cols.append(.blob, forKey: self.userColumn)
+				cols.append(.int, forKey: self.counterColumn)
 				let createStatement = SQLStatement.create(table: self.table, schema: SQLSchema(
 					columns: cols,
-					primaryKey: self.userColumn))
+					primaryKey: self.userColumn
+				))
 				try _ = self.database.perform(createStatement.sql(dialect: self.database.dialect))
 			}
 		}
@@ -354,8 +353,8 @@ class SQLKeyValueTable {
 		try database.transaction {
 			if !(try database.exists(table: self.table.name)) {
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
-				cols.append(.text, forKey: keyColumn)
-				cols.append(.text, forKey: valueColumn)
+				cols.append(.text, forKey: self.keyColumn)
+				cols.append(.text, forKey: self.valueColumn)
 				let createStatement = SQLStatement.create(table: self.table, schema: SQLSchema(
 					columns: cols,
 					primaryKey: self.keyColumn))
@@ -396,7 +395,7 @@ class SQLKeyValueTable {
 	}
 }
 
-struct SQLBlockArchive {
+class SQLBlockArchive {
 	let database: Database
 	let table: SQLTable
 
@@ -407,7 +406,7 @@ struct SQLBlockArchive {
 		// This is a new file?
 		if !(try database.exists(table: self.table.name)) {
 			// Create block table
-			try self.database.transaction(name: "init-block-archive") {
+			try self.database.transaction(name: "init-block-archive") { 
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "signature"))
 				cols.append(SQLType.int, forKey: SQLColumn(name: "index"))
@@ -415,7 +414,7 @@ struct SQLBlockArchive {
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "previous"))
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "payload"))
 
-				let createStatement = SQLStatement.create(table: self.table, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
+				let createStatement = SQLStatement.create(table: table, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
 				_ = try self.database.perform(createStatement.sql(dialect: self.database.dialect))
 			}
 		}
@@ -487,13 +486,13 @@ struct SQLBlockArchive {
 	}
 }
 
-class SQLPeerDatabase: PeerDatabase {
+public class SQLPeerDatabase: PeerDatabase {
 	let database: Database
 	let table: SQLTable
 	let uuidColumn = SQLColumn(name: "uuid")
 	let urlColumn = SQLColumn(name: "url")
 
-	init(database: Database, table: SQLTable) throws {
+	public init(database: Database, table: SQLTable) throws {
 		self.database = database
 		self.table = table
 
@@ -506,7 +505,7 @@ class SQLPeerDatabase: PeerDatabase {
 		}
 	}
 
-	func rememberPeer(url: URL) throws {
+	public func rememberPeer(url: URL) throws {
 		let uuid = UUID(uuidString: url.user!)!
 
 		let insert = SQLStatement.insert(SQLInsert(orReplace: true, into: self.table, columns: [uuidColumn, urlColumn], values: [[
@@ -516,14 +515,14 @@ class SQLPeerDatabase: PeerDatabase {
 		try _ = self.database.perform(insert.sql(dialect: self.database.dialect))
 	}
 
-	func forgetPeer(uuid: UUID) throws {
+	public func forgetPeer(uuid: UUID) throws {
 		let delete = SQLStatement.delete(from: self.table, where: SQLExpression.binary(
 			SQLExpression.column(self.uuidColumn), .equals, SQLExpression.literalString(uuid.uuidString)
 		))
 		try _ = self.database.perform(delete.sql(dialect: self.database.dialect))
 	}
 
-	func peers() throws -> [URL] {
+	public func peers() throws -> [URL] {
 		let select = SQLStatement.select(SQLSelect(these: [SQLExpression.column(self.urlColumn)], from: self.table, joins: [], where: nil, distinct: false, orders: []))
 		let res = try self.database.perform(select.sql(dialect: self.database.dialect))
 		var urls: [URL] = []
@@ -538,9 +537,8 @@ class SQLPeerDatabase: PeerDatabase {
 	}
 }
 
-
-struct SQLMetadata {
-	static let grantsTableName = "grants"
+public struct SQLMetadata {
+	public static let grantsTableName = "grants"
 	static let infoTableName = "_info"
 	static let blocksTableName = "_blocks"
 	static let usersTableName = "_users"
@@ -564,7 +562,7 @@ struct SQLMetadata {
 	private let infoTrueValue = "true"
 	private let infoFalseValue = "false"
 
-	init(database: Database) throws {
+	public init(database: Database) throws {
 		self.database = database
 		self.info = try SQLKeyValueTable(database: database, table: SQLTable(name: SQLMetadata.infoTableName))
 		self.archive = try SQLBlockArchive(table: SQLTable(name: SQLMetadata.blocksTableName), database: database)
@@ -598,14 +596,14 @@ struct SQLMetadata {
 
 	func set(head: SQLBlock.HashType, index: SQLBlock.IndexType) throws {
 		try self.database.transaction(name: "metadata-set-\(index)-\(head.stringValue)") {
-			try self.info.set(key: infoHeadHashKey, value: head.stringValue)
-			try self.info.set(key: infoHeadIndexKey, value: String(index))
+			try self.info.set(key: self.infoHeadHashKey, value: head.stringValue)
+			try self.info.set(key: self.infoHeadIndexKey, value: String(index))
 		}
 	}
 
 	func set(replaying: Bool) throws {
 		try self.database.transaction(name: "metadata-set-replay-\(index)") {
-			try self.info.set(key: infoReplayingKey, value: replaying ? self.infoTrueValue : self.infoFalseValue)
+			try self.info.set(key: self.infoReplayingKey, value: replaying ? self.infoTrueValue : self.infoFalseValue)
 		}
 	}
 

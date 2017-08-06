@@ -1,40 +1,49 @@
 import Foundation
 import LoggerAPI
 import SwiftParser
+import CatenaCore
 
-struct SQLTable: Equatable, Hashable {
-	var name: String
+public struct SQLTable: Equatable, Hashable {
+	public var name: String
+
+	public init(name: String) {
+		self.name = name
+	}
 
 	func sql(dialect: SQLDialect) -> String {
 		return name.lowercased()
 	}
 
-	var hashValue: Int {
+	public var hashValue: Int {
 		return self.name.lowercased().hashValue
 	}
 
-	static func ==(lhs: SQLTable, rhs: SQLTable) -> Bool {
+	public static func ==(lhs: SQLTable, rhs: SQLTable) -> Bool {
 		return lhs.name.lowercased() == rhs.name.lowercased()
 	}
 }
 
-struct SQLColumn: Equatable, Hashable {
-	var name: String
+public struct SQLColumn: Equatable, Hashable {
+	public var name: String
+
+	public init(name: String) {
+		self.name = name
+	}
 
 	func sql(dialect: SQLDialect) -> String {
 		return dialect.columnIdentifier(name.lowercased())
 	}
 
-	var hashValue: Int {
+	public var hashValue: Int {
 		return self.name.lowercased().hashValue
 	}
 
-	static func ==(lhs: SQLColumn, rhs: SQLColumn) -> Bool {
+	public static func ==(lhs: SQLColumn, rhs: SQLColumn) -> Bool {
 		return lhs.name.lowercased() == rhs.name.lowercased()
 	}
 }
 
-enum SQLType {
+public enum SQLType {
 	case text
 	case int
 	case blob
@@ -48,16 +57,16 @@ enum SQLType {
 	}
 }
 
-struct SQLSchema {
-	var columns = OrderedDictionary<SQLColumn, SQLType>()
-	var primaryKey: SQLColumn? = nil
+public struct SQLSchema {
+	public var columns = OrderedDictionary<SQLColumn, SQLType>()
+	public var primaryKey: SQLColumn? = nil
 
-	init(columns: OrderedDictionary<SQLColumn, SQLType>, primaryKey: SQLColumn? = nil) {
+	public init(columns: OrderedDictionary<SQLColumn, SQLType>, primaryKey: SQLColumn? = nil) {
 		self.columns = columns
 		self.primaryKey = primaryKey
 	}
 
-	init(primaryKey: SQLColumn? = nil, columns: (SQLColumn, SQLType)...) {
+	public init(primaryKey: SQLColumn? = nil, columns: (SQLColumn, SQLType)...) {
 		self.primaryKey = primaryKey
 		for c in columns {
 			self.columns.append(c.1, forKey: c.0)
@@ -65,7 +74,7 @@ struct SQLSchema {
 	}
 }
 
-enum SQLJoin {
+public enum SQLJoin {
 	case left(table: SQLTable, on: SQLExpression)
 
 	func sql(dialect: SQLDialect) -> String {
@@ -76,15 +85,15 @@ enum SQLJoin {
 	}
 }
 
-struct SQLSelect {
-	var these: [SQLExpression] = []
-	var from: SQLTable? = nil
-	var joins: [SQLJoin] = []
-	var `where`: SQLExpression? = nil
-	var distinct: Bool = false
-	var orders: [SQLOrder] = []
+public struct SQLSelect {
+	public var these: [SQLExpression] = []
+	public var from: SQLTable? = nil
+	public var joins: [SQLJoin] = []
+	public var `where`: SQLExpression? = nil
+	public var distinct: Bool = false
+	public var orders: [SQLOrder] = []
 
-	init(these: [SQLExpression] = [], from: SQLTable? = nil, joins: [SQLJoin] = [], `where`: SQLExpression? = nil, distinct: Bool = false, orders: [SQLOrder] = []) {
+	public init(these: [SQLExpression] = [], from: SQLTable? = nil, joins: [SQLJoin] = [], `where`: SQLExpression? = nil, distinct: Bool = false, orders: [SQLOrder] = []) {
 		self.these = these
 		self.from = from
 		self.joins = joins
@@ -94,24 +103,31 @@ struct SQLSelect {
 	}
 }
 
-struct SQLInsert {
-	var orReplace: Bool = false
-	var into: SQLTable
-	var columns: [SQLColumn] = []
-	var values: [[SQLExpression]] = []
+public struct SQLInsert {
+	public var orReplace: Bool = false
+	public var into: SQLTable
+	public var columns: [SQLColumn] = []
+	public var values: [[SQLExpression]] = []
+
+	public init(orReplace: Bool = false, into: SQLTable, columns: [SQLColumn] = [], values: [[SQLExpression]] = []) {
+		self.orReplace = orReplace
+		self.into = into
+		self.columns = columns
+		self.values = values
+	}
 }
 
-struct SQLUpdate {
+public struct SQLUpdate {
 	var table: SQLTable
 	var set: [SQLColumn: SQLExpression] = [:]
 	var `where`: SQLExpression? = nil
 
-	init(table: SQLTable) {
+	public init(table: SQLTable) {
 		self.table = table
 	}
 }
 
-enum SQLStatement {
+public enum SQLStatement {
 	case create(table: SQLTable, schema: SQLSchema)
 	case delete(from: SQLTable, where: SQLExpression?)
 	case drop(table: SQLTable)
@@ -131,7 +147,7 @@ enum SQLStatement {
 		}
 	}
 
-	init(_ sql: String) throws {
+	public init(_ sql: String) throws {
 		let parser = SQLParser()
 		if !parser.parse(sql) {
 			throw SQLStatementError.syntaxError(query: sql)
@@ -245,7 +261,7 @@ enum SQLStatement {
 	}
 }
 
-enum SQLUnary {
+public enum SQLUnary {
 	case isNull
 	case negate
 	case not
@@ -261,7 +277,7 @@ enum SQLUnary {
 	}
 }
 
-enum SQLBinary {
+public enum SQLBinary {
 	case equals
 	case notEquals
 	case lessThan
@@ -295,12 +311,12 @@ enum SQLBinary {
 	}
 }
 
-struct SQLWhen {
+public struct SQLWhen {
 	var when: SQLExpression
 	var then: SQLExpression
 }
 
-enum SQLExpression {
+public enum SQLExpression {
 	case literalInteger(Int)
 	case literalUnsigned(UInt)
 	case literalString(String)
@@ -363,7 +379,7 @@ enum SQLExpression {
 	}
 }
 
-enum SQLOrderDirection: String {
+public enum SQLOrderDirection: String {
 	case ascending = "ASC"
 	case descending = "DESC"
 
@@ -372,12 +388,12 @@ enum SQLOrderDirection: String {
 	}
 }
 
-struct SQLOrder {
+public struct SQLOrder {
 	var expression: SQLExpression
 	var direction: SQLOrderDirection = .ascending
 }
 
-enum SQLFragment {
+public enum SQLFragment {
 	case statement(SQLStatement)
 	case expression(SQLExpression)
 	case tuple([SQLExpression])

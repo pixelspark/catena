@@ -2,16 +2,16 @@ import Foundation
 import Base58
 import Ed25519
 
-struct Identity {
-	let privateKey: PrivateKey
-	let publicKey: PublicKey
+public struct Identity {
+	public let privateKey: PrivateKey
+	public let publicKey: PublicKey
 
-	init(publicKey: PublicKey, privateKey: PrivateKey) {
+	public init(publicKey: PublicKey, privateKey: PrivateKey) {
 		self.publicKey = publicKey
 		self.privateKey = privateKey
 	}
 
-	init() throws {
+	public init() throws {
 		let s = try Seed()
 		let keyPair = KeyPair(seed: s)
 		self.privateKey = PrivateKey(data: Data(bytes: keyPair.privateKey.bytes))
@@ -19,8 +19,8 @@ struct Identity {
 	}
 }
 
-class Key: CustomStringConvertible, CustomDebugStringConvertible, Hashable {
-	let data: Data
+public class Key: CustomStringConvertible, CustomDebugStringConvertible, Hashable {
+	public let data: Data
 	let version: UInt8
 
 	fileprivate init?(string: String, version: UInt8) {
@@ -39,57 +39,57 @@ class Key: CustomStringConvertible, CustomDebugStringConvertible, Hashable {
 		self.version = version
 	}
 
-	var stringValue: String {
+	public var stringValue: String {
 		return self.data.base58checkEncoded(version: self.version)
 	}
 
-	var description: String {
+	public var description: String {
 		return self.stringValue
 	}
 
-	var debugDescription: String {
+	public var debugDescription: String {
 		return self.stringValue
 	}
 
-	var hashValue: Int {
+	public var hashValue: Int {
 		return self.data.hashValue
 	}
 
-	static func ==(lhs: Key, rhs: Key) -> Bool {
+	public static func ==(lhs: Key, rhs: Key) -> Bool {
 		return lhs.data == rhs.data
 	}
 }
 
-class PrivateKey: Key {
+public class PrivateKey: Key {
 	private static let base58version: UInt8 = 11
 
-	init?(string: String) {
+	public init?(string: String) {
 		super.init(string: string, version: PrivateKey.base58version)
 	}
 
-	init(data: Data) {
+	public init(data: Data) {
 		super.init(data: data, version: PrivateKey.base58version)
 	}
 }
 
-class PublicKey: Key {
+public class PublicKey: Key {
 	private static let base58version: UInt8 = 88
 
-	init?(string: String) {
+	public init?(string: String) {
 		super.init(string: string, version: PublicKey.base58version)
 	}
 
-	init(data: Data) {
+	public init(data: Data) {
 		super.init(data: data, version: PublicKey.base58version)
 	}
 
-	func sign(data: Data, with privateKey: PrivateKey) throws -> Data {
+	public func sign(data: Data, with privateKey: PrivateKey) throws -> Data {
 		let pair = try KeyPair(publicKey: [UInt8](self.data), privateKey: [UInt8](privateKey.data))
 		let sigBytes = pair.sign([UInt8](data))
 		return Data(sigBytes)
 	}
 
-	func verify(message: Data, signature: Data) throws -> Bool {
+	public func verify(message: Data, signature: Data) throws -> Bool {
 		return try Ed25519.PublicKey([UInt8](self.data)).verify(signature: [UInt8](signature), message: [UInt8](message))
 	}
 }

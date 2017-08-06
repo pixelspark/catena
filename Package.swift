@@ -21,5 +21,18 @@ var deps: [Package.Dependency] = [
 
 let package = Package(
     name: "Catena",
-    dependencies: deps
+
+    targets: [
+		Target(
+			name: "Catena",
+			dependencies: ["CatenaCore", "CatenaSQL"]
+		),
+		Target(
+			name: "CatenaSQL",
+			dependencies: ["CatenaCore"]
+		),
+		Target(name: "CatenaCore")
+	],
+
+	dependencies: deps
 )

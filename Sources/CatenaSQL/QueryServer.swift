@@ -1,5 +1,6 @@
 import Foundation
 import LoggerAPI
+import CatenaCore
 
 struct QueryError: LocalizedError {
 	let message: String
@@ -26,15 +27,15 @@ extension Value {
 	}
 }
 
-class NodeQueryServer: QueryServer {
+public class NodeQueryServer: QueryServer {
 	var node: Node<SQLLedger>
 
-	init(node: Node<SQLLedger>, port: Int, family: Family = .ipv6) {
+	public init(node: Node<SQLLedger>, port: Int, family: Family = .ipv6) {
 		self.node = node
 		super.init(port: port, family: family)
 	}
 
-	override func query(_ query: String, connection: QueryClientConnection) {
+	public override func query(_ query: String, connection: QueryClientConnection) {
 		Log.info("[Query] Execute: \(query)")
 
 		do {

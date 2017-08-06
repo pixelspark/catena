@@ -17,28 +17,27 @@ struct Candidate<BlockType: Block>: Equatable, Hashable {
 	let peer: UUID
 }
 
-protocol PeerDatabase {
+public protocol PeerDatabase {
 	func rememberPeer(url: URL) throws
 	func forgetPeer(uuid: UUID) throws
 }
 
-class Node<LedgerType: Ledger> {
-	typealias BlockchainType = LedgerType.BlockchainType
-	typealias BlockType = BlockchainType.BlockType
+public class Node<LedgerType: Ledger> {
+	public typealias BlockchainType = LedgerType.BlockchainType
+	public typealias BlockType = BlockchainType.BlockType
 
-	let uuid: UUID
-	private(set) var ledger: LedgerType! = nil
-	private(set) var server: Server<LedgerType>! = nil
-	private(set) var miner: Miner<LedgerType>! = nil
-
-	var peerDatabase: PeerDatabase? = nil
+	public let uuid: UUID
+	public private(set) var ledger: LedgerType! = nil
+	public private(set) var miner: Miner<LedgerType>! = nil
+	public private(set) var server: Server<LedgerType>! = nil
+	public private(set) var peers: [UUID: Peer<LedgerType>] = [:]
+	public var peerDatabase: PeerDatabase? = nil
 
 	private var fetcher: Fetcher<LedgerType>! = nil
 	private let workerQueue = DispatchQueue.global(qos: .background)
 
 	private let tickTimer: DispatchSourceTimer
 	fileprivate let mutex = Mutex()
-	private(set) var peers: [UUID: Peer<LedgerType>] = [:]
 	private var queryQueue: [UUID] = []
 
 	/** The list of peers that can be advertised to other nodes for peer exchange. */
@@ -56,7 +55,7 @@ class Node<LedgerType: Ledger> {
 		})
 	}
 
-	init(ledger: LedgerType, port: Int) {
+	public init(ledger: LedgerType, port: Int) {
 		self.uuid = UUID()
 		self.tickTimer = DispatchSource.makeTimerSource(flags: [], queue: self.workerQueue)
 		self.ledger = ledger
@@ -75,7 +74,7 @@ class Node<LedgerType: Ledger> {
 	}
 
 	/** Append a transaction to the memory pool (maintained by the miner). */
-	func receive(transaction: BlockType.TransactionType, from peer: Peer<LedgerType>?) throws {
+	public func receive(transaction: BlockType.TransactionType, from peer: Peer<LedgerType>?) throws {
 		// Is this transaction in-order?
 		if try self.ledger.canAccept(transaction: transaction, pool: self.miner.block) {
 			let isNew = try self.miner.append(transaction: transaction)
@@ -119,7 +118,7 @@ class Node<LedgerType: Ledger> {
 		}
 	}
 
-	func add(peer url: URL) {
+	public func add(peer url: URL) {
 		if Peer<LedgerType>.isValidPeerURL(url: url), let uuid = UUID(uuidString: url.user!) {
 			self.mutex.locked {
 				if self.peers[uuid] == nil {

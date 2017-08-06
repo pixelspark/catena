@@ -1,10 +1,11 @@
 import Foundation
 import Kitura
+import CatenaCore
 
-class SQLAPIEndpoint {
+public class SQLAPIEndpoint {
 	let node: Node<SQLLedger>
 
-	init(node: Node<SQLLedger>, router: Router) {
+	public init(node: Node<SQLLedger>, router: Router) {
 		self.node = node
 
 		router.get("/api", handler: self.handleIndex)

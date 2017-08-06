@@ -101,44 +101,13 @@ public enum Gossip<LedgerType: Ledger> {
 	}
 }
 
-internal extension Block {
-	var json: [String: Any] {
-		return [
-			"hash": self.signature!.stringValue,
-			"index": self.index,
-			"nonce": self.nonce,
-			"payload": self.payloadData.base64EncodedString(),
-			"previous": self.previous.stringValue
-		]
-	}
+public class Server<LedgerType: Ledger>: WebSocketService {
+	public typealias BlockchainType = LedgerType.BlockchainType
+	public typealias BlockType = BlockchainType.BlockType
 
-	static func read(json: [String: Any]) throws -> Self {
-		if let nonce = json["nonce"] as? NSNumber,
-			let signature = json["hash"] as? String,
-			let height = json["index"] as? NSNumber,
-			let previous = json["previous"] as? String,
-			let payloadBase64 = json["payload"] as? String,
-			let payload = Data(base64Encoded: payloadBase64),
-			let previousHash = HashType(hash: previous),
-			let signatureHash = HashType(hash: signature) {
-				// FIXME: .uint64 is not generic (NonceType/IndexType may change to something else
-				var b = try Self.init(index: IndexType(height.uint64Value), previous: previousHash, payload: payload)
-				b.nonce = NonceType(nonce.uint64Value)
-				b.signature = signatureHash
-				return b
-			}
-			else {
-				throw BlockError.formatError
-			}
-	}
-}
+	public let router = Router()
+	public let port: Int
 
-class Server<LedgerType: Ledger>: WebSocketService {
-	typealias BlockchainType = LedgerType.BlockchainType
-	typealias BlockType = BlockchainType.BlockType
-
-	let router = Router()
-	let port: Int
 	private let mutex = Mutex()
 	private var gossipConnections = [String: PeerIncomingConnection<LedgerType>]()
 	weak var node: Node<LedgerType>?
@@ -157,7 +126,7 @@ class Server<LedgerType: Ledger>: WebSocketService {
 		_ = response.send(status: .movedPermanently)
 	}
 
-	func connected(connection: WebSocketConnection) {
+	public func connected(connection: WebSocketConnection) {
 		Log.info("[Server] gossip connected incoming \(connection.request.remoteAddress) \(connection.request.urlURL.absoluteString)")
 
 		self.mutex.locked {
@@ -172,14 +141,14 @@ class Server<LedgerType: Ledger>: WebSocketService {
 		}
 	}
 
-	func disconnected(connection: WebSocketConnection, reason: WebSocketCloseReasonCode) {
+	public func disconnected(connection: WebSocketConnection, reason: WebSocketCloseReasonCode) {
 		Log.info("[Server] disconnected gossip \(connection.id); reason=\(reason)")
 		self.mutex.locked {
 			self.gossipConnections.removeValue(forKey: connection.id)
 		}
 	}
 
-	func received(message: Data, from: WebSocketConnection) {
+	public func received(message: Data, from: WebSocketConnection) {
 		do {
 			if let d = try JSONSerialization.jsonObject(with: message, options: []) as? [Any] {
 				try self.handleGossip(data: d, from: from)
@@ -193,7 +162,7 @@ class Server<LedgerType: Ledger>: WebSocketService {
 		}
 	}
 
-	func received(message: String, from: WebSocketConnection) {
+	public func received(message: String, from: WebSocketConnection) {
 		do {
 			if let d = try JSONSerialization.jsonObject(with: message.data(using: .utf8)!, options: []) as? [Any] {
 				try self.handleGossip(data: d, from: from)
@@ -471,16 +440,12 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 	typealias BlockType = BlockchainType.BlockType
 	typealias TransactionType = BlockType.TransactionType
 
-	let url: URL
-
-	var uuid: UUID {
-		return UUID(uuidString: self.url.user!)!
-	}
+	public let url: URL
 
 	/** Time at which we last received a response or request from this peer. Nil when that never happened. */
-	var lastSeen: Date? = nil
+	public internal(set) var lastSeen: Date? = nil
 
-	fileprivate(set) var state: PeerState
+	public fileprivate(set) var state: PeerState
 	fileprivate(set) var connection: PeerConnection<LedgerType>? = nil
 	weak var node: Node<LedgerType>?
 	public let mutex = Mutex()
@@ -492,6 +457,10 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 		self.connection = connection
 		self.node = delegate
 		connection?.delegate = self
+	}
+
+	public var uuid: UUID {
+		return UUID(uuidString: self.url.user!)!
 	}
 
 	static public func isValidPeerURL(url: URL) -> Bool {

@@ -3,3 +3,4 @@
 /Packages
 /*.xcodeproj
 catena.sqlite
+*.sqlite

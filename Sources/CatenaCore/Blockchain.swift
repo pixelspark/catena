@@ -31,6 +31,9 @@ public protocol Blockchain {
 	this chain with the given hash. */
 	func get(block: BlockType.HashType) throws -> BlockType?
 
+	/** Whether calling append(block) would work if `to` were the head of the chain. */
+	func canAppend(block: BlockType, to: BlockType) -> Bool
+
 	/** Append the given block to the head of this chain. The block needs to have the current head block as previous block,
 	and needs to be valid. Will return true when the block was actually appended, and false if it wasn't. */
 	func append(block: BlockType) throws -> Bool
@@ -38,6 +41,15 @@ public protocol Blockchain {
 	/** 'Rewind' the blockchain so that the `to` block becomes the new head. The `to` block needs to be on this chain, or
 	the function will throw an error. */
 	func unwind(to: BlockType) throws
+}
+
+extension Blockchain {
+	/** The default implementation checks whether hashes and indexes are succeeding, and whether the block signature is
+	valid and conforms to the current difficulty level.
+	FIXME: check what happens when difficulty level changes! */
+	public func canAppend(block: BlockType, to: BlockType) -> Bool {
+		return block.previous == to.signature! && block.index == (to.index + 1) && block.isSignatureValid && block.signature!.difficulty >= self.difficulty
+	}
 }
 
 public protocol Transaction: Hashable {
@@ -104,7 +116,7 @@ public protocol Hash: Hashable, CustomDebugStringConvertible {
 }
 
 extension String {
-	var hexDecoded: Data? {
+	public var hexDecoded: Data? {
 		var error = false
 		let s = Array(self.characters)
 		let numbers = stride(from: 0, to: s.count, by: 2).map() { (idx: Int) -> UInt8 in
@@ -206,7 +218,7 @@ enum BlockError: LocalizedError {
 }
 
 extension Data {
-	mutating func appendRaw<T>(_ item: T) {
+	public mutating func appendRaw<T>(_ item: T) {
 		var item = item
 		let ptr = withUnsafePointer(to: &item) { ptr in
 			return UnsafeRawPointer(ptr)
@@ -216,18 +228,18 @@ extension Data {
 }
 
 extension Block {
-	var isSignatureValid: Bool {
+	public var isSignatureValid: Bool {
 		if let s = self.signature {
 			return HashType(of: self.dataForSigning) == s
 		}
 		return false
 	}
 
-	var isAGenesisBlock: Bool {
+	public var isAGenesisBlock: Bool {
 		return self.previous == HashType.zeroHash && self.index == 0
 	}
 
-	var dataForSigning: Data {
+	public var dataForSigning: Data {
 		let pd = self.payloadDataForSigning
 		var data = Data(capacity: pd.count + previous.hash.count + 2 * MemoryLayout<UInt>.size)
 
@@ -246,7 +258,7 @@ extension Block {
 	}
 
 	/** Mine this block (note: use this only for the genesis block, Miner provides threaded mining) */
-	mutating func mine(difficulty: Int) {
+	public mutating func mine(difficulty: Int) {
 		while true {
 			self.nonce += 1
 			let hash = HashType(of: self.dataForSigning)
@@ -262,6 +274,9 @@ public class Orphans<BlockType: Block> {
 	private let mutex = Mutex()
 	private var orphansByHash: [BlockType.HashType: BlockType] = [:]
 	private var orphansByPreviousHash: [BlockType.HashType: BlockType] = [:]
+
+	public init() {
+	}
 
 	func remove(orphan block: BlockType) {
 		self.mutex.locked {
@@ -373,19 +388,28 @@ extension Ledger {
 							if let splice = try self.longest.get(block: r.previous) {
 								assert(splice.index == (r.index - 1))
 
+								// Check whether this sidechain can be appended
+								var prev = splice
+								for b in stack.reversed() {
+									if !longest.canAppend(block: b, to: prev) {
+										Log.info("[Ledger] cannot append sidechain: block \(b.index) won't append to \(prev.index)")
+										return false
+									}
+									prev = b
+								}
+
+								// First cut the tree up to the splice point for the sidechain
 								if splice.signature! != self.longest.highest.signature! {
 									Log.debug("[Ledger] splicing to \(splice.index), then fast-forwarding to \(block.index)")
 									try self.longest.unwind(to: splice)
 								}
-
 								Log.info("[Ledger] head is now at \(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)")
-								for b in stack.reversed() {
-									Log.debug("[Ledger] appending \(b.index) \(b.signature!.stringValue) prev=\(b.previous.stringValue)")
-									if !(try self.longest.append(block: b)) {
-										fatalError("this block should be appendable! #\(b.index) hash=\(b.signature!.stringValue) prev=\(b.previous.stringValue), upon #\(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)")
-									}
 
-									// Orphan is appended, remove it from the orphan cache
+								// Append the full sidechain
+								for b in stack.reversed() {
+									if !(try longest.append(block: b)) {
+										fatalError("block should have been appendable: \(b)")
+									}
 									self.orphans.remove(orphan: block)
 								}
 								return true
@@ -410,6 +434,38 @@ extension Ledger {
 			else {
 				return false
 			}
+		}
+	}
+}
+
+extension Block {
+	public var json: [String: Any] {
+		return [
+			"hash": self.signature!.stringValue,
+			"index": self.index,
+			"nonce": self.nonce,
+			"payload": self.payloadData.base64EncodedString(),
+			"previous": self.previous.stringValue
+		]
+	}
+
+	public static func read(json: [String: Any]) throws -> Self {
+		if let nonce = json["nonce"] as? NSNumber,
+			let signature = json["hash"] as? String,
+			let height = json["index"] as? NSNumber,
+			let previous = json["previous"] as? String,
+			let payloadBase64 = json["payload"] as? String,
+			let payload = Data(base64Encoded: payloadBase64),
+			let previousHash = HashType(hash: previous),
+			let signatureHash = HashType(hash: signature) {
+			// FIXME: .uint64 is not generic (NonceType/IndexType may change to something else
+			var b = try Self.init(index: IndexType(height.uint64Value), previous: previousHash, payload: payload)
+			b.nonce = NonceType(nonce.uint64Value)
+			b.signature = signatureHash
+			return b
+		}
+		else {
+			throw BlockError.formatError
 		}
 	}
 }

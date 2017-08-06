@@ -1,13 +1,14 @@
 import Foundation
 import LoggerAPI
 import Ed25519
+import CatenaCore
 
-class SQLTransaction: Transaction, CustomDebugStringConvertible {
-	var hashValue: Int {
+public class SQLTransaction: Transaction, CustomDebugStringConvertible {
+	public var hashValue: Int {
 		return self.dataForSigning.hashValue
 	}
 
-	static func ==(lhs: SQLTransaction, rhs: SQLTransaction) -> Bool {
+	public static func ==(lhs: SQLTransaction, rhs: SQLTransaction) -> Bool {
 		if let ls = lhs.signature, let rs = rhs.signature {
 			return ls == rs
 		}
@@ -18,10 +19,10 @@ class SQLTransaction: Transaction, CustomDebugStringConvertible {
 			lhs.dataForSigning == rhs.dataForSigning
 	}
 
-	typealias CounterType = UInt64
-	let invoker: PublicKey
-	let counter: CounterType
-	let statement: SQLStatement
+	public typealias CounterType = UInt64
+	public let invoker: CatenaCore.PublicKey
+	public let counter: CounterType
+	public let statement: SQLStatement
 	var signature: Data? = nil
 
 	/** The maximum size of a transaction (as measured by `dataForSigning`) */
@@ -32,13 +33,13 @@ class SQLTransaction: Transaction, CustomDebugStringConvertible {
 		case syntaxError
 	}
 
-	init(statement: SQLStatement, invoker: PublicKey, counter: CounterType) throws {
+	public init(statement: SQLStatement, invoker: CatenaCore.PublicKey, counter: CounterType) throws {
 		self.invoker = invoker
 		self.statement = statement
 		self.counter = counter
 	}
 
-	required init(json: [String: Any]) throws {
+	public required init(json: [String: Any]) throws {
 		guard let tx = json["tx"] as? [String: Any] else { throw SQLTransactionError.formatError }
 		guard let sql = tx["sql"] as? String else { throw SQLTransactionError.formatError }
 		guard let invoker = tx["invoker"] as? String else { throw SQLTransactionError.formatError }
@@ -62,7 +63,7 @@ class SQLTransaction: Transaction, CustomDebugStringConvertible {
 		return d
 	}
 
-	@discardableResult func sign(with privateKey: PrivateKey) throws -> SQLTransaction {
+	@discardableResult public func sign(with privateKey: CatenaCore.PrivateKey) throws -> SQLTransaction {
 		self.signature = try self.invoker.sign(data: self.dataForSigning, with: privateKey)
 		return self
 	}
@@ -81,7 +82,7 @@ class SQLTransaction: Transaction, CustomDebugStringConvertible {
 		return false
 	}
 
-	var isSignatureValid: Bool {
+	public var isSignatureValid: Bool {
 		do {
 			if let s = self.signature {
 				let sd = self.dataForSigning
@@ -99,7 +100,7 @@ class SQLTransaction: Transaction, CustomDebugStringConvertible {
 		}
 	}
 
-	var json: [String: Any] {
+	public var json: [String: Any] {
 		var json: [String: Any] = [
 			"tx": [
 				"sql": self.statement.sql(dialect: SQLStandardDialect()),
@@ -115,7 +116,7 @@ class SQLTransaction: Transaction, CustomDebugStringConvertible {
 		return json
 	}
 
-	var debugDescription: String {
+	public var debugDescription: String {
 		return "\(self.invoker.data.sha256.base64EncodedString())@\(self.counter)"
 	}
 }

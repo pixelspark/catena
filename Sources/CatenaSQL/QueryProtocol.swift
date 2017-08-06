@@ -123,7 +123,7 @@ private enum PQFrontendMessage: String {
 	case termination = "X"
 }
 
-final class QueryClientConnection {
+public final class QueryClientConnection {
 	private enum State {
 		case new
 		case ready
@@ -452,8 +452,8 @@ final class QueryClientConnection {
 	}
 }
 
-class QueryServer {
-	enum Family {
+public class QueryServer {
+	public enum Family {
 		case ipv4
 		case ipv6
 
@@ -495,7 +495,7 @@ class QueryServer {
 		fatalError("Must override")
 	}
 
-	func run() {
+	public func run() {
 		let queue = DispatchQueue.global(qos: .userInteractive)
 
 		queue.async { [unowned self] in

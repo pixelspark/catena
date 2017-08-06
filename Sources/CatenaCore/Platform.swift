@@ -114,7 +114,7 @@ extension Data {
 extension Date {
 	/**	Returns an ISO-8601 formatted string of this date, in the locally preferred timezone. Should only be used for
 	presentational purposes. */
-	var iso8601FormattedLocalDate: String {
+	public var iso8601FormattedLocalDate: String {
 		let dateFormatter = DateFormatter()
 		dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZZZZZ"
 		return dateFormatter.string(from: self)
@@ -122,14 +122,14 @@ extension Date {
 
 	/** Returns an ISO-8601 formatted string representation of this date, in the UTC timezone ('Zulu time', that's why it
 	ends in 'Z'). */
-	var iso8601FormattedUTCDate: String {
+	public var iso8601FormattedUTCDate: String {
 		let formatter = DateFormatter()
 		formatter.timeZone = TimeZone(abbreviation: "UTC")
 		formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
 		return formatter.string(from: self)
 	}
 
-	var unixTime: Double {
+	public var unixTime: Double {
 		return self.timeIntervalSince1970
 	}
 }

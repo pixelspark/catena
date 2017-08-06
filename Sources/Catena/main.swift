@@ -3,6 +3,8 @@ import Kitura
 import CommandLineKit
 import LoggerAPI
 import HeliumLogger
+import CatenaCore
+import CatenaSQL
 
 let databaseFileOption = StringOption(shortFlag: "d", longFlag: "database", required: false, helpMessage: "Backing database file (default: catena.sqlite)")
 let memoryDatabaseFileOption = BoolOption(longFlag: "in-memory-database", helpMessage: "Use an in-memory (transient) database. Cannot be used with -d")

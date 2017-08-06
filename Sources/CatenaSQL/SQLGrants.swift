@@ -1,8 +1,9 @@
 import Foundation
 import LoggerAPI
+import CatenaCore
 
-struct SQLPrivilege: CustomDebugStringConvertible {
-	enum Kind: String {
+public struct SQLPrivilege: CustomDebugStringConvertible {
+	public enum Kind: String {
 		case create = "create"
 		case delete = "delete"
 		case drop = "drop"
@@ -11,16 +12,16 @@ struct SQLPrivilege: CustomDebugStringConvertible {
 		case never = "never" // privilege that is never granted (operations that are never allowed)
 	}
 
-	var kind: Kind
-	var table: SQLTable? = nil
+	public var kind: Kind
+	public var table: SQLTable? = nil
 
-	var debugDescription: String {
+	public var debugDescription: String {
 		let tn = table?.name ?? "any"
 		return "\(self.kind.rawValue) on \(tn)"
 	}
 }
 
-extension SQLStatement {
+public extension SQLStatement {
 	var requiredPrivileges: [SQLPrivilege] {
 		switch self {
 		case .create(table: let t, schema: _): return [SQLPrivilege(kind: .create, table: t)]
@@ -33,8 +34,8 @@ extension SQLStatement {
 	}
 }
 
-class SQLGrants {
-	static let schema = SQLSchema(columns:
+public class SQLGrants {
+	public static let schema = SQLSchema(columns:
 		(SQLColumn(name: "kind"), .text),
         (SQLColumn(name: "user"), .blob),
         (SQLColumn(name: "table"), .blob)
@@ -43,14 +44,14 @@ class SQLGrants {
 	let table: SQLTable
 	let database: Database
 
-	init(database: Database, table: SQLTable) throws {
+	public init(database: Database, table: SQLTable) throws {
 		self.database = database
 		self.table = table
 	}
 
 	/** Checks whether the indicated user holds the required privileges. When the function throws, the caller should
 	always assume 'no privileges'. */
-	func check(privileges: [SQLPrivilege], forUser user: PublicKey) throws -> Bool {
+	public func check(privileges: [SQLPrivilege], forUser user: CatenaCore.PublicKey) throws -> Bool {
 		for p in privileges {
 			switch p.kind {
 			case .never:
