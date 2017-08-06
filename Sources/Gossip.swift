@@ -12,13 +12,29 @@ import Starscream
 public enum Gossip<BlockchainType: Blockchain> {
 	public typealias BlockType = BlockchainType.BlockType
 
+	/** Request the peer's index. The reply is either of type 'index' or 'passive'. */
 	case query // -> index or passive
+
+	/** Reply message that contains the peer's index. */
 	case index(Index<BlockType>)
+
+	/** Reply message that contains a block, either at the request of the peer, or unsolicited, when it is new */
 	case block([String: Any]) // no reply
+
+	/** Request a specific block from the peer. The reply is of type 'block' */
 	case fetch(BlockType.HashType) // -> block
+
+	/** An error has occurred. Only sent in reply to a request by the peer. */
 	case error(String)
+
+	/** A transaction the peer wants us to store/relay. */
 	case transaction([String: Any])
+
+	/** The peer indicates that it is a passive peer without an index (in response to a query request) */
 	case passive
+
+	/** The peer requests to be forgotten, most probably because its UUID does not match the requested UUID. */
+	case forget
 
 	init?(json: [String: Any]) {
 		if let q = json[ProtocolConstants.actionKey] as? String {
@@ -42,6 +58,9 @@ public enum Gossip<BlockchainType: Blockchain> {
 			}
 			else if q == "passive" {
 				self = .passive
+			}
+			else if q == "forget" {
+				self  = .forget
 			}
 			else {
 				return nil
@@ -74,6 +93,9 @@ public enum Gossip<BlockchainType: Blockchain> {
 
 		case .passive:
 			return [ProtocolConstants.actionKey: "passive"]
+
+		case .forget:
+			return [ProtocolConstants.actionKey: "forget"]
 		}
 	}
 }
@@ -584,6 +606,10 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 			self.lastSeen = Date()
 			Log.debug("[Peer] receive request \(counter)")
 			switch gossip {
+			case .forget:
+				try self.node?.forget(peer: self)
+				self.state = .ignored(reason: "peer requested to be forgotten")
+
 			case .transaction(let trData):
 				let tr = try TransactionType(json: trData)
 				try self.node?.receive(transaction: tr, from: self)

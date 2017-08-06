@@ -296,7 +296,6 @@ class SQLKeyValueTable {
 
 		// Ensure the table exists
 		try database.transaction {
-			// TODO this is SQLite-specific
 			if !(try database.exists(table: self.table.name)) {
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
 				cols.append(.text, forKey: keyColumn)
@@ -310,30 +309,34 @@ class SQLKeyValueTable {
 	}
 
 	func get(_ key: String) throws -> String? {
-		let selectStatement = SQLStatement.select(SQLSelect(
-			these: [.column(self.valueColumn)],
-			from: self.table,
-			joins: [],
-			where: SQLExpression.binary(.column(self.keyColumn), .equals, .literalString(key)),
-			distinct: false,
-			orders: []
-		))
+		return try database.transaction {
+			let selectStatement = SQLStatement.select(SQLSelect(
+				these: [.column(self.valueColumn)],
+				from: self.table,
+				joins: [],
+				where: SQLExpression.binary(.column(self.keyColumn), .equals, .literalString(key)),
+				distinct: false,
+				orders: []
+			))
 
-		let r = try self.database.perform(selectStatement.sql(dialect: self.database.dialect))
-		if r.hasRow, case .text(let value) = r.values[0] {
-			return value
+			let r = try self.database.perform(selectStatement.sql(dialect: self.database.dialect))
+			if r.hasRow, case .text(let value) = r.values[0] {
+				return value
+			}
+			return nil
 		}
-		return nil
 	}
 
 	func set(key: String, value: String) throws {
-		let insertStatement = SQLStatement.insert(SQLInsert(
-			orReplace: true,
-			into: self.table,
-			columns: [self.keyColumn, self.valueColumn],
-			values: [[SQLExpression.literalString(key), SQLExpression.literalString(value)]]
-		))
-		try _ = self.database.perform(insertStatement.sql(dialect: self.database.dialect))
+		try database.transaction {
+			let insertStatement = SQLStatement.insert(SQLInsert(
+				orReplace: true,
+				into: self.table,
+				columns: [self.keyColumn, self.valueColumn],
+				values: [[SQLExpression.literalString(key), SQLExpression.literalString(value)]]
+			))
+			try _ = self.database.perform(insertStatement.sql(dialect: self.database.dialect))
+		}
 	}
 }
 
@@ -431,6 +434,7 @@ struct SQLBlockArchive {
 class SQLPeerDatabase: PeerDatabase {
 	let database: Database
 	let table: SQLTable
+	let uuidColumn = SQLColumn(name: "uuid")
 	let urlColumn = SQLColumn(name: "url")
 
 	init(database: Database, table: SQLTable) throws {
@@ -438,7 +442,8 @@ class SQLPeerDatabase: PeerDatabase {
 		self.table = table
 
 		if try !self.database.exists(table: table.name) {
-			let create = SQLStatement.create(table: self.table, schema: SQLSchema(primaryKey: urlColumn, columns:
+			let create = SQLStatement.create(table: self.table, schema: SQLSchema(primaryKey: uuidColumn, columns:
+				(uuidColumn, .text),
 				(urlColumn, .text)
 			))
 			try _ = self.database.perform(create.sql(dialect: self.database.dialect))
@@ -446,10 +451,20 @@ class SQLPeerDatabase: PeerDatabase {
 	}
 
 	func rememberPeer(url: URL) throws {
-		let insert = SQLStatement.insert(SQLInsert(orReplace: true, into: self.table, columns: [urlColumn], values: [[
+		let uuid = UUID(uuidString: url.user!)!
+
+		let insert = SQLStatement.insert(SQLInsert(orReplace: true, into: self.table, columns: [uuidColumn, urlColumn], values: [[
+			SQLExpression.literalString(uuid.uuidString),
 			SQLExpression.literalString(url.absoluteString)
 		]]))
 		try _ = self.database.perform(insert.sql(dialect: self.database.dialect))
+	}
+
+	func forgetPeer(uuid: UUID) throws {
+		let delete = SQLStatement.delete(from: self.table, where: SQLExpression.binary(
+			SQLExpression.column(self.uuidColumn), .equals, SQLExpression.literalString(uuid.uuidString)
+		))
+		try _ = self.database.perform(delete.sql(dialect: self.database.dialect))
 	}
 
 	func peers() throws -> [URL] {

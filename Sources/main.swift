@@ -78,7 +78,7 @@ do {
 	if !peerDatabaseFile.isEmpty {
 		let peerDatabase = SQLiteDatabase()
 		try peerDatabase.open(peerDatabaseFile)
-		let peerTable = try SQLPeerDatabase(database: peerDatabase, table: SQLTable(name: "_peers"))
+		let peerTable = try SQLPeerDatabase(database: peerDatabase, table: SQLTable(name: "peers"))
 
 		// Add peers from database
 		for p in try peerTable.peers() {

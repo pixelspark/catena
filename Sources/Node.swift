@@ -15,6 +15,7 @@ struct Candidate<BlockType: Block>: Equatable {
 
 protocol PeerDatabase {
 	func rememberPeer(url: URL) throws
+	func forgetPeer(uuid: UUID) throws
 }
 
 class Node<BlockchainType: Blockchain> {
@@ -101,18 +102,33 @@ class Node<BlockchainType: Blockchain> {
 		}
 	}
 
+	func forget(peer: Peer<BlockchainType>) throws {
+		try self.mutex.locked {
+			Log.info("[Node] Peer \(peer.url) wants us to forget him!")
+			// Remove peer (should also be removed from queryQueue, but that's expensive, and tick() will deal with this
+			self.peers[peer.uuid] = nil
+			try self.peerDatabase?.forgetPeer(uuid: peer.uuid)
+		}
+	}
+
 	func add(peer url: URL) {
 		if Peer<BlockchainType>.isValidPeerURL(url: url), let uuid = UUID(uuidString: url.user!) {
 			self.mutex.locked {
 				if self.peers[uuid] == nil {
-					self.peers[uuid] = Peer<BlockchainType>(url: url, state: .new, connection: nil, delegate: self)
-					do {
-						try self.peerDatabase?.rememberPeer(url: url)
+					let isSelf = self.uuid == uuid
+					let peer = Peer<BlockchainType>(url: url, state: isSelf ? .ignored(reason: "added, but is ourselves") : .new, connection: nil, delegate: self)
+					self.peers[uuid] = peer
+
+					if case .new = peer.state {
+						do {
+							try self.peerDatabase?.rememberPeer(url: url)
+						}
+						catch {
+							Log.error("[Node] Peer database remember failed: \(error.localizedDescription)")
+						}
+
+						self.queryQueue.append(uuid)
 					}
-					catch {
-						Log.error("[Node] Peer database remember failed: \(error.localizedDescription)")
-					}
-					self.queryQueue.append(uuid)
 				}
 			}
 		}
@@ -156,25 +172,46 @@ class Node<BlockchainType: Blockchain> {
 				return
 			}
 
+			let peer = Peer<BlockchainType>(url: url, state: isSelf ? .ignored(reason: "is ourselves") : .connected, connection: isSelf ? nil : connection, delegate: self)
+			connection.delegate = peer
+
 			// Check whether the connecting peer is looking for someone else
-			if let user = connection.connection.request.urlURL.user {
+			do {
+				// Find the user URL string, either from the HTTP request URL, or from the Origin header
+				let user: String
+				if let u = connection.connection.request.urlURL.user {
+					user = u
+				}
+				else if let o = connection.connection.request.headers["Origin"], !o.isEmpty, let uc = URLComponents(string: o[0]), let u = uc.user {
+					user = u
+				}
+				else {
+					try connection.request(gossip: .forget)
+					Log.info("[Server] dropping connection \(reverseURL): did not specify node UUID to connect to (request URL: '\(connection.connection.request.urlURL.absoluteString)')")
+					connection.close()
+					return
+				}
+
+				// Check if the URL user is a valid UUID
 				if let userUUID = UUID(uuidString: user) {
 					if userUUID != self.uuid {
 						Log.info("[Server] dropping connection \(reverseURL): is looking for different UUID \(userUUID)")
+						try connection.request(gossip: .forget)
 						connection.close()
 						return
 					}
 				}
 				else {
 					// Requested node UUID is invalid
+					try connection.request(gossip: .forget)
 					Log.info("[Server] dropping connection \(reverseURL): invalid UUID '\(user)'")
 					connection.close()
 					return
 				}
 			}
-
-			let peer = Peer<BlockchainType>(url: url, state: isSelf ? .ignored(reason: "is ourselves") : .connected, connection: isSelf ? nil : connection, delegate: self)
-			connection.delegate = peer
+			catch {
+				Log.error("[Server] could not properly reject peer \(reverseURL) looking for someone else: \(error.localizedDescription)")
+			}
 
 			self.mutex.locked {
 				if let alreadyConnected = self.peers[connectingUUID] {
@@ -304,8 +341,10 @@ class Node<BlockchainType: Blockchain> {
 			// Take the first from the query queue...
 			if let p = self.queryQueue.first {
 				self.queryQueue.remove(at: 0)
-				self.peers[p]!.advance()
-				return
+				if let peer = self.peers[p] {
+					peer.advance()
+					return
+				}
 			}
 
 			if self.peers.isEmpty {
