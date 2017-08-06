@@ -440,17 +440,10 @@ class SQLPeerDatabase: PeerDatabase {
 	}
 
 	func rememberPeer(url: URL) throws {
-		// Remove the user part (peer UUID) from the URL, as these are transient.
-		var cs = URLComponents(url: url, resolvingAgainstBaseURL: false)
-		cs?.path = ""
-		cs?.user = nil
-
-		if let betterURL = cs?.url {
-			let insert = SQLStatement.insert(SQLInsert(orReplace: true, into: self.table, columns: [urlColumn], values: [[
-				SQLExpression.literalString(betterURL.absoluteString)
-			]]))
-			try _ = self.database.perform(insert.sql(dialect: self.database.dialect))
-		}
+		let insert = SQLStatement.insert(SQLInsert(orReplace: true, into: self.table, columns: [urlColumn], values: [[
+			SQLExpression.literalString(url.absoluteString)
+		]]))
+		try _ = self.database.perform(insert.sql(dialect: self.database.dialect))
 	}
 
 	func peers() throws -> [URL] {
@@ -458,10 +451,8 @@ class SQLPeerDatabase: PeerDatabase {
 		let res = try self.database.perform(select.sql(dialect: self.database.dialect))
 		var urls: [URL] = []
 		while res.hasRow {
-			if case .text(let urlString) = res.values[0], let u = URL(string: urlString), var uc = URLComponents(url: u, resolvingAgainstBaseURL: false) {
-				uc.user = nil
-				uc.path = ""
-				urls.append(uc.url!)
+			if case .text(let urlString) = res.values[0], let u = URL(string: urlString) {
+				urls.append(u)
 			}
 			res.step()
 		}

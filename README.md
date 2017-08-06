@@ -67,8 +67,10 @@ The -i switch tells Catena to initialize a chain (this deletes any persisted dat
 To start another peer locally, use the following:
 
 ````
-./.build/debug/Catena -p 8340 -s 'my seed string' -j 127.0.0.1:8338 -d peer2.sqlite
+./.build/debug/Catena -p 8340 -s 'my seed string' -j ws://NODEID@127.0.0.1:8338 -d peer2.sqlite
 ````
+
+Note, the node URL in the command above can be copied from the output of the first node. Only one node is required in order to bootstrap (nodes will perform peer exchange).
 
 ### Running with Docker
 

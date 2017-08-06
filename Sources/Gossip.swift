@@ -211,6 +211,10 @@ struct ProtocolConstants {
 
 	/** Query string key name used to send own port */
 	static let portRequestKey = "port"
+
+	/** Time a node with wait before replacing an inactive connection to a peer with a newly proposed one for the same
+	UUID, but with a different address/port. */
+	static let peerReplaceInterval: TimeInterval = 60.0
 }
 
 public struct Index<BlockType: Block> {
@@ -439,6 +443,10 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 
 	let url: URL
 
+	var uuid: UUID {
+		return UUID(uuidString: self.url.user!)!
+	}
+
 	/** Time at which we last received a response or request from this peer. Nil when that never happened. */
 	var lastSeen: Date? = nil
 
@@ -448,11 +456,28 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 	public let mutex = Mutex()
 
 	init(url: URL, state: PeerState, connection: PeerConnection<BlockchainType>?, delegate: Node<BlockchainType>) {
+		assert(Peer<BlockchainType>.isValidPeerURL(url: url), "Peer URL must be valid")
 		self.url = url
 		self.state = state
 		self.connection = connection
 		self.node = delegate
 		connection?.delegate = self
+	}
+
+	static public func isValidPeerURL(url: URL) -> Bool {
+		if let uc = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+			// URL must contain a port, host and user part
+			if uc.port == nil || uc.host == nil || uc.user == nil {
+				return false
+			}
+
+			// The user in the URL must be a valid node identifier (UUID)
+			if UUID(uuidString: uc.user!) == nil {
+				return false
+			}
+			return true
+		}
+		return false
 	}
 
 	public func advance() {
@@ -540,7 +565,7 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 							n.add(peer: p)
 						}
 
-						n.queueRequest(candidate: Candidate(hash: index.highest, height: index.height, peer: self.url))
+						n.queueRequest(candidate: Candidate(hash: index.highest, height: index.height, peer: self.uuid))
 					}
 					else if case .passive = reply {
 						self.state = .passive

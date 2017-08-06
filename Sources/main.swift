@@ -10,7 +10,7 @@ let seedOption = StringOption(shortFlag: "s", longFlag: "seed", required: false,
 let helpOption = BoolOption(shortFlag: "h", longFlag: "help", helpMessage: "Show usage")
 let netPortOption = IntOption(shortFlag: "p", longFlag: "gossip-port", helpMessage: "Listen port for peer-to-peer communications (default: 8338)")
 let queryPortOption = IntOption(shortFlag: "q", longFlag: "query-port", helpMessage: "Listen port for query communications (default: networking port + 1)")
-let peersOption = MultiStringOption(shortFlag: "j", longFlag: "join", helpMessage: "Peer to connect to ('hostname:port' or just 'hostname')")
+let peersOption = MultiStringOption(shortFlag: "j", longFlag: "join", helpMessage: "Peer URL to connect to ('ws://nodeid@hostname:port')")
 let mineOption = BoolOption(shortFlag: "m", longFlag: "mine", helpMessage: "Enable mining of blocks")
 let logOption = StringOption(shortFlag: "v", longFlag: "log", helpMessage: "The log level: debug, verbose, info, warning (default: info)")
 let testOption = BoolOption(shortFlag: "t", longFlag: "test", helpMessage: "Submit test queries to the chain periodically (default: off)")
@@ -90,7 +90,7 @@ do {
 
 	// Add peers from command line
 	for p in peersOption.value ?? [] {
-		if let u = URL(string: "ws://\(p)/") {
+		if let u = URL(string: p) {
 			node.add(peer: u)
 		}
 	}
@@ -106,6 +106,8 @@ do {
 	// Initialize database if we have to
 	var rootCounter: SQLTransaction.CounterType = 0
 	let rootIdentity = try Identity()
+
+	Log.info("Node URL: \(node.url)")
 
 	if initializeOption.value {
 		// Generate root keypair

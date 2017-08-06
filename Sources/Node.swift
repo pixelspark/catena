@@ -10,7 +10,7 @@ struct Candidate<BlockType: Block>: Equatable {
 
 	let hash: BlockType.HashType
 	let height: UInt64
-	let peer: URL
+	let peer: UUID
 }
 
 protocol PeerDatabase {
@@ -29,20 +29,20 @@ class Node<BlockchainType: Blockchain> {
 	private let tickTimer: DispatchSourceTimer
 	private let mutex = Mutex()
 	private let workerQueue = DispatchQueue.global(qos: .background)
-	private(set) var peers: [URL: Peer<BlockchainType>] = [:]
-	private var queryQueue: [URL] = []
+	private(set) var peers: [UUID: Peer<BlockchainType>] = [:]
+	private var queryQueue: [UUID] = []
 	private var candidateQueue: [Candidate<BlockType>] = []
 
 	/** The list of peers that can be advertised to other nodes for peer exchange. */
 	var validPeers: Set<URL> {
-		return Set(peers.flatMap { (url, peer) -> URL? in
+		return Set(peers.flatMap { (uuid, peer) -> URL? in
 			return peer.mutex.locked {
 				switch peer.state {
 				case .failed(_), .querying(_), .new, .ignored, .connected(_), .connecting(_), .passive:
 					return nil
 
 				case .queried(_):
-					return url
+					return peer.url
 				}
 			}
 		})
@@ -54,6 +54,15 @@ class Node<BlockchainType: Blockchain> {
 		self.ledger = ledger
 		self.miner = Miner(node: self)
 		self.server = Server(node: self, port: port)
+	}
+
+	public var url: URL {
+		var uc = URLComponents()
+		uc.user = self.uuid.uuidString
+		uc.port = self.server.port
+		uc.host = "127.0.0.1"
+		uc.scheme = "ws"
+		return uc.url!
 	}
 
 	/** Append a transaction to the memory pool (maintained by the miner). */
@@ -93,17 +102,22 @@ class Node<BlockchainType: Blockchain> {
 	}
 
 	func add(peer url: URL) {
-		self.mutex.locked {
-			if self.peers[url] == nil {
-				self.peers[url] = Peer<BlockchainType>(url: url, state: .new, connection: nil, delegate: self)
-				do {
-					try self.peerDatabase?.rememberPeer(url: url)
+		if Peer<BlockchainType>.isValidPeerURL(url: url), let uuid = UUID(uuidString: url.user!) {
+			self.mutex.locked {
+				if self.peers[uuid] == nil {
+					self.peers[uuid] = Peer<BlockchainType>(url: url, state: .new, connection: nil, delegate: self)
+					do {
+						try self.peerDatabase?.rememberPeer(url: url)
+					}
+					catch {
+						Log.error("[Node] Peer database remember failed: \(error.localizedDescription)")
+					}
+					self.queryQueue.append(uuid)
 				}
-				catch {
-					Log.error("[Node] Peer database remember failed: \(error.localizedDescription)")
-				}
-				self.queryQueue.append(url)
 			}
+		}
+		else {
+			Log.error("[Node] Invalid peer URL: \(url.absoluteString)")
 		}
 	}
 
@@ -163,7 +177,7 @@ class Node<BlockchainType: Blockchain> {
 			connection.delegate = peer
 
 			self.mutex.locked {
-				if let alreadyConnected = self.peers[url] {
+				if let alreadyConnected = self.peers[connectingUUID] {
 					switch alreadyConnected.state {
 					case .connected, .queried, .querying:
 						// Reject connection because we are already connected!
@@ -176,14 +190,14 @@ class Node<BlockchainType: Blockchain> {
 					}
 				}
 
-				self.peers[url] = peer
+				self.peers[connectingUUID] = peer
 				do {
 					try self.peerDatabase?.rememberPeer(url: url)
 				}
 				catch {
 					Log.error("[Node] Peer database remember failed: \(error.localizedDescription)")
 				}
-				self.queryQueue.append(url)
+				self.queryQueue.append(connectingUUID)
 			}
 		}
 		else {
@@ -217,7 +231,7 @@ class Node<BlockchainType: Blockchain> {
 
 					if fetchIndex > 0 {
 						Log.info("[Node] received an orphan block #\(block.index), let's see if peer has its predecessor \(fetchHash) at #\(fetchIndex)")
-						self.queueRequest(candidate: Candidate<BlockType>(hash: fetchHash, height: fetchIndex, peer: p.url))
+						self.queueRequest(candidate: Candidate<BlockType>(hash: fetchHash, height: fetchIndex, peer: p.uuid))
 					}
 				}
 				return isNew

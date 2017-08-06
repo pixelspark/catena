@@ -27,10 +27,10 @@ class SQLAPIEndpoint {
 				"genesis": longest.genesis.json
 			],
 
-			"peers": self.node.peers.map { (url, p) -> [String: Any] in
-				return p.mutex.locked {
+			"peers": self.node.peers.map { (url, peer) -> [String: Any] in
+				return peer.mutex.locked {
 					let desc: String
-					switch p.state {
+					switch peer.state {
 					case .new: desc = "new"
 					case .connected(_): desc = "connected"
 					case .connecting(_): desc = "connecting"
@@ -42,12 +42,12 @@ class SQLAPIEndpoint {
 					}
 
 					var res = [
-						"url": url.absoluteString,
+						"url": peer.url.absoluteString,
 						"state": desc
 					]
 
 					#if !os(Linux)
-						res["lastSeen"] = p.lastSeen?.iso8601FormattedLocalDate ?? "never"
+						res["lastSeen"] = peer.lastSeen?.iso8601FormattedLocalDate ?? "never"
 					#endif
 
 					return res
