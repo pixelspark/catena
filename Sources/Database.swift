@@ -330,8 +330,14 @@ class SQLiteDatabase: Database {
 					}
 				}
 				else {
-					Log.debug("[SQL] ERROR in prepare: \(self.lastError)")
-					throw DatabaseError.error(self.lastError)
+					switch sqlite3_errcode(self.db) {
+					case SQLITE_MISUSE:
+						fatalError("[SQL] Misuse: \(self.lastError) \(sql)")
+
+					default:
+						Log.debug("[SQL] ERROR in prepare: \(self.lastError)")
+						throw DatabaseError.error(self.lastError)
+					}
 				}
 			}
 		}
