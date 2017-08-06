@@ -184,6 +184,10 @@ class Node<BlockchainType: Blockchain> {
 						return
 
 					default:
+						if let ls = alreadyConnected.lastSeen, ls.timeIntervalSince(Date()) < ProtocolConstants.peerReplaceInterval {
+							Log.info("Not replacing connection \(alreadyConnected) (state=\(alreadyConnected.state) with \(peer): the peer was recently seen")
+							return
+						}
 						Log.info("Replacing connection \(alreadyConnected) (state=\(alreadyConnected.state)) with \(peer)")
 						// Accept new connection as it is better than what we have
 						break
