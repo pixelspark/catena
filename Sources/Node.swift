@@ -22,21 +22,23 @@ protocol PeerDatabase {
 	func forgetPeer(uuid: UUID) throws
 }
 
-class Node<BlockchainType: Blockchain> {
+class Node<LedgerType: Ledger> {
+	typealias BlockchainType = LedgerType.BlockchainType
 	typealias BlockType = BlockchainType.BlockType
 
 	let uuid: UUID
-	private(set) var server: Server<BlockchainType>! = nil
-	private(set) var miner: Miner<BlockchainType>! = nil
-	private(set) var ledger: Ledger<BlockchainType>! = nil
-	private(set) var fetcher: Fetcher<BlockchainType>! = nil
+	private(set) var ledger: LedgerType! = nil
+	private(set) var server: Server<LedgerType>! = nil
+	private(set) var miner: Miner<LedgerType>! = nil
 
 	var peerDatabase: PeerDatabase? = nil
+
+	private var fetcher: Fetcher<LedgerType>! = nil
 	private let workerQueue = DispatchQueue.global(qos: .background)
 
 	private let tickTimer: DispatchSourceTimer
 	fileprivate let mutex = Mutex()
-	private(set) var peers: [UUID: Peer<BlockchainType>] = [:]
+	private(set) var peers: [UUID: Peer<LedgerType>] = [:]
 	private var queryQueue: [UUID] = []
 
 	/** The list of peers that can be advertised to other nodes for peer exchange. */
@@ -54,7 +56,7 @@ class Node<BlockchainType: Blockchain> {
 		})
 	}
 
-	init(ledger: Ledger<BlockchainType>, port: Int) {
+	init(ledger: LedgerType, port: Int) {
 		self.uuid = UUID()
 		self.tickTimer = DispatchSource.makeTimerSource(flags: [], queue: self.workerQueue)
 		self.ledger = ledger
@@ -73,7 +75,7 @@ class Node<BlockchainType: Blockchain> {
 	}
 
 	/** Append a transaction to the memory pool (maintained by the miner). */
-	func receive(transaction: BlockType.TransactionType, from peer: Peer<BlockchainType>?) throws {
+	func receive(transaction: BlockType.TransactionType, from peer: Peer<LedgerType>?) throws {
 		// Is this transaction in-order?
 		if try self.ledger.canAccept(transaction: transaction, pool: self.miner.block) {
 			let isNew = try self.miner.append(transaction: transaction)
@@ -81,7 +83,7 @@ class Node<BlockchainType: Blockchain> {
 			// Did we get this block from someone else and is it new? Then rebroadcast
 			if isNew {
 				Log.info("[Node] Re-broadcasting transaction \(transaction) to peers as it is new")
-				let transactionGossip = Gossip<BlockchainType>.transaction(transaction.json)
+				let transactionGossip = Gossip<LedgerType>.transaction(transaction.json)
 				self.peers.forEach { (url, otherPeer) in
 					if peer == nil || otherPeer.url != peer!.url {
 						switch otherPeer.state {
@@ -108,7 +110,7 @@ class Node<BlockchainType: Blockchain> {
 		}
 	}
 
-	func forget(peer: Peer<BlockchainType>) throws {
+	func forget(peer: Peer<LedgerType>) throws {
 		try self.mutex.locked {
 			Log.info("[Node] Peer \(peer.url) wants us to forget him!")
 			// Remove peer (should also be removed from queryQueue, but that's expensive, and tick() will deal with this
@@ -118,11 +120,11 @@ class Node<BlockchainType: Blockchain> {
 	}
 
 	func add(peer url: URL) {
-		if Peer<BlockchainType>.isValidPeerURL(url: url), let uuid = UUID(uuidString: url.user!) {
+		if Peer<LedgerType>.isValidPeerURL(url: url), let uuid = UUID(uuidString: url.user!) {
 			self.mutex.locked {
 				if self.peers[uuid] == nil {
 					let isSelf = self.uuid == uuid
-					let peer = Peer<BlockchainType>(url: url, state: isSelf ? .ignored(reason: "added, but is ourselves") : .new, connection: nil, delegate: self)
+					let peer = Peer<LedgerType>(url: url, state: isSelf ? .ignored(reason: "added, but is ourselves") : .new, connection: nil, delegate: self)
 					self.peers[uuid] = peer
 
 					if case .new = peer.state {
@@ -143,7 +145,7 @@ class Node<BlockchainType: Blockchain> {
 		}
 	}
 
-	func add(peer connection: PeerIncomingConnection<BlockchainType>) {
+	func add(peer connection: PeerIncomingConnection<LedgerType>) {
 		var reverseURL = URLComponents()
 		reverseURL.scheme = "ws"
 		reverseURL.host = connection.connection.request.remoteAddress
@@ -178,7 +180,7 @@ class Node<BlockchainType: Blockchain> {
 				return
 			}
 
-			let peer = Peer<BlockchainType>(url: url, state: isSelf ? .ignored(reason: "is ourselves") : .connected, connection: isSelf ? nil : connection, delegate: self)
+			let peer = Peer<LedgerType>(url: url, state: isSelf ? .ignored(reason: "is ourselves") : .connected, connection: isSelf ? nil : connection, delegate: self)
 			connection.delegate = peer
 
 			// Check whether the connecting peer is looking for someone else
@@ -252,8 +254,13 @@ class Node<BlockchainType: Blockchain> {
 		}
 	}
 
+	/** Received a 'best block' offer from another peer (in reply to query) */
+	func receive(best: Candidate<BlockType>) {
+		self.fetcher.request(candidate: best)
+	}
+
 	/** Peer can be nil when the block originated from ourselves (i.e. was mined). */
-	func receive(block: BlockType, from peer: Peer<BlockchainType>?, wasRequested: Bool) throws {
+	func receive(block: BlockType, from peer: Peer<LedgerType>?, wasRequested: Bool) throws {
 		if block.isSignatureValid && block.isPayloadValid() {
 			Log.info("[Node] receive block #\(block.index) from \(peer?.url.absoluteString ?? "self")")
 
@@ -261,7 +268,7 @@ class Node<BlockchainType: Blockchain> {
 				let isNew = try self.ledger.isNew(block: block) && self.ledger.longest.highest.index < block.index
 				let wasAppended = try self.ledger.receive(block: block)
 				if let p = peer, wasRequested && !wasAppended && block.index > 0 {
-					let (fetchIndex, fetchHash) = self.ledger.earliestRootFor(orphan: block)
+					let (fetchIndex, fetchHash) = self.ledger.orphans.earliestRootFor(orphan: block)
 
 					if fetchIndex > 0 {
 						Log.info("[Node] received an orphan block #\(block.index), let's see if peer has its predecessor \(fetchHash) at #\(fetchIndex)")
@@ -274,7 +281,7 @@ class Node<BlockchainType: Blockchain> {
 			// Did we get this block from someone else and is it new? Then rebroadcast
 			if let p = peer, isNew && !wasRequested {
 				Log.info("[Node] Re-broadcasting block \(block) to peers as it is new")
-				let blockGossip = Gossip<BlockchainType>.block(block.json)
+				let blockGossip = Gossip<LedgerType>.block(block.json)
 
 				self.peers.forEach { (url, otherPeer) in
 					if otherPeer.url != p.url {
@@ -360,16 +367,17 @@ class Node<BlockchainType: Blockchain> {
 	}
 }
 
-fileprivate class Fetcher<BlockchainType: Blockchain> {
+fileprivate class Fetcher<LedgerType: Ledger> {
+	typealias BlockchainType = LedgerType.BlockchainType
 	typealias BlockType = BlockchainType.BlockType
 
 	private let workerQueue = DispatchQueue.global(qos: .background)
 	private var candidateQueue = OrderedSet<Candidate<BlockType>>()
-	private weak var node: Node<BlockchainType>?
+	private weak var node: Node<LedgerType>?
 	private var running = false
 	private let mutex = Mutex()
 
-	init(node: Node<BlockchainType>) {
+	init(node: Node<LedgerType>) {
 		self.node = node
 	}
 
@@ -410,7 +418,7 @@ fileprivate class Fetcher<BlockchainType: Blockchain> {
 			if let n = self.node, let p = n.peers[candidate.peer] {
 				if let c = p.mutex.locked(block: { return p.connection }) {
 					do {
-						try c.request(gossip: Gossip<BlockchainType>.fetch(candidate.hash)) { reply in
+						try c.request(gossip: Gossip<LedgerType>.fetch(candidate.hash)) { reply in
 							if case .block(let blockData) = reply {
 								do {
 									let block = try BlockType.read(json: blockData)

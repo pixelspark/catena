@@ -2,7 +2,7 @@ import Foundation
 import Dispatch
 import LoggerAPI
 
-class Miner<BlockchainType: Blockchain> {
+class Miner<LedgerType: Ledger> {
 	enum MinerError: LocalizedError {
 		case unsignedTransactionCannotBeMined
 
@@ -14,10 +14,11 @@ class Miner<BlockchainType: Blockchain> {
 		}
 	}
 
+	typealias BlockchainType = LedgerType.BlockchainType
 	typealias BlockType = BlockchainType.BlockType
 	typealias HashType = BlockType.HashType
 
-	private weak var node: Node<BlockchainType>?
+	private weak var node: Node<LedgerType>?
 	private(set) var block: BlockType? = nil
 	private let mutex = Mutex()
 	private var counter: BlockType.NonceType = 0
@@ -26,7 +27,7 @@ class Miner<BlockchainType: Blockchain> {
 
 	private var aside = OrderedSet<BlockType.TransactionType>()
 
-	init(node: Node<BlockchainType>) {
+	init(node: Node<LedgerType>) {
 		self.node = node
 		self.counter = random(BlockType.NonceType.self)
 	}

@@ -9,7 +9,8 @@ import Dispatch
 import Starscream
 #endif
 
-public enum Gossip<BlockchainType: Blockchain> {
+public enum Gossip<LedgerType: Ledger> {
+	public typealias BlockchainType = LedgerType.BlockchainType
 	public typealias BlockType = BlockchainType.BlockType
 
 	/** Request the peer's index. The reply is either of type 'index' or 'passive'. */
@@ -132,16 +133,17 @@ internal extension Block {
 	}
 }
 
-class Server<BlockchainType: Blockchain>: WebSocketService {
+class Server<LedgerType: Ledger>: WebSocketService {
+	typealias BlockchainType = LedgerType.BlockchainType
 	typealias BlockType = BlockchainType.BlockType
 
 	let router = Router()
 	let port: Int
 	private let mutex = Mutex()
-	private var gossipConnections = [String: PeerIncomingConnection<BlockchainType>]()
-	weak var node: Node<BlockchainType>?
+	private var gossipConnections = [String: PeerIncomingConnection<LedgerType>]()
+	weak var node: Node<LedgerType>?
 
-	init(node: Node<BlockchainType>, port: Int) {
+	init(node: Node<LedgerType>, port: Int) {
 		self.node = node
 		self.port = port
 
@@ -160,7 +162,7 @@ class Server<BlockchainType: Blockchain>: WebSocketService {
 
 		self.mutex.locked {
 			do {
-				let pic = try PeerIncomingConnection<BlockchainType>(connection: connection)
+				let pic = try PeerIncomingConnection<LedgerType>(connection: connection)
 				self.node?.add(peer: pic)
 				self.gossipConnections[connection.id] = pic
 			}
@@ -282,20 +284,20 @@ public struct Index<BlockType: Block> {
 }
 
 public protocol PeerConnectionDelegate {
-	associatedtype BlockchainType: Blockchain
-	func peer(connection: PeerConnection<BlockchainType>, requests gossip: Gossip<BlockchainType>, counter: Int)
-	func peer(connected _: PeerConnection<BlockchainType>)
-	func peer(disconnected _: PeerConnection<BlockchainType>)
+	associatedtype LedgerType: Ledger
+	func peer(connection: PeerConnection<LedgerType>, requests gossip: Gossip<LedgerType>, counter: Int)
+	func peer(connected _: PeerConnection<LedgerType>)
+	func peer(disconnected _: PeerConnection<LedgerType>)
 }
 
-public class PeerConnection<BlockchainType: Blockchain> {
-	public typealias GossipType = Gossip<BlockchainType>
-	public typealias Callback = (Gossip<BlockchainType>) -> ()
+public class PeerConnection<LedgerType: Ledger> {
+	public typealias GossipType = Gossip<LedgerType>
+	public typealias Callback = (Gossip<LedgerType>) -> ()
 
 	public let mutex = Mutex()
 	private var counter = 0
 	private var callbacks: [Int: Callback] = [:]
-	public weak var delegate: Peer<BlockchainType>? = nil
+	public weak var delegate: Peer<LedgerType>? = nil
 
 	fileprivate init(isIncoming: Bool) {
 		self.counter = isIncoming ? 1 : 0
@@ -376,7 +378,7 @@ enum PeerConnectionError: LocalizedError {
 	}
 }
 
-public class PeerIncomingConnection<BlockchainType: Blockchain>: PeerConnection<BlockchainType>, CustomDebugStringConvertible {
+public class PeerIncomingConnection<LedgerType: Ledger>: PeerConnection<LedgerType>, CustomDebugStringConvertible {
 	let connection: WebSocketConnection
 
 	init(connection: WebSocketConnection) throws {
@@ -407,7 +409,7 @@ public class PeerIncomingConnection<BlockchainType: Blockchain>: PeerConnection<
 }
 
 #if !os(Linux)
-public class PeerOutgoingConnection<BlockchainType: Blockchain>: PeerConnection<BlockchainType>, WebSocketDelegate {
+public class PeerOutgoingConnection<LedgerType: Ledger>: PeerConnection<LedgerType>, WebSocketDelegate {
 	let connection: Starscream.WebSocket
 
 	init(connection: Starscream.WebSocket) {
@@ -464,7 +466,8 @@ public class PeerOutgoingConnection<BlockchainType: Blockchain>: PeerConnection<
 }
 #endif
 
-public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
+public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
+	typealias BlockchainType = LedgerType.BlockchainType
 	typealias BlockType = BlockchainType.BlockType
 	typealias TransactionType = BlockType.TransactionType
 
@@ -478,12 +481,12 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 	var lastSeen: Date? = nil
 
 	fileprivate(set) var state: PeerState
-	fileprivate(set) var connection: PeerConnection<BlockchainType>? = nil
-	weak var node: Node<BlockchainType>?
+	fileprivate(set) var connection: PeerConnection<LedgerType>? = nil
+	weak var node: Node<LedgerType>?
 	public let mutex = Mutex()
 
-	init(url: URL, state: PeerState, connection: PeerConnection<BlockchainType>?, delegate: Node<BlockchainType>) {
-		assert(Peer<BlockchainType>.isValidPeerURL(url: url), "Peer URL must be valid")
+	init(url: URL, state: PeerState, connection: PeerConnection<LedgerType>?, delegate: Node<LedgerType>) {
+		assert(Peer<LedgerType>.isValidPeerURL(url: url), "Peer URL must be valid")
 		self.url = url
 		self.state = state
 		self.connection = connection
@@ -528,7 +531,7 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 							else {
 								#if !os(Linux)
 									let ws = Starscream.WebSocket(url: uc.url!, protocols: [ProtocolConstants.protocolVersion])
-									let pic = PeerOutgoingConnection<BlockchainType>(connection: ws)
+									let pic = PeerOutgoingConnection<LedgerType>(connection: ws)
 									pic.delegate = self
 									Log.debug("[Peer] connect outgoing \(url)")
 									ws.connect()
@@ -593,7 +596,7 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 						}
 
 						// Request the best block from this peer
-						n.fetcher.request(candidate: Candidate(hash: index.highest, height: index.height, peer: self.uuid))
+						n.receive(best: Candidate(hash: index.highest, height: index.height, peer: self.uuid))
 					}
 					else if case .passive = reply {
 						self.state = .passive
@@ -607,7 +610,7 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 		}
 	}
 
-	public func peer(connection: PeerConnection<BlockchainType>, requests gossip: Gossip<BlockchainType>, counter: Int) {
+	public func peer(connection: PeerConnection<LedgerType>, requests gossip: Gossip<LedgerType>, counter: Int) {
 		do {
 			self.lastSeen = Date()
 			Log.debug("[Peer] receive request \(counter)")
@@ -668,7 +671,7 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 		}
 	}
 
-	public func peer(connected _: PeerConnection<BlockchainType>) {
+	public func peer(connected _: PeerConnection<LedgerType>) {
 		self.mutex.locked {
 			if case .connecting = self.state {
 				Log.info("[Peer] \(url) connected outgoing")
@@ -680,7 +683,7 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 		}
 	}
 
-	public func peer(disconnected _: PeerConnection<BlockchainType>) {
+	public func peer(disconnected _: PeerConnection<LedgerType>) {
 		self.mutex.locked {
 			Log.info("[Peer] \(url) disconnected outgoing")
 			self.state = .new

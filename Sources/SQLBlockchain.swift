@@ -1,21 +1,72 @@
 import Foundation
 import LoggerAPI
 
+class SQLLedger: Ledger {
+	typealias BlockchainType = SQLBlockchain
+
+	let mutex = Mutex()
+	let orphans = Orphans<SQLBlock>()
+	var longest: SQLBlockchain
+	let spliceLimit: UInt = 1
+
+	/** Instantiate an SQLLedger that tracks chains starting at the indicated genesis block and uses the indicated database
+	file for storage. When`replay` is true, the ledger will process database transactions, whereas if it is false, the
+	ledger will only validate transactions and participate in grant and other metadata processing. */
+	init(genesis: SQLBlock, database path: String, replay: Bool) throws {
+		self.longest = try SQLBlockchain(genesis: genesis, database: path, replay: replay)
+	}
+
+	func canAccept(transaction: SQLTransaction, pool: SQLBlock?) throws -> Bool {
+		if !transaction.isSignatureValid {
+			Log.info("[Ledger] cannot accept tx \(transaction): signature invalid")
+			return false
+		}
+
+		/* A transaction is acceptable when its counter is one above the stored counter for the invoker key, or zero when
+		the invoker has no counter yet (not executed any transactions before on this chain). */
+		let appendable = try self.mutex.locked { () -> Bool in
+			return try self.longest.withUnverifiedTransactions { chain in
+				if let counter = try chain.meta.users.counter(for: transaction.invoker) {
+					return (counter + 1) == transaction.counter
+				}
+				return transaction.counter == 0
+			}
+		}
+
+		if appendable {
+			return true
+		}
+
+		// Perhaps the transaction is appendable to another pooled transaction?
+		if let p = pool {
+			for tr in p.payload.transactions {
+				if tr.invoker == transaction.invoker && (tr.counter + 1) == transaction.counter {
+					return true
+				}
+			}
+		}
+
+		Log.info("[SQLLedger] cannot accept tx \(transaction): not appendable (\(transaction.counter)) invoker hash=\(transaction.invoker.data.sha256.base64EncodedString())")
+		return false
+	}
+}
+
+
 class SQLBlockchain: Blockchain {
 	typealias BlockType = SQLBlock
 
 	let genesis: SQLBlock
 	var highest: SQLBlock
-	var database: Database
 
 	/** The SQL blockchain maintains a database (permanent) and a queue. When transactions are received, they are inserted
 	in a queue. When this queue exceeds a certain size (`maxQueueSize`), the transactions are processed in the permanent
 	database. If a chain splice/switch occurs that required rewinding to less than maxQueueSize blocks, this can be done
 	efficiently by removing blocks from the queue. If the splice happens earlier, the full database needs to be rebuilt.*/
+	private(set) var database: Database
+	private(set) var meta: SQLMetadata
 	private let maxQueueSize = 7
 	private var queue: [SQLBlock] = []
 	private let mutex = Mutex()
-	let meta: SQLMetadata
 	let replay: Bool
 
 	let databasePath: String
@@ -142,7 +193,7 @@ class SQLBlockchain: Blockchain {
 			}
 		}
 		catch {
-			fatalError("[SQLLedger] unwind error: \(error.localizedDescription)")
+			fatalError("[SQLBlockchain] unwind error: \(error.localizedDescription)")
 		}
 	}
 
@@ -163,6 +214,9 @@ class SQLBlockchain: Blockchain {
 				}
 			} while true
 
+			// Empty the queue
+			self.queue = []
+
 			// Remove database
 			self.database.close()
 			let e = self.databasePath.withCString { cs -> Int32 in
@@ -177,6 +231,8 @@ class SQLBlockchain: Blockchain {
 			let db = SQLiteDatabase()
 			try db.open(self.databasePath)
 			self.database = db
+			self.meta = try SQLMetadata(database: self.database)
+
 
 			// Replay blocks
 			try self.database.transaction {

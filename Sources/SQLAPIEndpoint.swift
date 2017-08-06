@@ -2,9 +2,9 @@ import Foundation
 import Kitura
 
 class SQLAPIEndpoint {
-	let node: Node<SQLBlockchain>
+	let node: Node<SQLLedger>
 
-	init(node: Node<SQLBlockchain>, router: Router) {
+	init(node: Node<SQLLedger>, router: Router) {
 		self.node = node
 
 		router.get("/api", handler: self.handleIndex)

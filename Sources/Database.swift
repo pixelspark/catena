@@ -326,6 +326,9 @@ class SQLiteDatabase: Database {
 
 					default:
 						Log.debug("[SQL] ERROR: \(self.lastError)")
+						if resultSet != nil {
+							sqlite3_finalize(resultSet)
+						}
 						throw DatabaseError.error(self.lastError)
 					}
 				}
@@ -336,7 +339,7 @@ class SQLiteDatabase: Database {
 
 					default:
 						Log.debug("[SQL] ERROR in prepare: \(self.lastError)")
-						throw DatabaseError.error(self.lastError)
+						throw DatabaseError.error("SQLite error \(sqlite3_errcode(self.db)): \(self.lastError) (SQL: \(sql)")
 					}
 				}
 			}

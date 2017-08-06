@@ -70,7 +70,7 @@ if initializeOption.value && !memoryDatabaseFileOption.value {
 do {
 	let ledger = try SQLLedger(genesis: genesisBlock, database: databaseFile, replay: !noReplayOption.value)
 	let netPort = netPortOption.value ?? 8338
-	let node = Node<SQLBlockchain>(ledger: ledger, port: netPort)
+	let node = Node<SQLLedger>(ledger: ledger, port: netPort)
 	let _ = SQLAPIEndpoint(node: node, router: node.server.router)
 
 	// Set up peer database

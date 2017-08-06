@@ -27,16 +27,14 @@ extension Value {
 }
 
 class NodeQueryServer: QueryServer {
-	var node: Node<SQLBlockchain>
+	var node: Node<SQLLedger>
 
-	init(node: Node<SQLBlockchain>, port: Int, family: Family = .ipv6) {
+	init(node: Node<SQLLedger>, port: Int, family: Family = .ipv6) {
 		self.node = node
 		super.init(port: port, family: family)
 	}
 
 	override func query(_ query: String, connection: QueryClientConnection) {
-		let ledger = node.ledger as! SQLLedger
-
 		Log.info("[Query] Execute: \(query)")
 
 		do {
@@ -75,7 +73,7 @@ class NodeQueryServer: QueryServer {
 			// Mutating statements are queued
 			if statement.isMutating {
 				// This needs to go to the ledger
-				let counter = try ledger.longest.withUnverifiedTransactions { chain in
+				let counter = try node.ledger.longest.withUnverifiedTransactions { chain in
 					return try chain.meta.users.counter(for: identity.publicKey) ?? 0
 				}
 
@@ -85,7 +83,7 @@ class NodeQueryServer: QueryServer {
 				try connection.send(error: "OK \(transaction.counter) \(transaction.signature!.base58encoded) \(transaction.statement.sql(dialect: SQLStandardDialect()))", severity: .info)
 			}
 			else {
-				try ledger.longest.withUnverifiedTransactions { chain in
+				try node.ledger.longest.withUnverifiedTransactions { chain in
 					let context = SQLContext(metadata: chain.meta, invoker: identity.publicKey, block: chain.highest)
 					let result = try chain.database.perform(statement.backendStatement(context: context).sql(dialect: chain.database.dialect))
 					if case .row = result.state {

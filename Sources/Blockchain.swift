@@ -2,6 +2,19 @@ import Foundation
 import Cryptor
 import LoggerAPI
 
+public protocol Ledger {
+	associatedtype BlockchainType: Blockchain
+
+	var longest: BlockchainType { get }
+	var orphans: Orphans<BlockchainType.BlockType> { get }
+	var mutex: Mutex { get }
+	var spliceLimit: UInt { get }
+
+	/** Returns whether a transaction is valid for inclusion in the transaction memory pool (to be mined). The optional
+	`pool` argument may refer to a block that contains transactions currently in the memory pool (for mining). */
+	func canAccept(transaction: BlockchainType.BlockType.TransactionType, pool: BlockchainType.BlockType?) throws -> Bool
+}
+
 public protocol Blockchain {
 	associatedtype BlockType: Block
 
@@ -245,20 +258,36 @@ extension Block {
 	}
 }
 
-class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
-	typealias BlockType = BlockchainType.BlockType
-	typealias HashType = BlockType.HashType
+public class Orphans<BlockType: Block> {
+	private let mutex = Mutex()
+	private var orphansByHash: [BlockType.HashType: BlockType] = [:]
+	private var orphansByPreviousHash: [BlockType.HashType: BlockType] = [:]
 
-	var longest: BlockchainType
-	let mutex = Mutex()
-	private var orphansByHash: [HashType: BlockType] = [:]
-	private var orphansByPreviousHash: [HashType: BlockType] = [:]
-
-	init(longest: BlockchainType) {
-		self.longest = longest
+	func remove(orphan block: BlockType) {
+		self.mutex.locked {
+			self.orphansByPreviousHash[block.previous] = nil
+			self.orphansByHash[block.signature!] = nil
+		}
 	}
 
-	let spliceLimit: UInt = 1
+	func add(orphan block: BlockType) {
+		self.mutex.locked {
+			self.orphansByHash[block.signature!] = block
+			self.orphansByPreviousHash[block.previous] = block
+		}
+	}
+
+	func get(orphan hash: BlockType.HashType) -> BlockType? {
+		return self.mutex.locked {
+			return self.orphansByHash[hash]
+		}
+	}
+
+	func get(successorOf hash: BlockType.HashType) -> BlockType? {
+		return self.mutex.locked {
+			return self.orphansByPreviousHash[hash]
+		}
+	}
 
 	/** Find the earliest orphan block preceding the given orphan block. */
 	func earliestRootFor(orphan block: BlockType) -> (index: BlockType.IndexType, signature: BlockType.HashType) {
@@ -271,11 +300,13 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 
 		return (fetchIndex, fetchHash)
 	}
+}
 
-	func isNew(block: BlockType) throws -> Bool {
+extension Ledger {
+	func isNew(block: BlockchainType.BlockType) throws -> Bool {
 		return try self.mutex.locked {
 			// We already know this block and it is currently an orphan
-			if self.orphansByHash[block.signature!] != nil {
+			if orphans.get(orphan: block.signature!) != nil {
 				return false
 			}
 
@@ -289,52 +320,39 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 		}
 	}
 
-	/** Returns whether a transaction is valid for inclusion in the transaction memory pool (to be mined). The optional
-	`pool` argument may refer to a block that contains transactions currently in the memory pool (for mining). */
-	func canAccept(transaction: BlockType.TransactionType, pool: BlockType?) throws -> Bool {
-		fatalError("Needs to be implemented")
-	}
-
-	private func remove(orphan block: BlockType) {
-		self.orphansByPreviousHash[block.previous] = nil
-		self.orphansByHash[block.signature!] = nil
-	}
-
-	func receive(block: BlockType) throws -> Bool {
+	func receive(block: BlockchainType.BlockType) throws -> Bool {
 		Log.debug("[Ledger] receive block #\(block.index) \(block.signature!.stringValue)")
 		return try self.mutex.locked { () -> Bool in
 			if block.isSignatureValid {
 				// Were we waiting for this block?
 				var block = block
-				while let next = self.orphansByPreviousHash[block.signature!] {
-					self.orphansByHash[block.signature!] = block
-					self.orphansByPreviousHash[block.previous] = block
+				while let next = self.orphans.get(successorOf: block.signature!) {
+					self.orphans.add(orphan: block)
 					block = next
 				}
 
 				// This block can simply be appended to the chain
 				if try self.longest.append(block: block) {
-					self.remove(orphan: block)
+					self.orphans.remove(orphan: block)
 					Log.info("[Ledger] can append directly")
 					return true
 				}
 				else {
-					// Block cannot be directly appended. 
+					// Block cannot be directly appended.
 					if block.index > self.longest.highest.index {
 						// The block is newer
-						var root: BlockType? = block
-						var stack: [BlockType] = []
+						var root: BlockchainType.BlockType? = block
+						var stack: [BlockchainType.BlockType] = []
 						while true {
 							if let r = root {
-								if let prev = self.orphansByHash[r.previous] {
+								if let prev = self.orphans.get(orphan: r.previous) {
 									// Previous block is an orphan as well, so not on-chain. Find the next one
 									root = prev
 									stack.append(r)
 								}
 								else if try self.longest.get(block: r.previous) == nil {
 									// The previous block is not an orphan but not on-chain either. This means we are missing an orphan
-									self.orphansByHash[block.signature!] = block
-									self.orphansByPreviousHash[block.previous] = block
+									self.orphans.add(orphan: block)
 									Log.debug("[Ledger] missing intermediate block: \(r.index-1) with hash \(r.previous.stringValue)")
 									return false
 								}
@@ -368,7 +386,7 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 									}
 
 									// Orphan is appended, remove it from the orphan cache
-									self.remove(orphan: block)
+									self.orphans.remove(orphan: block)
 								}
 								return true
 							}
@@ -384,8 +402,7 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 					}
 					else {
 						// The block is older, but it may be of use later. Save as orphan
-						self.orphansByHash[block.signature!] = block
-						self.orphansByPreviousHash[block.previous] = block
+						self.orphans.add(orphan: block)
 						return false
 					}
 				}
@@ -393,12 +410,6 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 			else {
 				return false
 			}
-		}
-	}
-
-	var debugDescription: String {
-		return self.mutex.locked {
-			"Client [longest height=\(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)]"
 		}
 	}
 }
