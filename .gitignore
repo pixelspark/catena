@@ -4,3 +4,6 @@
 /*.xcodeproj
 catena.sqlite
 *.sqlite
+*.sqlite-shm
+*.sqlite-wal
+Package.pins
