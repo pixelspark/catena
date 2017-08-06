@@ -9,7 +9,6 @@ class SQLAPIEndpoint {
 
 		router.get("/api", handler: self.handleIndex)
 		router.get("/api/block/:hash", handler: self.handleGetBlock)
-		router.get("/api/orphans", handler: self.handleGetOrphans)
 		router.get("/api/head", handler: self.handleGetLast)
 		router.get("/api/journal", handler: self.handleGetJournal)
 		router.get("/api/pool", handler: self.handleGetPool)
@@ -76,15 +75,6 @@ class SQLAPIEndpoint {
 		else {
 			_ = response.send(status: .badRequest)
 		}
-	}
-
-	private func handleGetOrphans(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let hashes = Array(self.node.ledger.orphansByHash.keys.map { $0.stringValue })
-		response.send(json: [
-			"status": "ok",
-			"orphans": hashes
-			])
-		next()
 	}
 
 	private func handleGetPool(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {

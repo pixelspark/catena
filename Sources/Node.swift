@@ -3,9 +3,13 @@ import Kitura
 import Dispatch
 import LoggerAPI
 
-struct Candidate<BlockType: Block>: Equatable {
+struct Candidate<BlockType: Block>: Equatable, Hashable {
 	static func ==(lhs: Candidate<BlockType>, rhs: Candidate<BlockType>) -> Bool {
 		return lhs.hash == rhs.hash && lhs.peer == rhs.peer
+	}
+
+	var hashValue: Int {
+		return hash.hashValue ^ height.hashValue ^ peer.hashValue
 	}
 
 	let hash: BlockType.HashType
@@ -20,19 +24,20 @@ protocol PeerDatabase {
 
 class Node<BlockchainType: Blockchain> {
 	typealias BlockType = BlockchainType.BlockType
+
+	let uuid: UUID
 	private(set) var server: Server<BlockchainType>! = nil
 	private(set) var miner: Miner<BlockchainType>! = nil
-	let ledger: Ledger<BlockchainType>
-	let uuid: UUID
+	private(set) var ledger: Ledger<BlockchainType>! = nil
+	private(set) var fetcher: Fetcher<BlockchainType>! = nil
 
 	var peerDatabase: PeerDatabase? = nil
+	private let workerQueue = DispatchQueue.global(qos: .background)
 
 	private let tickTimer: DispatchSourceTimer
-	private let mutex = Mutex()
-	private let workerQueue = DispatchQueue.global(qos: .background)
+	fileprivate let mutex = Mutex()
 	private(set) var peers: [UUID: Peer<BlockchainType>] = [:]
 	private var queryQueue: [UUID] = []
-	private var candidateQueue: [Candidate<BlockType>] = []
 
 	/** The list of peers that can be advertised to other nodes for peer exchange. */
 	var validPeers: Set<URL> {
@@ -55,6 +60,7 @@ class Node<BlockchainType: Blockchain> {
 		self.ledger = ledger
 		self.miner = Miner(node: self)
 		self.server = Server(node: self, port: port)
+		self.fetcher = Fetcher(node: self)
 	}
 
 	public var url: URL {
@@ -246,33 +252,20 @@ class Node<BlockchainType: Blockchain> {
 		}
 	}
 
-	func queueRequest(candidate: Candidate<BlockType>) {
-		self.mutex.locked {
-			if candidate.height > self.ledger.longest.highest.index {
-				self.candidateQueue.append(candidate)
-			}
-		}
-	}
-
 	/** Peer can be nil when the block originated from ourselves (i.e. was mined). */
 	func receive(block: BlockType, from peer: Peer<BlockchainType>?, wasRequested: Bool) throws {
 		if block.isSignatureValid && block.isPayloadValid() {
 			Log.info("[Node] receive block #\(block.index) from \(peer?.url.absoluteString ?? "self")")
 
-			let isNew = try self.mutex.locked { () -> Bool in
+			let isNew = try self.ledger.mutex.locked { () -> Bool in
 				let isNew = try self.ledger.isNew(block: block) && self.ledger.longest.highest.index < block.index
 				let wasAppended = try self.ledger.receive(block: block)
 				if let p = peer, wasRequested && !wasAppended && block.index > 0 {
-					var fetchHash = block.previous
-					var fetchIndex = block.index - 1
-					while let orphan = self.ledger.orphansByHash[fetchHash], orphan.index > 0 {
-						fetchHash = orphan.previous
-						fetchIndex = orphan.index - 1
-					}
+					let (fetchIndex, fetchHash) = self.ledger.earliestRootFor(orphan: block)
 
 					if fetchIndex > 0 {
 						Log.info("[Node] received an orphan block #\(block.index), let's see if peer has its predecessor \(fetchHash) at #\(fetchIndex)")
-						self.queueRequest(candidate: Candidate<BlockType>(hash: fetchHash, height: fetchIndex, peer: p.uuid))
+						self.fetcher.request(candidate: Candidate<BlockType>(hash: fetchHash, height: fetchIndex, peer: p.uuid))
 					}
 				}
 				return isNew
@@ -313,7 +306,7 @@ class Node<BlockchainType: Blockchain> {
 					if let peerConnection = peer.connection {
 						self.workerQueue.async {
 							do {
-								Log.debug("[Node] posting mined block \(block.index) to peer \(peer)")
+								Log.debug("[Node] posting mined block \(block.index) to peer \(peer.url)")
 								try peerConnection.request(gossip: .block(block.json))
 							}
 							catch {
@@ -331,13 +324,6 @@ class Node<BlockchainType: Blockchain> {
 
 	private func tick() {
 		self.mutex.locked {
-			// Do we need to fetch any blocks?
-			if let candidate = self.candidateQueue.first {
-				self.candidateQueue.remove(at: 0)
-				Log.info("[Node] fetch candidate \(candidate)")
-				self.fetch(candidate: candidate)
-			}
-
 			// Take the first from the query queue...
 			if let p = self.queryQueue.first {
 				self.queryQueue.remove(at: 0)
@@ -358,78 +344,6 @@ class Node<BlockchainType: Blockchain> {
 		}
 	}
 
-	private func fetch(candidate: Candidate<BlockType>) {
-		self.workerQueue.async {
-			if let p = self.peers[candidate.peer] {
-				if let c = p.mutex.locked(block: { return p.connection }) {
-					do {
-						try c.request(gossip: Gossip<BlockchainType>.fetch(candidate.hash)) { reply in
-							if case .block(let blockData) = reply {
-								do {
-									let block = try BlockType.read(json: blockData)
-
-									if block.isSignatureValid {
-										Log.debug("[Node] fetch returned valid block: \(block)")
-										try self.ledger.mutex.locked {
-											let peer = self.peers[candidate.peer]
-											try self.receive(block: block, from: peer, wasRequested: true)
-											if block.index > 0 {
-												// Do we already have the previous block?
-												if let orphan = self.ledger.orphansByHash[block.previous] {
-													Log.info("[Node] fetch previous block is in cache, remind node")
-													try self.receive(block: orphan, from: peer, wasRequested: true)
-												}
-												else {
-													let pb = try self.ledger.longest.get(block: block.previous)
-													if pb == nil {
-														// Ledger is looking for the previous block for this block, go get it from the peer we got this from
-														self.workerQueue.async {
-															self.fetch(candidate: Candidate(hash: block.previous, height: block.index-1, peer: candidate.peer))
-														}
-													}
-												}
-											}
-										}
-									}
-									else {
-										Log.warning("[Node] fetch returned invalid block (signature invalid); setting peer \(candidate.peer) invalid")
-										self.mutex.locked {
-											self.peers[candidate.peer]?.fail(error: "invalid block")
-										}
-									}
-								}
-								catch {
-									Log.error("[Gossip] Error parsing result from fetch: \(error.localizedDescription)")
-									self.mutex.locked {
-										self.peers[candidate.peer]?.fail(error: "invalid reply to fetch")
-									}
-								}
-							}
-							else {
-								Log.error("[Gossip] Received invalid reply to fetch: \(reply)")
-								self.mutex.locked {
-									self.peers[candidate.peer]?.fail(error: "invalid reply to fetch")
-								}
-							}
-						}
-					}
-					catch {
-						Log.error("[Node] Fetch error: \(error)")
-						self.mutex.locked {
-							self.peers[candidate.peer]?.fail(error: "fetch error: \(error)")
-						}
-					}
-				}
-				else {
-					Log.info("[Node] fetch candidate peer is not connected: \(candidate)")
-				}
-			}
-			else {
-				Log.info("[Node] fetch candidate peer has disappeared: \(candidate)")
-			}
-		}
-	}
-
 	public func start(blocking: Bool) {
 		self.tickTimer.setEventHandler { [unowned self] _ in
 			self.tick()
@@ -442,6 +356,123 @@ class Node<BlockchainType: Blockchain> {
 		}
 		else {
 			Kitura.start()
+		}
+	}
+}
+
+fileprivate class Fetcher<BlockchainType: Blockchain> {
+	typealias BlockType = BlockchainType.BlockType
+
+	private let workerQueue = DispatchQueue.global(qos: .background)
+	private var candidateQueue = OrderedSet<Candidate<BlockType>>()
+	private weak var node: Node<BlockchainType>?
+	private var running = false
+	private let mutex = Mutex()
+
+	init(node: Node<BlockchainType>) {
+		self.node = node
+	}
+
+	func request(candidate: Candidate<BlockType>) {
+		self.mutex.locked {
+			self.candidateQueue.append(candidate)
+
+			if !self.running {
+				self.tick()
+			}
+		}
+	}
+
+	private func tick() {
+		self.mutex.locked {
+			assert(!self.running, "already running!")
+			self.running = true
+
+			// Do we need to fetch any blocks?
+			if let candidate = self.candidateQueue.first {
+				self.candidateQueue.remove(at: 0)
+				Log.info("[Node] fetch candidate \(candidate)")
+				self.fetch(candidate: candidate) {
+					self.mutex.locked {
+						self.running = false
+
+						if !self.candidateQueue.isEmpty {
+							self.tick()
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private func fetch(candidate: Candidate<BlockType>, callback: @escaping () -> ()) {
+		self.workerQueue.async {
+			if let n = self.node, let p = n.peers[candidate.peer] {
+				if let c = p.mutex.locked(block: { return p.connection }) {
+					do {
+						try c.request(gossip: Gossip<BlockchainType>.fetch(candidate.hash)) { reply in
+							if case .block(let blockData) = reply {
+								do {
+									let block = try BlockType.read(json: blockData)
+
+									if block.isSignatureValid {
+										Log.debug("[Fetcher] fetch returned valid block: \(block)")
+
+										if block.index != candidate.height || block.signature! != candidate.hash {
+											Log.error("[Fetcher] peer returned a different block (#\(block.index)) than we requested (#\(candidate.height))!")
+											n.mutex.locked {
+												n.peers[candidate.peer]?.fail(error: "invalid block")
+											}
+											return callback()
+										}
+
+										try n.mutex.locked {
+											let peer = n.peers[candidate.peer]
+											try n.receive(block: block, from: peer, wasRequested: true)
+										}
+									}
+									else {
+										Log.warning("[Fetcher] fetch returned invalid block (signature invalid); setting peer \(candidate.peer) invalid")
+										n.mutex.locked {
+											n.peers[candidate.peer]?.fail(error: "invalid block")
+										}
+									}
+								}
+								catch {
+									Log.error("[Fetcher] Error parsing result from fetch: \(error.localizedDescription)")
+									n.mutex.locked {
+										n.peers[candidate.peer]?.fail(error: "invalid reply to fetch")
+									}
+								}
+							}
+							else {
+								Log.error("[Fetcher] Received invalid reply to fetch: \(reply)")
+								n.mutex.locked {
+									n.peers[candidate.peer]?.fail(error: "invalid reply to fetch")
+								}
+							}
+
+							return callback()
+						}
+					}
+					catch {
+						Log.error("[Fetcher] Fetch error: \(error)")
+						n.mutex.locked {
+							n.peers[candidate.peer]?.fail(error: "fetch error: \(error)")
+						}
+
+						return callback()
+					}
+				}
+				else {
+					Log.info("[Fetcher] fetch candidate peer is not connected: \(candidate)")
+					return callback()
+				}
+			}
+			else {
+				Log.info("[Fetcher] fetch candidate peer has disappeared: \(candidate)")
+				return callback()
+			}
 		}
 	}
 }

@@ -251,14 +251,26 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 
 	var longest: BlockchainType
 	let mutex = Mutex()
-	var orphansByHash: [HashType: BlockType] = [:]
-	var orphansByPreviousHash: [HashType: BlockType] = [:]
+	private var orphansByHash: [HashType: BlockType] = [:]
+	private var orphansByPreviousHash: [HashType: BlockType] = [:]
 
 	init(longest: BlockchainType) {
 		self.longest = longest
 	}
 
 	let spliceLimit: UInt = 1
+
+	/** Find the earliest orphan block preceding the given orphan block. */
+	func earliestRootFor(orphan block: BlockType) -> (index: BlockType.IndexType, signature: BlockType.HashType) {
+		var fetchHash = block.previous
+		var fetchIndex = block.index - 1
+		while let orphan = self.orphansByHash[fetchHash], orphan.index > 0 {
+			fetchHash = orphan.previous
+			fetchIndex = orphan.index - 1
+		}
+
+		return (fetchIndex, fetchHash)
+	}
 
 	func isNew(block: BlockType) throws -> Bool {
 		return try self.mutex.locked {
@@ -283,6 +295,11 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 		fatalError("Needs to be implemented")
 	}
 
+	private func remove(orphan block: BlockType) {
+		self.orphansByPreviousHash[block.previous] = nil
+		self.orphansByHash[block.signature!] = nil
+	}
+
 	func receive(block: BlockType) throws -> Bool {
 		Log.debug("[Ledger] receive block #\(block.index) \(block.signature!.stringValue)")
 		return try self.mutex.locked { () -> Bool in
@@ -297,6 +314,7 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 
 				// This block can simply be appended to the chain
 				if try self.longest.append(block: block) {
+					self.remove(orphan: block)
 					Log.info("[Ledger] can append directly")
 					return true
 				}
@@ -308,21 +326,20 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 						var stack: [BlockType] = []
 						while true {
 							if let r = root {
-								if try self.longest.get(block: r.previous) == nil {
-									if let prev = self.orphansByHash[r.previous] {
-										root = prev
-										stack.append(r)
-									}
-									else {
-										// We don't have an intermediate block. Save head block as orphan
-										self.orphansByHash[block.signature!] = block
-										self.orphansByPreviousHash[block.previous] = block
-										Log.debug("[Ledger] missing intermediate block: \(r.index-1) with hash \(r.previous.stringValue)")
-										return false
-									}
+								if let prev = self.orphansByHash[r.previous] {
+									// Previous block is an orphan as well, so not on-chain. Find the next one
+									root = prev
+									stack.append(r)
+								}
+								else if try self.longest.get(block: r.previous) == nil {
+									// The previous block is not an orphan but not on-chain either. This means we are missing an orphan
+									self.orphansByHash[block.signature!] = block
+									self.orphansByPreviousHash[block.previous] = block
+									Log.debug("[Ledger] missing intermediate block: \(r.index-1) with hash \(r.previous.stringValue)")
+									return false
 								}
 								else {
-									// Root has previous in chain
+									// Sidechain is rooted in chain, stop here
 									stack.append(r)
 									break
 								}
@@ -349,6 +366,9 @@ class Ledger<BlockchainType: Blockchain>: CustomDebugStringConvertible {
 									if !(try self.longest.append(block: b)) {
 										fatalError("this block should be appendable! #\(b.index) hash=\(b.signature!.stringValue) prev=\(b.previous.stringValue), upon #\(self.longest.highest.index) \(self.longest.highest.signature!.stringValue)")
 									}
+
+									// Orphan is appended, remove it from the orphan cache
+									self.remove(orphan: block)
 								}
 								return true
 							}

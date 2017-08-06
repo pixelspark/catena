@@ -365,11 +365,13 @@ public class PeerConnection<BlockchainType: Blockchain> {
 enum PeerConnectionError: LocalizedError {
 	case protocolVersionMissing
 	case protocolVersionUnsupported(version: String)
+	case notConnected
 
 	var errorDescription: String? {
 		switch self {
 		case .protocolVersionMissing: return "the client did not indicate a protocol version"
 		case .protocolVersionUnsupported(version: let v): return "protocol version '\(v)' is not supported"
+		case .notConnected: return "the peer is not connected"
 		}
 	}
 }
@@ -424,6 +426,9 @@ public class PeerOutgoingConnection<BlockchainType: Blockchain>: PeerConnection<
 	public override func send(data: Data) throws {
 		if self.connection.isConnected {
 			self.connection.write(data: data)
+		}
+		else {
+			throw PeerConnectionError.notConnected
 		}
 	}
 
@@ -587,7 +592,8 @@ public class Peer<BlockchainType: Blockchain>: PeerConnectionDelegate {
 							n.add(peer: p)
 						}
 
-						n.queueRequest(candidate: Candidate(hash: index.highest, height: index.height, peer: self.uuid))
+						// Request the best block from this peer
+						n.fetcher.request(candidate: Candidate(hash: index.highest, height: index.height, peer: self.uuid))
 					}
 					else if case .passive = reply {
 						self.state = .passive
