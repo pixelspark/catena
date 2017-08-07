@@ -46,7 +46,37 @@ class CatenaSQLTests: XCTestCase {
 		XCTAssert(try !(g.check(privileges: [SQLPrivilege(kind: .insert, table: SQLTable(name: "test"))], forUser: otherUser.publicKey)))
 	}
 
+	func testParser() throws {
+		let p = SQLParser()
+
+		let valid = [
+			"SELECT 1+1;",
+			"SELECT a FROM b;",
+			"SELECT a FROM b WHERE c=d;",
+			"SELECT a FROM b WHERE c=d ORDER BY z ASC;",
+			"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC;",
+			"DELETE FROM a WHERE x=y;",
+			"UPDATE a SET z=y WHERE a=b;",
+			"INSERT INTO x (a,b,c) VALUES (1,2,3),(4,5,6);",
+			"CREATE TABLE x(a TEXT, b TEXT, c TEXT PRIMARY KEY);"
+		]
+
+		let invalid = [
+			"SELECT 1+1" // missing ';'
+		]
+
+		for v in valid {
+			XCTAssert(p.parse(v), "Failed to parse \(v)")
+		}
+
+		for v in invalid {
+			XCTAssert(!p.parse(v), "Failed to parse \(v)")
+		}
+	}
+
     static var allTests = [
         ("testPeerDatabase", testPeerDatabase),
+        ("testGrants", testGrants),
+        ("testParser", testParser)
     ]
 }
