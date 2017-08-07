@@ -219,12 +219,14 @@ public struct Index<BlockType: Block> {
 	let peers: [URL]
 	let highest: BlockType.HashType
 	let height: BlockType.IndexType
+	let date: Date
 
 	init(genesis: BlockType.HashType, peers: [URL], highest: BlockType.HashType, height: BlockType.IndexType) {
 		self.genesis = genesis
 		self.peers = peers
 		self.highest = highest
 		self.height = height
+		self.date = Date()
 	}
 
 	init?(json: [String: Any]) {
@@ -234,11 +236,13 @@ public struct Index<BlockType: Block> {
 			let genesis = BlockType.HashType(hash: genesisHash),
 			let highest = BlockType.HashType(hash: highestHash),
 			let height = json["height"] as? Int,
-			let peers = json["peers"] as? [String]
+			let peers = json["peers"] as? [String],
+			let timestamp = json["time"] as? Double
 		{
 			self.genesis = genesis
 			self.highest = highest
 			self.height = BlockType.IndexType(height)
+			self.date = Date(timeIntervalSince1970: timestamp)
 			self.peers = peers.flatMap { return URL(string: $0) }
 		}
 		else {
@@ -251,6 +255,7 @@ public struct Index<BlockType: Block> {
 			"highest": self.highest.stringValue,
 			"height": self.height,
 			"genesis": self.genesis.stringValue,
+			"time": self.date.timeIntervalSince1970,
 			"peers": self.peers.flatMap { $0.absoluteString }
 		]
 	}
@@ -449,6 +454,9 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 	/** Time at which we last received a response or request from this peer. Nil when that never happened. */
 	public internal(set) var lastSeen: Date? = nil
 
+	/** The time difference observed during the last index request */
+	public internal(set) var timeDifference: TimeInterval? = nil
+
 	public fileprivate(set) var state: PeerState
 	fileprivate(set) var connection: PeerConnection<LedgerType>? = nil
 	weak var node: Node<LedgerType>?
@@ -547,12 +555,19 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 				self.state = .querying
 			}
 
+			let requestTime = Date()
+
 			try c.request(gossip: .query) { reply in
 				self.mutex.locked {
 					self.lastSeen = Date()
 
 					if case .index(let index) = reply {
 						Log.debug("[Peer] Receive index reply: \(index)")
+
+						// Update observed time difference
+						let requestEndTime = Date()
+						self.timeDifference = requestEndTime.timeIntervalSince(requestTime) / 2.0
+
 						// Update peer status
 						if index.genesis != n.ledger.longest.genesis.signature! {
 							// Peer believes in another genesis, ignore him

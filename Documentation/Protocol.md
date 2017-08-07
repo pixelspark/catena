@@ -93,6 +93,7 @@ Whenever a request can't be fulfilled, the error message can be sent as reply in
 	"highest": highestHash,
 	"height": height,
 	"genesis": genesisHash,
+	"time": timeIntervalSince1970,
 	"peers": [ peerURLs ]
 }
 ````
@@ -102,6 +103,7 @@ The `index` message conveys general status information for a peer. It is sent in
 * highestHash: the hash of the block at the head of the longest blockchain as seen by the peer (String).
 * height: the height of the highest block (Integer)
 * genesis: the hash of the genesis block (String)
+* time: the current time of the node, in seconds since 00:00:00 on January 1, 1970 UTC (NSDate.timeIntervalSince1970)
 * peers: an array of URLs for other, valid peers seen by the peer (Array of String)
 
 ### block

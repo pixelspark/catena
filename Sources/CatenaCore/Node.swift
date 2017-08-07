@@ -26,6 +26,17 @@ public protocol PeerDatabase {
 	func forgetPeer(uuid: UUID) throws
 }
 
+private extension Array where Element == Double {
+	func median() -> Double {
+		let sortedArray = sorted()
+		if count % 2 != 0 {
+			return Double(sortedArray[count / 2])
+		} else {
+			return Double(sortedArray[count / 2] + sortedArray[count / 2 - 1]) / 2.0
+		}
+	}
+}
+
 public class Node<LedgerType: Ledger> {
 	public typealias BlockchainType = LedgerType.BlockchainType
 	public typealias BlockType = BlockchainType.BlockType
@@ -60,6 +71,32 @@ public class Node<LedgerType: Ledger> {
 				}
 			}
 		})
+	}
+
+	public var medianNetworkTime: Date? {
+		var diffs: [Double] = []
+
+		self.mutex.locked {
+			// TODO limit the number of peers used for this?
+			for (_, peer) in peers {
+				switch peer.state {
+				case .queried:
+					if let d = peer.timeDifference {
+						diffs.append(d)
+					}
+
+				default:
+					continue
+				}
+			}
+		}
+
+		if diffs.isEmpty {
+			return nil
+		}
+
+		diffs.sort()
+		return Date().addingTimeInterval(diffs.median())
 	}
 
 	public init(ledger: LedgerType, port: Int) {

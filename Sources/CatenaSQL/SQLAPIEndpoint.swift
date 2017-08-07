@@ -21,6 +21,7 @@ public class SQLAPIEndpoint {
 
 		response.send(json: [
 			"uuid": self.node.uuid.uuidString,
+			"medianNetworkTime": self.node.medianNetworkTime?.iso8601FormattedLocalDate ?? "",
 
 			"longest": [
 				"highest": longest.highest.json,
@@ -41,14 +42,18 @@ public class SQLAPIEndpoint {
 					case .passive: desc = "passive"
 					}
 
-					var res = [
+					var res: [String: Any] = [
 						"url": peer.url.absoluteString,
 						"state": desc
 					]
 
-					#if !os(Linux)
-						res["lastSeen"] = peer.lastSeen?.iso8601FormattedLocalDate ?? "never"
-					#endif
+					if let ls = peer.lastSeen {
+						res["lastSeen"] = ls.iso8601FormattedLocalDate
+					}
+
+					if let td = peer.timeDifference {
+						res["time"] =  Date().addingTimeInterval(td).iso8601FormattedLocalDate
+					}
 
 					return res
 				}
