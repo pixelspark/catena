@@ -208,6 +208,10 @@ struct ProtocolConstants {
 	/** Time a node with wait before replacing an inactive connection to a peer with a newly proposed one for the same
 	UUID, but with a different address/port. */
 	static let peerReplaceInterval: TimeInterval = 60.0
+
+	/** Maximum number of seconds that have passed since a node was last seen for the node to be included in the set of
+	advertised nodes. */
+	static let peerMaximumAgeForAdvertisement: TimeInterval = 3600.0
 }
 
 public struct Index<BlockType: Block> {

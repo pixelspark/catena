@@ -53,7 +53,10 @@ public class Node<LedgerType: Ledger> {
 					return nil
 
 				case .queried(_):
-					return peer.url
+					if let ls = peer.lastSeen, Date().timeIntervalSince(ls) > ProtocolConstants.peerMaximumAgeForAdvertisement {
+						return peer.url
+					}
+					return nil
 				}
 			}
 		})

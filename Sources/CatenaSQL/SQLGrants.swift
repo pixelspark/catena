@@ -50,7 +50,7 @@ public class SQLGrants {
 	}
 
 	public func create() throws {
-		try self.database.perform(SQLStatement.create(table: SQLTable(name: SQLMetadata.grantsTableName), schema: SQLGrants.schema).sql(dialect: self.database.dialect))
+		try _ = self.database.perform(SQLStatement.create(table: SQLTable(name: SQLMetadata.grantsTableName), schema: SQLGrants.schema).sql(dialect: self.database.dialect))
 	}
 
 	/** Checks whether the indicated user holds the required privileges. When the function throws, the caller should
