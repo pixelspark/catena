@@ -1,6 +1,8 @@
 import XCTest
-@testable import testTests
+@testable import CatenaTests
+@testable import CatenaSQLTests
 
 XCTMain([
-    testCase(testTests.allTests),
+    testCase(CatenaTests.allTests),
+    testCase(CatenaSQLTests.allTests),
 ])

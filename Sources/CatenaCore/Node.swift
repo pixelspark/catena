@@ -18,7 +18,11 @@ struct Candidate<BlockType: Block>: Equatable, Hashable {
 }
 
 public protocol PeerDatabase {
+	/** Remember a peer in the peer database cache. Note that the peer database should only remember the most recent
+	address for a given node ID. */
 	func rememberPeer(url: URL) throws
+
+	/** Remove the remembered address for the given node ID (if it was remembered at all, otherwise fail silently). */
 	func forgetPeer(uuid: UUID) throws
 }
 
