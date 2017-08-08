@@ -13,9 +13,11 @@ var deps: [Package.Dependency] = [
 	.Package(url: "https://github.com/IBM-Swift/Kitura-WebSocket", majorVersion: 0, minor: 8),
 	.Package(url: "https://github.com/vzsg/ed25519.git", majorVersion: 0, minor: 1),
 	.Package(url: "https://github.com/pixelspark/base58.git", majorVersion: 1),
+	.Package(url: "https://github.com/Bouke/NetService.git", majorVersion: 0)
 ]
 
 #if !os(Linux)
+	// Starscream is used for outgoing WebSocket connections; unfortunately it is not available on Linux
 	deps.append(.Package(url: "https://github.com/daltoniam/Starscream.git", majorVersion: 2))
 #endif
 

@@ -212,6 +212,12 @@ struct ProtocolConstants {
 	/** Maximum number of seconds that have passed since a node was last seen for the node to be included in the set of
 	advertised nodes. */
 	static let peerMaximumAgeForAdvertisement: TimeInterval = 3600.0
+
+	/** DNS-SD service type used to advertise Gossip service. */
+	static let serviceType = "_catena._tcp."
+
+	/** mDNS domain in which the Gossip service is advertised to other peers in the same LAN. */
+	static let serviceDomain = "local."
 }
 
 public struct Index<BlockType: Block> {

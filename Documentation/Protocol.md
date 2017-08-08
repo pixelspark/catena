@@ -148,3 +148,9 @@ Sent in reply to a `query` request to let the other side know that this peer is 
 
 A transaction request is sent for each new transaction that sender wants to add to the memory pool of recipient.
 
+## Local peer discovery
+
+Local peer discovery is performed using mDNS+DNS-SD (Bonjour). A Catena service advertises as a service instance of type
+'_catena._tcp' in the 'local' domain. The service name is equal to the node UUID and the port is equal to the websocket listening
+port.
+

@@ -1,10 +1,13 @@
 import Foundation
+import class NetService.NetService
+import protocol NetService.NetServiceDelegate
 import Kitura
 import CommandLineKit
 import LoggerAPI
 import HeliumLogger
 import CatenaCore
 import CatenaSQL
+import class Socket.Socket
 
 let databaseFileOption = StringOption(shortFlag: "d", longFlag: "database", required: false, helpMessage: "Backing database file (default: catena.sqlite)")
 let memoryDatabaseFileOption = BoolOption(longFlag: "in-memory-database", helpMessage: "Use an in-memory (transient) database. Cannot be used with -d")
@@ -19,9 +22,10 @@ let testOption = BoolOption(shortFlag: "t", longFlag: "test", helpMessage: "Subm
 let initializeOption = BoolOption(shortFlag: "i", longFlag: "initialize", helpMessage: "Generate transactions to initialize basic database structure (default: false)")
 let noReplayOption = BoolOption(shortFlag: "n", longFlag: "no-replay", helpMessage: "Do not replay database operations, just participate and validate transactions (default: false)")
 let peerDatabaseFileOption = StringOption(longFlag: "peer-database", required: false, helpMessage: "Backing database file for peer database (default: catena-peers.sqlite)")
+let noLocalPeersOption = BoolOption(longFlag: "no-local-discovery", helpMessage: "Disable local peer discovery")
 
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, peerDatabaseFileOption, memoryDatabaseFileOption)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, peerDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption)
 
 do {
 	try cli.parse()
@@ -104,6 +108,8 @@ do {
 	queryServerV4.run()
 
 	node.miner.isEnabled = mineOption.value
+	node.announceLocally = !noLocalPeersOption.value
+	node.discoverLocally = !noLocalPeersOption.value
 
 	// Initialize database if we have to
 	var rootCounter: SQLTransaction.CounterType = 0
@@ -183,7 +189,11 @@ do {
 		}
 	}
 	else {
-		node.start(blocking: true)
+		node.start(blocking: false)
+	}
+
+	withExtendedLifetime(node) {
+		RunLoop.main.run()
 	}
 }
 catch {

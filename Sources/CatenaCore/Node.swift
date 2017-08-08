@@ -2,6 +2,12 @@ import Foundation
 import Kitura
 import Dispatch
 import LoggerAPI
+import Socket
+
+import class NetService.NetService
+import protocol NetService.NetServiceDelegate
+import class NetService.NetServiceBrowser
+import protocol NetService.NetServiceBrowserDelegate
 
 struct Candidate<BlockType: Block>: Equatable, Hashable {
 	static func ==(lhs: Candidate<BlockType>, rhs: Candidate<BlockType>) -> Bool {
@@ -54,6 +60,9 @@ public class Node<LedgerType: Ledger> {
 	private let tickTimer: DispatchSourceTimer
 	fileprivate let mutex = Mutex()
 	private var queryQueue: [UUID] = []
+
+	private var localNodeAnnouncement: LocalNodeAnnouncement<LedgerType>? = nil
+	private var localNodeBrowser: LocalNodeBrowser<LedgerType>? = nil
 
 	/** The list of peers that can be advertised to other nodes for peer exchange. */
 	var validPeers: Set<URL> {
@@ -115,6 +124,21 @@ public class Node<LedgerType: Ledger> {
 		uc.host = "127.0.0.1"
 		uc.scheme = "ws"
 		return uc.url!
+	}
+
+	/** Whether the node should announce itself to peers on the local network (using Bonjour). Setting this to 'true'
+	registers the service in the network. */
+	public var announceLocally: Bool = false {
+		didSet {
+			self.localNodeAnnouncement = announceLocally ? LocalNodeAnnouncement(node: self) : nil
+		}
+	}
+
+	/** Whether the node should look for nodes that are announcing themselves in the local network. */
+	public var discoverLocally: Bool = false {
+		didSet {
+			self.localNodeBrowser = discoverLocally ? LocalNodeBrowser(node: self) : nil
+		}
 	}
 
 	/** Append a transaction to the memory pool (maintained by the miner). */
@@ -407,6 +431,95 @@ public class Node<LedgerType: Ledger> {
 		else {
 			Kitura.start()
 		}
+	}
+}
+
+fileprivate class LocalNodeBrowser<LedgerType: Ledger>: NSObject, NetServiceBrowserDelegate {
+	weak var node: Node<LedgerType>?
+	let browser: NetServiceBrowser
+
+	init(node: Node<LedgerType>) {
+		self.node = node
+		self.browser = NetServiceBrowser()
+		super.init()
+		self.browser.delegate = self
+		self.browser.searchForServices(ofType: ProtocolConstants.serviceType, inDomain: ProtocolConstants.serviceDomain)
+	}
+
+	deinit {
+		Log.debug("[LocalDiscovery] browser deinited")
+	}
+
+	public func netServiceBrowserWillSearch(_ browser: NetServiceBrowser) {
+		Log.debug("[LocalDiscovery] will search: \(browser)")
+	}
+
+	public func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch error: Error) {
+		Log.error("[LocalDiscovery] did not search search: \(browser) \(error.localizedDescription)")
+	}
+
+	public func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
+		Log.info("[LocalDiscovery] did find local peer: \(service) \(moreComing)")
+
+		if let n = self.node {
+			var uc = URLComponents()
+			uc.host = service.hostName
+			uc.port = service.port
+			uc.user = service.name
+			uc.scheme = "ws"
+
+			if let url = uc.url {
+				Log.debug("[LocalDiscovery] suggesting \(url)")
+				n.mutex.locked {
+					n.add(peer: url)
+				}
+			}
+		}
+	}
+
+	public func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
+		Log.debug("[LocalDiscovery] did remove: \(service) \(moreComing)")
+	}
+
+	public func netServiceBrowserDidStopSearch(_ browser: NetServiceBrowser) {
+		Log.debug("[LocalDiscovery] did stop search \(browser)")
+	}
+}
+
+fileprivate class LocalNodeAnnouncement<LedgerType: Ledger>: NSObject, NetServiceDelegate {
+	let service: NetService
+
+	init(node: Node<LedgerType>) {
+		self.service = NetService(domain: ProtocolConstants.serviceDomain, type: ProtocolConstants.serviceType, name: node.uuid.uuidString, port: Int32(node.server.port))
+		super.init()
+		self.service.delegate = self
+		self.service.publish(options: [.noAutoRename])
+	}
+
+	deinit {
+		Log.debug("[LocalDiscovery] removing advertisement]")
+		self.service.stop()
+	}
+
+	func netServiceWillPublish(_ sender: NetService) {
+		Log.debug("[LocalDiscovery] will publish: \(sender)")
+	}
+
+	func netServiceDidPublish(_ sender: NetService) {
+		Log.debug("[LocalDiscovery] did publish: \(sender)")
+	}
+
+	func netService(_ sender: NetService, didNotPublish error: Error) {
+		Log.error("[LocalDiscovery] did not publish: \(sender)")
+	}
+
+	func netServiceDidStop(_ sender: NetService) {
+		Log.debug("[LocalDiscovery] did stop: \(sender)")
+	}
+
+	func netService(_ sender: NetService, didAcceptConnectionWith socket: Socket) {
+		// This should never happen
+		fatalError("didAcceptConnection called but we didn't ask NetService to accept connections for us")
 	}
 }
 
