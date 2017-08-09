@@ -73,7 +73,7 @@ public class Node<LedgerType: Ledger> {
 					return nil
 
 				case .queried(_):
-					if let ls = peer.lastSeen, Date().timeIntervalSince(ls) > ProtocolConstants.peerMaximumAgeForAdvertisement {
+					if let ls = peer.lastSeen, Date().timeIntervalSince(ls) > LedgerType.ParametersType.peerMaximumAgeForAdvertisement {
 						return peer.url
 					}
 					return nil
@@ -220,12 +220,12 @@ public class Node<LedgerType: Ledger> {
 		let queryParameters = connection.connection.request.urlURL.parameters
 
 		if
-			let connectingUUIDString = queryParameters[ProtocolConstants.uuidRequestKey],
+			let connectingUUIDString = queryParameters[LedgerType.ParametersType.uuidRequestKey],
 			let connectingUUID = UUID(uuidString: connectingUUIDString) {
 
 			// Did the connecting peer specify a port?
 			let reversePort: Int
-			if let connectingPortString = queryParameters[ProtocolConstants.portRequestKey],
+			if let connectingPortString = queryParameters[LedgerType.ParametersType.portRequestKey],
 			let connectingPort = Int(connectingPortString),
 			connectingPort > 0, connectingPort < 65535 {
 				reversePort = connectingPort
@@ -296,7 +296,7 @@ public class Node<LedgerType: Ledger> {
 						return
 
 					default:
-						if let ls = alreadyConnected.lastSeen, ls.timeIntervalSince(Date()) < ProtocolConstants.peerReplaceInterval {
+						if let ls = alreadyConnected.lastSeen, ls.timeIntervalSince(Date()) < LedgerType.ParametersType.peerReplaceInterval {
 							Log.info("Not replacing connection \(alreadyConnected) (state=\(alreadyConnected.state) with \(peer): the peer was recently seen")
 							return
 						}
@@ -443,7 +443,7 @@ fileprivate class LocalNodeBrowser<LedgerType: Ledger>: NSObject, NetServiceBrow
 		self.browser = NetServiceBrowser()
 		super.init()
 		self.browser.delegate = self
-		self.browser.searchForServices(ofType: ProtocolConstants.serviceType, inDomain: ProtocolConstants.serviceDomain)
+		self.browser.searchForServices(ofType: LedgerType.ParametersType.serviceType, inDomain: LedgerType.ParametersType.serviceDomain)
 	}
 
 	deinit {
@@ -490,7 +490,7 @@ fileprivate class LocalNodeAnnouncement<LedgerType: Ledger>: NSObject, NetServic
 	let service: NetService
 
 	init(node: Node<LedgerType>) {
-		self.service = NetService(domain: ProtocolConstants.serviceDomain, type: ProtocolConstants.serviceType, name: node.uuid.uuidString, port: Int32(node.server.port))
+		self.service = NetService(domain: LedgerType.ParametersType.serviceDomain, type: LedgerType.ParametersType.serviceType, name: node.uuid.uuidString, port: Int32(node.server.port))
 		super.init()
 		self.service.delegate = self
 		self.service.publish(options: [.noAutoRename])

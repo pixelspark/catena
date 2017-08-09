@@ -4,6 +4,7 @@ import LoggerAPI
 
 public protocol Ledger {
 	associatedtype BlockchainType: Blockchain
+	associatedtype ParametersType: Parameters
 
 	var longest: BlockchainType { get }
 	var orphans: Orphans<BlockchainType.BlockType> { get }

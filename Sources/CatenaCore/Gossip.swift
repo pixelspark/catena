@@ -38,7 +38,7 @@ public enum Gossip<LedgerType: Ledger> {
 	case forget
 
 	init?(json: [String: Any]) {
-		if let q = json[ProtocolConstants.actionKey] as? String {
+		if let q = json[LedgerType.ParametersType.actionKey] as? String {
 			if q == "query" {
 				self = .query
 			}
@@ -75,28 +75,28 @@ public enum Gossip<LedgerType: Ledger> {
 	var json: [String: Any] {
 		switch self {
 		case .query:
-			return [ProtocolConstants.actionKey: "query"]
+			return [LedgerType.ParametersType.actionKey: "query"]
 
 		case .block(let b):
-			return [ProtocolConstants.actionKey: "block", "block": b]
+			return [LedgerType.ParametersType.actionKey: "block", "block": b]
 
 		case .index(let i):
-			return [ProtocolConstants.actionKey: "index", "index": i.json]
+			return [LedgerType.ParametersType.actionKey: "index", "index": i.json]
 
 		case .fetch(let h):
-			return [ProtocolConstants.actionKey: "fetch", "hash": h.stringValue]
+			return [LedgerType.ParametersType.actionKey: "fetch", "hash": h.stringValue]
 
 		case .transaction(let tx):
-			return [ProtocolConstants.actionKey: "tx", "tx": tx]
+			return [LedgerType.ParametersType.actionKey: "tx", "tx": tx]
 
 		case .error(let m):
-			return [ProtocolConstants.actionKey: "error", "message": m]
+			return [LedgerType.ParametersType.actionKey: "error", "message": m]
 
 		case .passive:
-			return [ProtocolConstants.actionKey: "passive"]
+			return [LedgerType.ParametersType.actionKey: "passive"]
 
 		case .forget:
-			return [ProtocolConstants.actionKey: "forget"]
+			return [LedgerType.ParametersType.actionKey: "forget"]
 		}
 	}
 }
@@ -192,32 +192,32 @@ public class Server<LedgerType: Ledger>: WebSocketService {
 	}
 }
 
-struct ProtocolConstants {
+public protocol Parameters {
 	/** Key that is used in gossip messages to indicate the mssage type */
-	static let actionKey: String = "t"
+	static var actionKey: String { get }
 
 	/** WebSocket protocol version string */
-	static let protocolVersion = "catena-v1"
+	static var protocolVersion: String { get }
 
 	/** Query string key name used to send own UUID */
-	static let uuidRequestKey = "uuid"
+	static var uuidRequestKey: String { get }
 
 	/** Query string key name used to send own port */
-	static let portRequestKey = "port"
+	static var portRequestKey: String { get }
 
 	/** Time a node with wait before replacing an inactive connection to a peer with a newly proposed one for the same
 	UUID, but with a different address/port. */
-	static let peerReplaceInterval: TimeInterval = 60.0
+	static var peerReplaceInterval: TimeInterval { get }
 
 	/** Maximum number of seconds that have passed since a node was last seen for the node to be included in the set of
 	advertised nodes. */
-	static let peerMaximumAgeForAdvertisement: TimeInterval = 3600.0
+	static var peerMaximumAgeForAdvertisement: TimeInterval { get }
 
 	/** DNS-SD service type used to advertise Gossip service. */
-	static let serviceType = "_catena._tcp."
+	static var serviceType: String { get }
 
 	/** mDNS domain in which the Gossip service is advertised to other peers in the same LAN. */
-	static let serviceDomain = "local."
+	static var serviceDomain: String { get }
 }
 
 public struct Index<BlockType: Block> {
@@ -367,7 +367,7 @@ public class PeerIncomingConnection<LedgerType: Ledger>: PeerConnection<LedgerTy
 
 	init(connection: WebSocketConnection) throws {
 		guard let protocolVersion = connection.request.headers["Sec-WebSocket-Protocol"]?.first else { throw PeerConnectionError.protocolVersionMissing }
-		if protocolVersion != ProtocolConstants.protocolVersion {
+		if protocolVersion != LedgerType.ParametersType.protocolVersion {
 			throw PeerConnectionError.protocolVersionUnsupported(version: protocolVersion)
 		}
 
@@ -507,8 +507,8 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 						// Perhaps reconnect to this peer
 						if var uc = URLComponents(url: url, resolvingAgainstBaseURL: false) {
 							uc.queryItems = [
-								URLQueryItem(name: ProtocolConstants.uuidRequestKey, value: n.uuid.uuidString),
-								URLQueryItem(name: ProtocolConstants.portRequestKey, value: String(n.server.port))
+								URLQueryItem(name: LedgerType.ParametersType.uuidRequestKey, value: n.uuid.uuidString),
+								URLQueryItem(name: LedgerType.ParametersType.portRequestKey, value: String(n.server.port))
 							]
 
 							// If the peer's URL has an empty or 0 port, this indicates the peer can only connect to us
@@ -517,7 +517,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 							}
 							else {
 								#if !os(Linux)
-									let ws = Starscream.WebSocket(url: uc.url!, protocols: [ProtocolConstants.protocolVersion])
+									let ws = Starscream.WebSocket(url: uc.url!, protocols: [LedgerType.ParametersType.protocolVersion])
 									let pic = PeerOutgoingConnection<LedgerType>(connection: ws)
 									pic.delegate = self
 									Log.debug("[Peer] connect outgoing \(url)")

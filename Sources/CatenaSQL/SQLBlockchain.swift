@@ -4,6 +4,7 @@ import CatenaCore
 
 public class SQLLedger: Ledger {
 	public typealias BlockchainType = SQLBlockchain
+	public typealias ParametersType = SQLParameters
 
 	public let mutex = Mutex()
 	public let orphans = Orphans<SQLBlock>()
@@ -52,6 +53,16 @@ public class SQLLedger: Ledger {
 	}
 }
 
+public struct SQLParameters: Parameters {
+	public static let actionKey: String = "t"
+	public static let protocolVersion = "catena-v1"
+	public static let uuidRequestKey = "uuid"
+	public static let portRequestKey = "port"
+	public static let peerReplaceInterval: TimeInterval = 60.0
+	public static let peerMaximumAgeForAdvertisement: TimeInterval = 3600.0
+	public static let serviceType = "_catena._tcp."
+	public static let serviceDomain = "local."
+}
 
 public class SQLBlockchain: Blockchain {
 	public typealias BlockType = SQLBlock
