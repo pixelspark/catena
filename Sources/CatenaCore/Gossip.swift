@@ -192,34 +192,6 @@ public class Server<LedgerType: Ledger>: WebSocketService {
 	}
 }
 
-public protocol Parameters {
-	/** Key that is used in gossip messages to indicate the mssage type */
-	static var actionKey: String { get }
-
-	/** WebSocket protocol version string */
-	static var protocolVersion: String { get }
-
-	/** Query string key name used to send own UUID */
-	static var uuidRequestKey: String { get }
-
-	/** Query string key name used to send own port */
-	static var portRequestKey: String { get }
-
-	/** Time a node with wait before replacing an inactive connection to a peer with a newly proposed one for the same
-	UUID, but with a different address/port. */
-	static var peerReplaceInterval: TimeInterval { get }
-
-	/** Maximum number of seconds that have passed since a node was last seen for the node to be included in the set of
-	advertised nodes. */
-	static var peerMaximumAgeForAdvertisement: TimeInterval { get }
-
-	/** DNS-SD service type used to advertise Gossip service. */
-	static var serviceType: String { get }
-
-	/** mDNS domain in which the Gossip service is advertised to other peers in the same LAN. */
-	static var serviceDomain: String { get }
-}
-
 public struct Index<BlockType: Block> {
 	let genesis: BlockType.HashType
 	let peers: [URL]

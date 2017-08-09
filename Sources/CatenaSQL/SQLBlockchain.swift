@@ -62,6 +62,7 @@ public struct SQLParameters: Parameters {
 	public static let peerMaximumAgeForAdvertisement: TimeInterval = 3600.0
 	public static let serviceType = "_catena._tcp."
 	public static let serviceDomain = "local."
+	public static let futureBlockThreshold = 2 * 3600.0
 }
 
 public class SQLBlockchain: Blockchain {
@@ -157,13 +158,13 @@ public class SQLBlockchain: Blockchain {
 
 	public func append(block: SQLBlock) throws -> Bool {
 		return try self.mutex.locked {
-			if self.canAppend(block: block, to: self.highest) {
+			if try self.canAppend(block: block, to: self.highest) {
 				self.queue.append(block)
 				self.highest = block
 
 				if self.queue.count > maxQueueSize {
 					let promoted = self.queue.removeFirst()
-					Log.info("[SQLBlockchain] promoting block \(promoted.index) to permanent storage which is now at \(self.meta.headIndex!)")
+					Log.debug("[SQLBlockchain] promoting block \(promoted.index) to permanent storage which is now at \(self.meta.headIndex!)")
 
 					if (self.meta.headIndex! + 1) != promoted.index {
 						Log.info("[SQLBlockchain] need to replay first to \(promoted.index-1)")
@@ -171,7 +172,7 @@ public class SQLBlockchain: Blockchain {
 						try self.replayPermanentStorage(to: prev)
 					}
 					try self.process(block: promoted)
-					Log.info("[SQLBlockchain] promoted block \(promoted.index) to permanent storage; qs=\(self.queue.count)")
+					Log.debug("[SQLBlockchain] promoted block \(promoted.index) to permanent storage; qs=\(self.queue.count)")
 				}
 
 				return true
@@ -421,6 +422,7 @@ class SQLBlockArchive {
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "signature"))
 				cols.append(SQLType.int, forKey: SQLColumn(name: "index"))
+				cols.append(SQLType.int, forKey: SQLColumn(name: "timestamp"))
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "nonce")) // Needs to be stored as blob because SQLite does not fully support Uint64s
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "previous"))
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "payload"))
@@ -437,10 +439,11 @@ class SQLBlockArchive {
 		let insertStatement = SQLStatement.insert(SQLInsert(
 			orReplace: false,
 			into: self.table,
-			columns: ["signature", "index", "nonce", "previous", "payload"].map(SQLColumn.init),
+			columns: ["signature", "index", "timestamp", "nonce", "previous", "payload"].map(SQLColumn.init),
 			values: [[
 				.literalBlob(block.signature!.hash),
 				.literalInteger(Int(block.index)),
+				.literalInteger(Int(block.timestamp.timeIntervalSince1970)),
 				.literalBlob(Data(bytes: &nonce, count: MemoryLayout<SQLBlock.NonceType>.size)),
 				.literalBlob(block.previous.hash),
 				.literalBlob(block.payloadData)
@@ -455,7 +458,7 @@ class SQLBlockArchive {
 
 	func get(block hash: SQLBlock.HashType) throws -> SQLBlock? {
 		let stmt = SQLStatement.select(SQLSelect(
-			these: ["signature", "index", "nonce", "previous", "payload"].map { return SQLExpression.column(SQLColumn(name: $0)) },
+			these: ["signature", "index", "nonce", "previous", "payload", "timestamp"].map { return SQLExpression.column(SQLColumn(name: $0)) },
 			from: self.table,
 			joins: [],
 			where: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)),
@@ -467,6 +470,7 @@ class SQLBlockArchive {
 			case .int(let index) = res.values[1],
 			case .blob(let nonce) = res.values[2],
 			case .blob(let previousData) = res.values[3],
+			case .int(let timestamp) = res.values[5],
 			nonce.count == MemoryLayout<SQLBlock.NonceType>.size {
 			let previous = SQLBlock.HashType(hash: previousData)
 			assert(index >= 0, "Index must be positive")
@@ -488,6 +492,7 @@ class SQLBlockArchive {
 			}
 			block.nonce = nonceValue
 			block.signature = hash
+			block.timestamp = Date(timeIntervalSince1970: TimeInterval(timestamp))
 			assert(block.isSignatureValid, "persisted block signature is invalid! \(block)")
 			return block
 		}

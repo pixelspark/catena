@@ -69,6 +69,7 @@ public struct SQLBlock: Block, CustomDebugStringConvertible {
 	public var previous: HashType
 	public var payload: SQLPayload
 	public var nonce: UInt64 = 0
+	public var timestamp: Date = Date()
 	public var signature: HashType? = nil
 	private let seed: String! // Only used for genesis blocks, in which case hash==zeroHash and payload is empty
 

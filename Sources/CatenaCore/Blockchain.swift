@@ -33,7 +33,7 @@ public protocol Blockchain {
 	func get(block: BlockType.HashType) throws -> BlockType?
 
 	/** Whether calling append(block) would work if `to` were the head of the chain. */
-	func canAppend(block: BlockType, to: BlockType) -> Bool
+	func canAppend(block: BlockType, to: BlockType) throws -> Bool
 
 	/** Append the given block to the head of this chain. The block needs to have the current head block as previous block,
 	and needs to be valid. Will return true when the block was actually appended, and false if it wasn't. */
@@ -48,8 +48,48 @@ extension Blockchain {
 	/** The default implementation checks whether hashes and indexes are succeeding, and whether the block signature is
 	valid and conforms to the current difficulty level.
 	FIXME: check what happens when difficulty level changes! */
-	public func canAppend(block: BlockType, to: BlockType) -> Bool {
-		return block.previous == to.signature! && block.index == (to.index + 1) && block.isSignatureValid && block.signature!.difficulty >= self.difficulty
+	public func canAppend(block: BlockType, to: BlockType) throws -> Bool {
+		if block.previous == to.signature!
+			&& block.index == (to.index + 1)
+			&& block.isSignatureValid
+			&& block.signature!.difficulty >= self.difficulty {
+
+			// Check block timestamp against median timestamp of previous blocks
+			/* Note: a block timestamp should also not be too far in the future, but this is checked by Node when
+			receiving a block from someone else. */
+			if let ts = try self.medianHeadTimestamp(startingAt: to) {
+				// Block timestamp must be above median timestamp of last x blocks
+				return block.timestamp.timeIntervalSince(ts) >= 0.0
+			}
+			else {
+				// No timestamps to compare to
+				return true
+			}
+		}
+		else {
+			return false
+		}
+	}
+
+	func medianHeadTimestamp(startingAt: BlockType, maximumLength: Int = 10) throws -> Date? {
+		var times: [TimeInterval] = []
+		var block: BlockType? = startingAt
+
+		for _ in 0..<maximumLength {
+			if let b = block, !b.isAGenesisBlock {
+				times.append(b.timestamp.timeIntervalSince1970)
+				block = try self.get(block: b.previous)
+			}
+			else {
+				break
+			}
+		}
+
+		if times.isEmpty {
+			return nil
+		}
+
+		return Date(timeIntervalSince1970: times.median)
 	}
 }
 
@@ -76,6 +116,9 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 
 	/** The nonce used to generate a valid proof-of-work signature for this block. */
 	var nonce: NonceType { get set }
+
+	/** The block's timestamp */
+	var timestamp: Date { get set }
 
 	/** The signature hash for this block, or nil if the block has not been signed yet. */
 	var signature: HashType? { get set }
@@ -114,6 +157,37 @@ public protocol Hash: Hashable, CustomDebugStringConvertible {
 	init(of: Data)
 	init?(hash: String)
 	var stringValue: String { get }
+}
+
+public protocol Parameters {
+	/** Key that is used in gossip messages to indicate the mssage type */
+	static var actionKey: String { get }
+
+	/** WebSocket protocol version string */
+	static var protocolVersion: String { get }
+
+	/** Query string key name used to send own UUID */
+	static var uuidRequestKey: String { get }
+
+	/** Query string key name used to send own port */
+	static var portRequestKey: String { get }
+
+	/** Time a node with wait before replacing an inactive connection to a peer with a newly proposed one for the same
+	UUID, but with a different address/port. */
+	static var peerReplaceInterval: TimeInterval { get }
+
+	/** Maximum number of seconds that have passed since a node was last seen for the node to be included in the set of
+	advertised nodes. */
+	static var peerMaximumAgeForAdvertisement: TimeInterval { get }
+
+	/** DNS-SD service type used to advertise Gossip service. */
+	static var serviceType: String { get }
+
+	/** mDNS domain in which the Gossip service is advertised to other peers in the same LAN. */
+	static var serviceDomain: String { get }
+
+	/** The amount of time a block's timestamp may be in the future (compared to 'network time'). */
+	static var futureBlockThreshold: TimeInterval { get }
 }
 
 extension String {
@@ -251,6 +325,10 @@ extension Block {
 			data.append(bytes, count: previous.hash.count)
 		}
 
+		if !self.isAGenesisBlock {
+			data.appendRaw(Int64(self.timestamp.timeIntervalSince1970).littleEndian)
+		}
+
 		pd.withUnsafeBytes { bytes in
 			data.append(bytes, count: pd.count)
 		}
@@ -260,6 +338,11 @@ extension Block {
 
 	/** Mine this block (note: use this only for the genesis block, Miner provides threaded mining) */
 	public mutating func mine(difficulty: Int) {
+		self.timestamp = Date()
+
+		/* Note: if mining takes longer than a few hours, the mined block will not be accepted. As the difficulty level
+		is generally low for a genesis block and this is only used for genesis blocks anyway, this should not be an
+		issue. */
 		while true {
 			self.nonce += 1
 			let hash = HashType(of: self.dataForSigning)
@@ -392,7 +475,7 @@ extension Ledger {
 								// Check whether this sidechain can be appended
 								var prev = splice
 								for b in stack.reversed() {
-									if !longest.canAppend(block: b, to: prev) {
+									if try !longest.canAppend(block: b, to: prev) {
 										Log.info("[Ledger] cannot append sidechain: block \(b.index) won't append to \(prev.index)")
 										return false
 									}
@@ -445,6 +528,7 @@ extension Block {
 			"hash": self.signature!.stringValue,
 			"index": self.index,
 			"nonce": self.nonce,
+			"timestamp": Int(self.timestamp.timeIntervalSince1970),
 			"payload": self.payloadData.base64EncodedString(),
 			"previous": self.previous.stringValue
 		]
@@ -454,6 +538,7 @@ extension Block {
 		if let nonce = json["nonce"] as? NSNumber,
 			let signature = json["hash"] as? String,
 			let height = json["index"] as? NSNumber,
+			let timestamp = json["timestamp"] as? NSNumber,
 			let previous = json["previous"] as? String,
 			let payloadBase64 = json["payload"] as? String,
 			let payload = Data(base64Encoded: payloadBase64),
@@ -462,6 +547,7 @@ extension Block {
 			// FIXME: .uint64 is not generic (NonceType/IndexType may change to something else
 			var b = try Self.init(index: IndexType(height.uint64Value), previous: previousHash, payload: payload)
 			b.nonce = NonceType(nonce.uint64Value)
+			b.timestamp = Date(timeIntervalSince1970: TimeInterval(timestamp.doubleValue))
 			b.signature = signatureHash
 			return b
 		}

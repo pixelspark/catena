@@ -117,7 +117,16 @@ public class Miner<LedgerType: Ledger> {
 	}
 
 	private func mine() {
-		var stop = self.mutex.locked { return !self.isEnabled }
+		var stop = self.mutex.locked { () -> Bool in
+			if var b = self.block, self.isEnabled {
+				// FIXME: also update timestamp every few retries
+				b.timestamp = Date()
+				return false
+			}
+			else {
+				return true
+			}
+		}
 
 		while !stop {
 			autoreleasepool { () -> () in

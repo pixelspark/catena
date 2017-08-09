@@ -22,6 +22,7 @@ public class SQLAPIEndpoint {
 		response.send(json: [
 			"uuid": self.node.uuid.uuidString,
 			"medianNetworkTime": self.node.medianNetworkTime?.iso8601FormattedLocalDate ?? "",
+			"medianNetworkTimestamp": Int(self.node.medianNetworkTime?.timeIntervalSince1970 ?? 0.0),
 
 			"longest": [
 				"highest": longest.highest.json,

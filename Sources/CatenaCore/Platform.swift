@@ -151,3 +151,14 @@ extension URL {
 		}
 	}
 }
+
+internal extension Array where Element == Double {
+	var median: Double {
+		let sortedArray = sorted()
+		if count % 2 != 0 {
+			return Double(sortedArray[count / 2])
+		} else {
+			return Double(sortedArray[count / 2] + sortedArray[count / 2 - 1]) / 2.0
+		}
+	}
+}

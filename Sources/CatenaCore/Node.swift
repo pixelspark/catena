@@ -32,17 +32,6 @@ public protocol PeerDatabase {
 	func forgetPeer(uuid: UUID) throws
 }
 
-private extension Array where Element == Double {
-	func median() -> Double {
-		let sortedArray = sorted()
-		if count % 2 != 0 {
-			return Double(sortedArray[count / 2])
-		} else {
-			return Double(sortedArray[count / 2] + sortedArray[count / 2 - 1]) / 2.0
-		}
-	}
-}
-
 public class Node<LedgerType: Ledger> {
 	public typealias BlockchainType = LedgerType.BlockchainType
 	public typealias BlockType = BlockchainType.BlockType
@@ -105,7 +94,7 @@ public class Node<LedgerType: Ledger> {
 		}
 
 		diffs.sort()
-		return Date().addingTimeInterval(diffs.median())
+		return Date().addingTimeInterval(diffs.median)
 	}
 
 	public init(ledger: LedgerType, port: Int) {
@@ -331,6 +320,19 @@ public class Node<LedgerType: Ledger> {
 		if block.isSignatureValid && block.isPayloadValid() {
 			Log.info("[Node] receive block #\(block.index) from \(peer?.url.absoluteString ?? "self")")
 
+			// Blocks that were received over the network may not be too far in the future
+			if let nt = self.medianNetworkTime {
+				if abs(Date().timeIntervalSince(nt)) > 24.0 * 3600.0 {
+					// We are more than 24 hours behind or ahead of the network, notify user
+					Log.warning("Our time (\(Date().iso8601FormattedUTCDate)) is more than 24 hours away from median network time (\(nt.iso8601FormattedUTCDate). Please check local clock.")
+				}
+
+				if nt.timeIntervalSince(block.timestamp) < -LedgerType.ParametersType.futureBlockThreshold {
+					Log.info("[Node] block #\(block.index) from \(peer?.url.absoluteString ?? "self") has a timestamp (\(block.timestamp.iso8601FormattedUTCDate)) that is too far in the future; ignoring")
+					return
+				}
+			}
+
 			let isNew = try self.ledger.mutex.locked { () -> Bool in
 				let isNew = try self.ledger.isNew(block: block) && self.ledger.longest.highest.index < block.index
 				let wasAppended = try self.ledger.receive(block: block)
@@ -338,8 +340,13 @@ public class Node<LedgerType: Ledger> {
 					let (fetchIndex, fetchHash) = self.ledger.orphans.earliestRootFor(orphan: block)
 
 					if fetchIndex > 0 {
-						Log.info("[Node] received an orphan block #\(block.index), let's see if peer has its predecessor \(fetchHash) at #\(fetchIndex)")
-						self.fetcher.request(candidate: Candidate<BlockType>(hash: fetchHash, height: fetchIndex, peer: p.uuid))
+						if try self.ledger.longest.get(block: fetchHash) == nil {
+							Log.info("[Node] received an orphan block #\(block.index), let's see if peer has its predecessor \(fetchHash) at #\(fetchIndex)")
+							self.fetcher.request(candidate: Candidate<BlockType>(hash: fetchHash, height: fetchIndex, peer: p.uuid))
+						}
+						else {
+							Log.info("[Node] received an orphan block #\(block.index), predecessor \(fetchHash) is at #\(fetchIndex) on-chain")
+						}
 					}
 				}
 				return isNew
