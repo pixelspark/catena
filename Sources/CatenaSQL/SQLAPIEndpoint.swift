@@ -19,10 +19,21 @@ public class SQLAPIEndpoint {
 	private func handleIndex(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
 		let longest = self.node.ledger.longest
 
+		var networkTime: [String: Any] = [:]
+
+		if let nt = self.node.medianNetworkTime {
+			let d = Date()
+			networkTime["ownTime"] = d.iso8601FormattedUTCDate
+			networkTime["ownTimestamp"] = Int(d.timeIntervalSince1970)
+			networkTime["medianNetworkTime"] = nt.iso8601FormattedUTCDate
+			networkTime["medianNetworkTimestamp"] = Int(nt.timeIntervalSince1970)
+			networkTime["ownOffsetFromMedianNetworkTimeMs"] = Int(d.timeIntervalSince(nt)*1000.0)
+		}
+
 		response.send(json: [
 			"uuid": self.node.uuid.uuidString,
-			"medianNetworkTime": self.node.medianNetworkTime?.iso8601FormattedLocalDate ?? "",
-			"medianNetworkTimestamp": Int(self.node.medianNetworkTime?.timeIntervalSince1970 ?? 0.0),
+
+			"time": networkTime,
 
 			"longest": [
 				"highest": longest.highest.json,
