@@ -59,12 +59,15 @@ public struct SQLBlock: Block, CustomDebugStringConvertible {
 	typealias NonceType = UInt64
 	typealias IndexType = UInt64
 
+	public static let basicVersion: Block.VersionType = 0x1
+
 	/// The maximum number of transactions a block is allowed to contain
 	let maximumNumberOfTransactionsPerBlock = 100
 
 	/// Maximum size of the payload data in a block (the 'data for signing' is used as reference)
 	let maximumPayloadSizeBytes = 1024 * 1024 // 1 MiB
 
+	public var version: Block.VersionType = SQLBlock.basicVersion
 	public var index: UInt64
 	public var previous: HashType
 	public var payload: SQLPayload

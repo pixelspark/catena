@@ -53,9 +53,14 @@ public protocol Transaction: Hashable {
 public protocol Block: CustomDebugStringConvertible, Equatable {
 	typealias NonceType = UInt64
 	typealias IndexType = UInt64
+	typealias VersionType = UInt64
 
 	associatedtype TransactionType: Transaction
 	associatedtype HashType: Hash
+
+	/** The block version. This can be used to switch signature algorithms or signature payload definitions within the
+	same blockchain. The field may also contain flags in the future. */
+	var version: VersionType { get set }
 
 	/** The position of this block in the blockchain. The block with index 0 is considered the genesis block, and has a
 	zero previous hash. For all other blocks, the index of the block with the previous hash should have an index that is
@@ -267,8 +272,15 @@ extension Block {
 
 	public var dataForSigning: Data {
 		let pd = self.payloadDataForSigning
-		var data = Data(capacity: pd.count + previous.hash.count + 2 * MemoryLayout<UInt>.size)
+		let size = pd.count
+			+ previous.hash.count
+			+ MemoryLayout<VersionType>.size
+			+ MemoryLayout<IndexType>.size
+			+ MemoryLayout<NonceType>.size
+			+ MemoryLayout<Int64>.size
+		var data = Data(capacity: size)
 
+		data.appendRaw(self.version.littleEndian)
 		data.appendRaw(self.index.littleEndian)
 		data.appendRaw(self.nonce.littleEndian)
 
@@ -476,6 +488,7 @@ extension Ledger {
 extension Block {
 	public var json: [String: Any] {
 		return [
+			"version": self.version,
 			"hash": self.signature!.stringValue,
 			"index": self.index,
 			"nonce": self.nonce,
@@ -489,6 +502,7 @@ extension Block {
 		if let nonce = json["nonce"] as? NSNumber,
 			let signature = json["hash"] as? String,
 			let height = json["index"] as? NSNumber,
+			let version = json["version"] as? NSNumber,
 			let timestamp = json["timestamp"] as? NSNumber,
 			let previous = json["previous"] as? String,
 			let payloadBase64 = json["payload"] as? String,
@@ -498,6 +512,7 @@ extension Block {
 			// FIXME: .uint64 is not generic (NonceType/IndexType may change to something else
 			var b = try Self.init(index: IndexType(height.uint64Value), previous: previousHash, payload: payload)
 			b.nonce = NonceType(nonce.uint64Value)
+			b.version = VersionType(version.uint64Value)
 			b.timestamp = Date(timeIntervalSince1970: TimeInterval(timestamp.doubleValue))
 			b.signature = signatureHash
 			return b
