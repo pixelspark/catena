@@ -206,6 +206,7 @@ public struct SHA256Hash: Hash {
 	public init?(hash string: String) {
 		if let d = string.hexDecoded, d.count == Int(32) {
 			self.hash = d
+			assert(self.hash.count == Int(32))
 		}
 		else {
 			return nil
@@ -226,6 +227,7 @@ public struct SHA256Hash: Hash {
 	}
 
 	public var stringValue: String {
+		assert(hash.count == Int(32))
 		return self.hash.map { String(format: "%02hhx", $0) }.joined()
 	}
 
