@@ -350,14 +350,14 @@ class SQLUsersTable {
 	}
 }
 
-class SQLKeyValueTable {
+public class SQLKeyValueTable {
 	let database: Database
 	let table: SQLTable
 
 	private let keyColumn = SQLColumn(name: "key")
 	private let valueColumn = SQLColumn(name: "value")
 
-	init(database: Database, table: SQLTable) throws {
+	public init(database: Database, table: SQLTable) throws {
 		self.database = database
 		self.table = table
 
@@ -375,7 +375,7 @@ class SQLKeyValueTable {
 		}
 	}
 
-	func get(_ key: String) throws -> String? {
+	public func get(_ key: String) throws -> String? {
 		return try database.transaction {
 			let selectStatement = SQLStatement.select(SQLSelect(
 				these: [.column(self.valueColumn)],
@@ -394,7 +394,7 @@ class SQLKeyValueTable {
 		}
 	}
 
-	func set(key: String, value: String) throws {
+	public func set(key: String, value: String) throws {
 		try database.transaction {
 			let insertStatement = SQLStatement.insert(SQLInsert(
 				orReplace: true,

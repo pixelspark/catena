@@ -21,12 +21,12 @@ let logOption = StringOption(shortFlag: "v", longFlag: "log", helpMessage: "The 
 let testOption = BoolOption(shortFlag: "t", longFlag: "test", helpMessage: "Submit test queries to the chain periodically (default: off)")
 let initializeOption = BoolOption(shortFlag: "i", longFlag: "initialize", helpMessage: "Generate transactions to initialize basic database structure (default: false)")
 let noReplayOption = BoolOption(shortFlag: "n", longFlag: "no-replay", helpMessage: "Do not replay database operations, just participate and validate transactions (default: false)")
-let peerDatabaseFileOption = StringOption(longFlag: "peer-database", required: false, helpMessage: "Backing database file for peer database (default: catena-peers.sqlite)")
+let nodeDatabaseFileOption = StringOption(longFlag: "node-database", required: false, helpMessage: "Backing database file for instance database (default: catena-node.sqlite)")
 let noLocalPeersOption = BoolOption(longFlag: "no-local-discovery", helpMessage: "Disable local peer discovery")
 let nodeUUIDOption = StringOption(longFlag: "node-uuid", required: false, helpMessage: "Set the node's UUID (default: a randomly generated UUID)")
 
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, peerDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption, nodeUUIDOption)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, nodeDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption, nodeUUIDOption)
 
 do {
 	try cli.parse()
@@ -63,26 +63,61 @@ if memoryDatabaseFileOption.value && databaseFileOption.value != nil {
 	fatalError("The -dm and -d flags cannot be set at the same time.")
 }
 
-// Generate root identity (not sure if we need this now)
-// TODO: Persist identity
-var rootCounter: SQLTransaction.CounterType = 0
-let rootIdentity = try Identity()
-
-// Initialize database if we have to
-let databaseFile = memoryDatabaseFileOption.value ? ":memory:" : (databaseFileOption.value ?? "catena.sqlite")
-let seedValue = seedOption.value ?? ""
-
 do {
+	// Set up node database
+	let nodeDatabaseFile = nodeDatabaseFileOption.value ?? "catena-node.sqlite"
+	var peerTable: SQLPeerDatabase? = nil
+	var configurationTable: SQLKeyValueTable? = nil
+	if !nodeDatabaseFile.isEmpty {
+		let nodeDatabase = SQLiteDatabase()
+		try nodeDatabase.open(nodeDatabaseFile)
+		peerTable = try SQLPeerDatabase(database: nodeDatabase, table: SQLTable(name: "peers"))
+		configurationTable = try SQLKeyValueTable(database: nodeDatabase, table: SQLTable(name: "config"))
+	}
+
+	// Obtain root identity from the node database (if available) and not initializing; otherwise generate one
+	var rootCounter: SQLTransaction.CounterType = 0
+	let rootIdentity: Identity
+	if let pubString = try configurationTable?.get("publicKey"),
+		let privString = try configurationTable?.get("privateKey"),
+		let pubKey = PublicKey(string: pubString),
+		let privKey = PrivateKey(string: privString), !initializeOption.value {
+		rootIdentity = Identity(publicKey: pubKey, privateKey: privKey)
+	}
+	else {
+		// Generate root identity
+		rootIdentity = try Identity()
+		try configurationTable?.set(key: "publicKey", value: rootIdentity.publicKey.stringValue)
+		try configurationTable?.set(key: "privateKey", value: rootIdentity.privateKey.stringValue)
+	}
+
+	// Initialize database if we have to
+	let databaseFile = memoryDatabaseFileOption.value ? ":memory:" : (databaseFileOption.value ?? "catena.sqlite")
+
+	// Determine genesis seed
+	let seedValue: String
+	if let sv = seedOption.value {
+		seedValue = sv
+		try configurationTable?.set(key: "genesisSeed", value: seedValue)
+	}
+	else if let storedSeed = try configurationTable?.get("genesisSeed") {
+		seedValue = storedSeed
+	}
+	else {
+		seedValue = ""
+	}
+
 	// Find genesis block
 	var genesisBlock = try SQLBlock.genesis(seed: seedValue, version: 1)
 	genesisBlock.mine(difficulty: 10)
-	Log.info("Genesis block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
+	Log.info("Genesis seed=\(seedValue) block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
 
 	// If the database is in a file and we are initializing, remove anything that was there before
 	if initializeOption.value && !memoryDatabaseFileOption.value {
 		_ = unlink(databaseFile.cString(using: .utf8)!)
 	}
 
+	// Determine node UUID
 	let uuid: UUID
 	if let nu = nodeUUIDOption.value {
 		if let nuuid = UUID(uuidString: nu) {
@@ -92,28 +127,25 @@ do {
 			fatalError("Invalid value for --node-uuid option; needs to be a valid UUID")
 		}
 	}
+	else if let uuidString = try configurationTable?.get("uuid"), let storedUUID = UUID(uuidString: uuidString) {
+		uuid = storedUUID
+	}
 	else {
 		uuid = UUID()
 	}
+	try configurationTable?.set(key: "uuid", value: uuid.uuidString)
 
 	let ledger = try SQLLedger(genesis: genesisBlock, database: databaseFile, replay: !noReplayOption.value)
 	let netPort = netPortOption.value ?? 8338
 	let node = try Node<SQLLedger>(ledger: ledger, port: netPort, miner: SHA256Hash(of: rootIdentity.publicKey.data), uuid: uuid)
 	let _ = SQLAPIEndpoint(node: node, router: node.server.router)
 
-	// Set up peer database
-	let peerDatabaseFile = peerDatabaseFileOption.value ?? "catena-peers.sqlite"
-	if !peerDatabaseFile.isEmpty {
-		let peerDatabase = SQLiteDatabase()
-		try peerDatabase.open(peerDatabaseFile)
-		let peerTable = try SQLPeerDatabase(database: peerDatabase, table: SQLTable(name: "peers"))
-
-		// Add peers from database
-		for p in try peerTable.peers() {
+	// Add peers from database
+	if let pd = peerTable {
+		for p in try pd.peers() {
 			node.add(peer: p)
 		}
-
-		node.peerDatabase = peerTable
+		node.peerDatabase = pd
 	}
 
 	// Add peers from command line
