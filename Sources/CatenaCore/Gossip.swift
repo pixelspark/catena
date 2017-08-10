@@ -233,7 +233,7 @@ public struct Index<BlockType: Block> {
 			"highest": self.highest.stringValue,
 			"height": self.height,
 			"genesis": self.genesis.stringValue,
-			"time": self.date.timeIntervalSince1970,
+			"time": Int(self.date.timeIntervalSince1970),
 			"peers": self.peers.flatMap { $0.absoluteString }
 		]
 	}
