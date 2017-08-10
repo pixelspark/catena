@@ -162,3 +162,52 @@ internal extension Array where Element == Double {
 		}
 	}
 }
+
+extension String {
+	public var hexDecoded: Data? {
+		var error = false
+		let s = Array(self.characters)
+		let numbers = stride(from: 0, to: s.count, by: 2).map() { (idx: Int) -> UInt8 in
+			let res = strtoul(String(s[idx ..< Swift.min(idx + 2, s.count)]), nil, 16)
+			if res > UInt(UInt8.max) {
+				error = true
+				return UInt8(0)
+			}
+			return UInt8(res)
+		}
+
+		if error {
+			return nil
+		}
+
+		return Data(bytes: numbers)
+	}
+}
+
+
+extension UInt8 {
+	var numberOfLeadingZeroBits: Int {
+		var n = 0
+		var b = self
+		if b == 0 {
+			n += 8
+		}
+		else {
+			while (b & 0x80) == 0 {
+				b <<= 1
+				n += 1
+			}
+		}
+		return n
+	}
+}
+
+extension Data {
+	public mutating func appendRaw<T>(_ item: T) {
+		var item = item
+		let ptr = withUnsafePointer(to: &item) { ptr in
+			return UnsafeRawPointer(ptr)
+		}
+		self.append(ptr.assumingMemoryBound(to: UInt8.self), count: MemoryLayout<T>.size)
+	}
+}

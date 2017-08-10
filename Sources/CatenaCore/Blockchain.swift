@@ -44,55 +44,6 @@ public protocol Blockchain {
 	func unwind(to: BlockType) throws
 }
 
-extension Blockchain {
-	/** The default implementation checks whether hashes and indexes are succeeding, and whether the block signature is
-	valid and conforms to the current difficulty level.
-	FIXME: check what happens when difficulty level changes! */
-	public func canAppend(block: BlockType, to: BlockType) throws -> Bool {
-		if block.previous == to.signature!
-			&& block.index == (to.index + 1)
-			&& block.isSignatureValid
-			&& block.signature!.difficulty >= self.difficulty {
-
-			// Check block timestamp against median timestamp of previous blocks
-			/* Note: a block timestamp should also not be too far in the future, but this is checked by Node when
-			receiving a block from someone else. */
-			if let ts = try self.medianHeadTimestamp(startingAt: to) {
-				// Block timestamp must be above median timestamp of last x blocks
-				return block.timestamp.timeIntervalSince(ts) >= 0.0
-			}
-			else {
-				// No timestamps to compare to
-				return true
-			}
-		}
-		else {
-			return false
-		}
-	}
-
-	func medianHeadTimestamp(startingAt: BlockType, maximumLength: Int = 10) throws -> Date? {
-		var times: [TimeInterval] = []
-		var block: BlockType? = startingAt
-
-		for _ in 0..<maximumLength {
-			if let b = block, !b.isAGenesisBlock {
-				times.append(b.timestamp.timeIntervalSince1970)
-				block = try self.get(block: b.previous)
-			}
-			else {
-				break
-			}
-		}
-
-		if times.isEmpty {
-			return nil
-		}
-
-		return Date(timeIntervalSince1970: times.median)
-	}
-}
-
 public protocol Transaction: Hashable {
 	init(json: [String: Any]) throws
 	var isSignatureValid: Bool { get }
@@ -190,42 +141,52 @@ public protocol Parameters {
 	static var futureBlockThreshold: TimeInterval { get }
 }
 
-extension String {
-	public var hexDecoded: Data? {
-		var error = false
-		let s = Array(self.characters)
-		let numbers = stride(from: 0, to: s.count, by: 2).map() { (idx: Int) -> UInt8 in
-			let res = strtoul(String(s[idx ..< Swift.min(idx + 2, s.count)]), nil, 16)
-			if res > UInt(UInt8.max) {
-				error = true
-				return UInt8(0)
+extension Blockchain {
+	/** The default implementation checks whether hashes and indexes are succeeding, and whether the block signature is
+	valid and conforms to the current difficulty level.
+	FIXME: check what happens when difficulty level changes! */
+	public func canAppend(block: BlockType, to: BlockType) throws -> Bool {
+		if block.previous == to.signature!
+			&& block.index == (to.index + 1)
+			&& block.isSignatureValid
+			&& block.signature!.difficulty >= self.difficulty {
+
+			// Check block timestamp against median timestamp of previous blocks
+			/* Note: a block timestamp should also not be too far in the future, but this is checked by Node when
+			receiving a block from someone else. */
+			if let ts = try self.medianHeadTimestamp(startingAt: to) {
+				// Block timestamp must be above median timestamp of last x blocks
+				return block.timestamp.timeIntervalSince(ts) >= 0.0
 			}
-			return UInt8(res)
+			else {
+				// No timestamps to compare to
+				return true
+			}
+		}
+		else {
+			return false
+		}
+	}
+
+	func medianHeadTimestamp(startingAt: BlockType, maximumLength: Int = 10) throws -> Date? {
+		var times: [TimeInterval] = []
+		var block: BlockType? = startingAt
+
+		for _ in 0..<maximumLength {
+			if let b = block, !b.isAGenesisBlock {
+				times.append(b.timestamp.timeIntervalSince1970)
+				block = try self.get(block: b.previous)
+			}
+			else {
+				break
+			}
 		}
 
-		if error {
+		if times.isEmpty {
 			return nil
 		}
 
-		return Data(bytes: numbers)
-	}
-}
-
-
-extension UInt8 {
-	var numberOfLeadingZeroBits: Int {
-		var n = 0
-		var b = self
-		if b == 0 {
-			n += 8
-		}
-		else {
-			while (b & 0x80) == 0 {
-				b <<= 1
-				n += 1
-			}
-		}
-		return n
+		return Date(timeIntervalSince1970: times.median)
 	}
 }
 
@@ -289,16 +250,6 @@ enum BlockError: LocalizedError {
 		switch self {
 		case .formatError: return "block format error"
 		}
-	}
-}
-
-extension Data {
-	public mutating func appendRaw<T>(_ item: T) {
-		var item = item
-		let ptr = withUnsafePointer(to: &item) { ptr in
-			return UnsafeRawPointer(ptr)
-		}
-		self.append(ptr.assumingMemoryBound(to: UInt8.self), count: MemoryLayout<T>.size)
 	}
 }
 
