@@ -62,21 +62,29 @@ if memoryDatabaseFileOption.value && databaseFileOption.value != nil {
 	fatalError("The -dm and -d flags cannot be set at the same time.")
 }
 
+// Generate root identity (not sure if we need this now)
+// TODO: Persist identity
+var rootCounter: SQLTransaction.CounterType = 0
+let rootIdentity = try Identity()
+
+// Initialize database if we have to
 let databaseFile = memoryDatabaseFileOption.value ? ":memory:" : (databaseFileOption.value ?? "catena.sqlite")
 let seedValue = seedOption.value ?? ""
-var genesisBlock = SQLBlock(genesisBlockWith: seedValue)
-genesisBlock.mine(difficulty: 10)
-Log.info("Genesis block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
-
-// If the database is in a file and we are initializing, remove anything that was there before
-if initializeOption.value && !memoryDatabaseFileOption.value {
-	_ = unlink(databaseFile.cString(using: .utf8)!)
-}
 
 do {
+	// Find genesis block
+	var genesisBlock = try SQLBlock.genesis(seed: seedValue, version: 1)
+	genesisBlock.mine(difficulty: 10)
+	Log.info("Genesis block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
+
+	// If the database is in a file and we are initializing, remove anything that was there before
+	if initializeOption.value && !memoryDatabaseFileOption.value {
+		_ = unlink(databaseFile.cString(using: .utf8)!)
+	}
+
 	let ledger = try SQLLedger(genesis: genesisBlock, database: databaseFile, replay: !noReplayOption.value)
 	let netPort = netPortOption.value ?? 8338
-	let node = Node<SQLLedger>(ledger: ledger, port: netPort)
+	let node = try Node<SQLLedger>(ledger: ledger, port: netPort, miner: SHA256Hash(of: rootIdentity.publicKey.data))
 	let _ = SQLAPIEndpoint(node: node, router: node.server.router)
 
 	// Set up peer database
@@ -110,10 +118,6 @@ do {
 	node.miner.isEnabled = mineOption.value
 	node.announceLocally = !noLocalPeersOption.value
 	node.discoverLocally = !noLocalPeersOption.value
-
-	// Initialize database if we have to
-	var rootCounter: SQLTransaction.CounterType = 0
-	let rootIdentity = try Identity()
 
 	Log.info("Node URL: \(node.url)")
 

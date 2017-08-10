@@ -54,6 +54,7 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	typealias NonceType = UInt64
 	typealias IndexType = UInt64
 	typealias VersionType = UInt64
+	typealias IdentityType = SHA256Hash // Hash used for identities (hashes of public keys)
 
 	associatedtype TransactionType: Transaction
 	associatedtype HashType: Hash
@@ -73,6 +74,9 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	/** The nonce used to generate a valid proof-of-work signature for this block. */
 	var nonce: NonceType { get set }
 
+	/** The identity of the miner of this block (hash of PublicKey). */
+	var miner: IdentityType { get set }
+
 	/** The block's timestamp */
 	var timestamp: Date { get set }
 
@@ -85,11 +89,8 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	/** The payload data of this block actually used for signing. */
 	var payloadDataForSigning: Data { get }
 
-	/** Create a new, empty block with index=0 and previous set to the zero hash. */
-	init()
-
 	/** Create a block with the given index, previous hash and payload data. */
-	init(index: UInt64, previous: HashType, payload: Data) throws
+	init(version: VersionType, index: IndexType, nonce: NonceType, previous: HashType, miner: IdentityType, timestamp: Date, payload: Data) throws
 
 	/** Append a transaction to the payload data of this block. Returns true if the transaction was appended, and false
 	when it wasn't (e.g. when the block already contains the transaction). */
@@ -259,6 +260,19 @@ enum BlockError: LocalizedError {
 }
 
 extension Block {
+	static func template(for miner: IdentityType) throws -> Self {
+		/* Note that the previous hash here does not refer to any hash (but is just the hash of "fake"). This is done
+		so that the block is not seen as a genesis block, which would trigger assertions on attempting to append
+		transactions to it (that is not allowed for a genesis block) */
+		let data = Data()
+		let fakeHash = HashType(of: data)
+		return try Self(version: VersionType(1), index: 1, nonce: 0, previous: fakeHash, miner: miner, timestamp: Date(), payload: Data())
+	}
+
+	public static func genesis(seed: String, version: VersionType) throws -> Self {
+		return try Self(version: version, index: 0, nonce: 0, previous: HashType.zeroHash, miner: IdentityType.zeroHash, timestamp: Date(), payload: Data())
+	}
+
 	public var isSignatureValid: Bool {
 		if let s = self.signature {
 			return HashType(of: self.dataForSigning) == s
@@ -272,12 +286,10 @@ extension Block {
 
 	public var dataForSigning: Data {
 		let pd = self.payloadDataForSigning
-		let size = pd.count
-			+ previous.hash.count
-			+ MemoryLayout<VersionType>.size
-			+ MemoryLayout<IndexType>.size
-			+ MemoryLayout<NonceType>.size
-			+ MemoryLayout<Int64>.size
+
+		// Calculate the size of the data object to prevent multiple copies
+		let fieldSizes = MemoryLayout<VersionType>.size + MemoryLayout<IndexType>.size + MemoryLayout<NonceType>.size
+		let size = pd.count + miner.hash.count + previous.hash.count + fieldSizes + MemoryLayout<Int64>.size
 		var data = Data(capacity: size)
 
 		data.appendRaw(self.version.littleEndian)
@@ -288,8 +300,12 @@ extension Block {
 			data.append(bytes, count: previous.hash.count)
 		}
 
+		self.miner.hash.withUnsafeBytes { bytes in
+			data.append(bytes, count: self.miner.hash.count)
+		}
+
 		if !self.isAGenesisBlock {
-			data.appendRaw(Int64(self.timestamp.timeIntervalSince1970).littleEndian)
+			data.appendRaw(UInt64(self.timestamp.timeIntervalSince1970).littleEndian)
 		}
 
 		pd.withUnsafeBytes { bytes in
@@ -492,6 +508,7 @@ extension Block {
 			"hash": self.signature!.stringValue,
 			"index": self.index,
 			"nonce": self.nonce,
+			"miner": self.miner.stringValue,
 			"timestamp": Int(self.timestamp.timeIntervalSince1970),
 			"payload": self.payloadData.base64EncodedString(),
 			"previous": self.previous.stringValue
@@ -506,14 +523,21 @@ extension Block {
 			let timestamp = json["timestamp"] as? NSNumber,
 			let previous = json["previous"] as? String,
 			let payloadBase64 = json["payload"] as? String,
+			let minerSHA256 = json["miner"] as? String,
+			let minerHash = IdentityType(hash: minerSHA256),
 			let payload = Data(base64Encoded: payloadBase64),
 			let previousHash = HashType(hash: previous),
 			let signatureHash = HashType(hash: signature) {
 			// FIXME: .uint64 is not generic (NonceType/IndexType may change to something else
-			var b = try Self.init(index: IndexType(height.uint64Value), previous: previousHash, payload: payload)
-			b.nonce = NonceType(nonce.uint64Value)
-			b.version = VersionType(version.uint64Value)
-			b.timestamp = Date(timeIntervalSince1970: TimeInterval(timestamp.doubleValue))
+			var b = try Self.init(
+				version: VersionType(version.uint64Value),
+				index: IndexType(height.uint64Value),
+				nonce: NonceType(nonce.uint64Value),
+				previous: previousHash,
+				miner: minerHash,
+				timestamp: Date(timeIntervalSince1970: TimeInterval(timestamp.doubleValue)),
+				payload: payload
+			)
 			b.signature = signatureHash
 			return b
 		}

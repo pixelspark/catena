@@ -11,7 +11,10 @@ public struct SQLPayload {
 	}
 
 	init(json: Data) throws {
-		if let arr = try JSONSerialization.jsonObject(with: json, options: []) as? [[String: Any]] {
+		if json.isEmpty {
+			self.transactions = []
+		}
+		else if let arr = try JSONSerialization.jsonObject(with: json, options: []) as? [[String: Any]] {
 			self.transactions = try arr.map { item in
 				return try SQLTransaction(json: item)
 			}
@@ -56,8 +59,8 @@ public struct SQLPayload {
 public struct SQLBlock: Block, CustomDebugStringConvertible {
 	public typealias TransactionType = SQLTransaction
 	public typealias HashType = SHA256Hash
-	typealias NonceType = UInt64
-	typealias IndexType = UInt64
+	public typealias NonceType = UInt64
+	public typealias IndexType = UInt64
 
 	public static let basicVersion: Block.VersionType = 0x1
 
@@ -69,6 +72,7 @@ public struct SQLBlock: Block, CustomDebugStringConvertible {
 
 	public var version: Block.VersionType = SQLBlock.basicVersion
 	public var index: UInt64
+	public var miner: SHA256Hash
 	public var previous: HashType
 	public var payload: SQLPayload
 	public var nonce: UInt64 = 0
@@ -76,23 +80,13 @@ public struct SQLBlock: Block, CustomDebugStringConvertible {
 	public var signature: HashType? = nil
 	private let seed: String! // Only used for genesis blocks, in which case hash==zeroHash and payload is empty
 
-	public init() {
-		self.index = 1
-		self.previous = HashType.zeroHash
-		self.payload = SQLPayload()
-		self.seed = nil
-	}
-
-	public init(genesisBlockWith seed: String) {
-		self.index = 0
-		self.seed = seed
-		self.payload = SQLPayload()
-		self.previous = HashType.zeroHash
-	}
-
-	public init(index: UInt64, previous: HashType, payload: Data) throws {
+	public init(version: VersionType, index: IndexType, nonce: NonceType, previous: HashType, miner: IdentityType, timestamp: Date, payload: Data) throws {
+		self.version = version
 		self.index = index
+		self.nonce = nonce
 		self.previous = previous
+		self.miner = miner
+		self.timestamp = timestamp
 
 		// If this is a genesis block, the payload is used as seed
 		if self.previous == HashType.zeroHash {
@@ -103,13 +97,6 @@ public struct SQLBlock: Block, CustomDebugStringConvertible {
 			self.seed = nil
 			self.payload = try SQLPayload(json: payload)
 		}
-	}
-
-	init(index: UInt64, previous: HashType, payload: SQLPayload) {
-		self.index = index
-		self.previous = previous
-		self.payload = payload
-		self.seed = nil
 	}
 
 	public static func ==(lhs: SQLBlock, rhs: SQLBlock) -> Bool {
@@ -138,7 +125,6 @@ public struct SQLBlock: Block, CustomDebugStringConvertible {
 
 	/** Whether the block can accomodate the `transaction`, disregarding any validation of the transaction itself. */
 	public func hasRoomFor(transaction: SQLTransaction) -> Bool {
-		assert(self.seed == nil, "cannot append transactions to a genesis block")
 		assert(transaction.signature != nil, "transaction needs to have a signature")
 
 		if (self.payload.transactions.count+1) > self.maximumNumberOfTransactionsPerBlock {

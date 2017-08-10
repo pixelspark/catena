@@ -18,6 +18,7 @@ public class Miner<LedgerType: Ledger> {
 	public typealias BlockType = BlockchainType.BlockType
 	public typealias HashType = BlockType.HashType
 
+	public let miner: BlockType.IdentityType
 	public private(set) var block: BlockType? = nil
 	public var isEnabled = true
 
@@ -27,8 +28,9 @@ public class Miner<LedgerType: Ledger> {
 	private(set) var isMining = false
 	private var aside = OrderedSet<BlockType.TransactionType>()
 
-	init(node: Node<LedgerType>) {
+	init(node: Node<LedgerType>, miner: BlockType.IdentityType) {
 		self.node = node
+		self.miner = miner
 		self.counter = random(BlockType.NonceType.self)
 	}
 
@@ -36,7 +38,7 @@ public class Miner<LedgerType: Ledger> {
 	func append(transaction: BlockType.TransactionType) throws -> Bool {
 		let isNew = try self.mutex.locked { () -> Bool in
 			if self.block == nil {
-				self.block = BlockType()
+				self.block = try BlockType.template(for: self.miner)
 			}
 
 			// Only signed transactions can be mined. This also checks the transaction maximum size
@@ -77,7 +79,13 @@ public class Miner<LedgerType: Ledger> {
 
 		if shouldStart {
 			DispatchQueue.global(qos: .background).async {
-				self.mine()
+				do {
+					try self.mine()
+				}
+				catch {
+					Log.error("[Miner] \(error.localizedDescription)")
+				}
+
 				self.mutex.locked {
 					self.isMining = false
 				}
@@ -85,10 +93,10 @@ public class Miner<LedgerType: Ledger> {
 		}
 	}
 
-	private func restart() {
-		self.mutex.locked {
+	private func restart() throws {
+		try self.mutex.locked {
 			if self.block == nil {
-				self.block = BlockType()
+				self.block = try BlockType.template(for: self.miner)
 			}
 
 			// Do we have transactions set aside for the next block?
@@ -116,7 +124,7 @@ public class Miner<LedgerType: Ledger> {
 		}
 	}
 
-	private func mine() {
+	private func mine() throws {
 		var stop = self.mutex.locked { () -> Bool in
 			if var b = self.block, self.isEnabled {
 				// FIXME: also update timestamp every few retries
@@ -176,6 +184,6 @@ public class Miner<LedgerType: Ledger> {
 			}
 		}
 
-		self.restart()
+		try self.restart()
 	}
 }

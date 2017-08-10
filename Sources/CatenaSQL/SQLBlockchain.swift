@@ -421,10 +421,12 @@ class SQLBlockArchive {
 			try self.database.transaction(name: "init-block-archive") { 
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "signature"))
+				cols.append(SQLType.blob, forKey: SQLColumn(name: "version")) // Needs to be stored as blob because SQLite does not fully support Uint64s
 				cols.append(SQLType.int, forKey: SQLColumn(name: "index"))
-				cols.append(SQLType.int, forKey: SQLColumn(name: "timestamp"))
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "nonce")) // Needs to be stored as blob because SQLite does not fully support Uint64s
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "previous"))
+				cols.append(SQLType.int, forKey: SQLColumn(name: "timestamp"))
+				cols.append(SQLType.blob, forKey: SQLColumn(name: "miner"))
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "payload"))
 
 				let createStatement = SQLStatement.create(table: table, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
@@ -435,18 +437,21 @@ class SQLBlockArchive {
 
 	func archive(block: SQLBlock) throws {
 		var nonce = block.nonce
+		var version = block.version
 
 		let insertStatement = SQLStatement.insert(SQLInsert(
 			orReplace: false,
 			into: self.table,
-			columns: ["signature", "index", "timestamp", "nonce", "previous", "payload"].map(SQLColumn.init),
+			columns: ["signature", "index", "timestamp", "nonce", "previous", "payload", "version", "miner"].map(SQLColumn.init),
 			values: [[
 				.literalBlob(block.signature!.hash),
 				.literalInteger(Int(block.index)),
 				.literalInteger(Int(block.timestamp.timeIntervalSince1970)),
 				.literalBlob(Data(bytes: &nonce, count: MemoryLayout<SQLBlock.NonceType>.size)),
 				.literalBlob(block.previous.hash),
-				.literalBlob(block.payloadData)
+				.literalBlob(block.payloadData),
+				.literalBlob(Data(bytes: &version, count: MemoryLayout<SQLBlock.VersionType>.size)),
+				.literalBlob(block.miner.hash)
 			]]))
 		_ = try database.perform(insertStatement.sql(dialect: database.dialect))
 	}
@@ -458,7 +463,7 @@ class SQLBlockArchive {
 
 	func get(block hash: SQLBlock.HashType) throws -> SQLBlock? {
 		let stmt = SQLStatement.select(SQLSelect(
-			these: ["signature", "index", "nonce", "previous", "payload", "timestamp"].map { return SQLExpression.column(SQLColumn(name: $0)) },
+			these: ["signature", "index", "nonce", "previous", "payload", "timestamp", "version", "miner"].map { return SQLExpression.column(SQLColumn(name: $0)) },
 			from: self.table,
 			joins: [],
 			where: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)),
@@ -471,28 +476,36 @@ class SQLBlockArchive {
 			case .blob(let nonce) = res.values[2],
 			case .blob(let previousData) = res.values[3],
 			case .int(let timestamp) = res.values[5],
+			case .blob(let version) = res.values[6],
+			case .blob(let minerData) = res.values[7],
+			version.count == MemoryLayout<SQLBlock.VersionType>.size,
 			nonce.count == MemoryLayout<SQLBlock.NonceType>.size {
 			let previous = SQLBlock.HashType(hash: previousData)
+			let miner = SQLBlock.HashType(hash: minerData)
 			assert(index >= 0, "Index must be positive")
 
 			var nonceValue: SQLBlock.NonceType = 0
 			let buffer = UnsafeMutableBufferPointer(start: &nonceValue, count: 1)
 			_ = nonce.copyBytes(to: buffer)
 
+			var versionValue: SQLBlock.VersionType = 0
+			let versionBuffer = UnsafeMutableBufferPointer(start: &versionValue, count: 1)
+			_ = version.copyBytes(to: versionBuffer)
+
 			// Payload can be null or block
-			var block: SQLBlock
+			let payload: Data
 			if case .blob(let payloadData) = res.values[4] {
-				block = try SQLBlock(index: SQLBlock.IndexType(index), previous: previous, payload: payloadData)
+				payload = payloadData
 			}
 			else if case .null = res.values[4] {
-				block = try SQLBlock(index: SQLBlock.IndexType(index), previous: previous, payload: Data())
+				payload = Data()
 			}
 			else {
 				fatalError("invalid payload")
 			}
-			block.nonce = nonceValue
+
+			var block = try SQLBlock(version: versionValue, index: SQLBlock.IndexType(index), nonce: nonceValue, previous: previous, miner: miner, timestamp: Date(timeIntervalSince1970: TimeInterval(timestamp)), payload: payload)
 			block.signature = hash
-			block.timestamp = Date(timeIntervalSince1970: TimeInterval(timestamp))
 			assert(block.isSignatureValid, "persisted block signature is invalid! \(block)")
 			return block
 		}

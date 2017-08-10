@@ -57,9 +57,12 @@ A transaction includes a counter. A transaction will only execute if its counter
 
 A block signature is the SHA-256 hash of the following:
 
+* _block version_ (64-bit, unsigned, little endian)
 * _block index_ (64-bit, unsigned, little endian)
 * _block nonce_ (64-bit, unsigned, little endian)
 * _previous block hash_ (32 bytes)
+* _miner public key hash_ (SHA256 hash of public key, 32 bytes)
+* _block timestamp_  (64-bit, unsigned, little endian, UNIX-timestamp; omitted for genesis blocks)
 * _payload data for signing_ (see below)
 
 The payload data for signing is constructed as follows:

@@ -498,22 +498,29 @@ public class QueryServer {
 	public func run() {
 		let queue = DispatchQueue.global(qos: .userInteractive)
 
-		queue.async { [unowned self] in
+		queue.async { [weak self] in
 			do {
 				// Create an IPV6 socket...
-				try self.listenSocket = Socket.create(family: self.family.socketFamily)
+				if let s = self {
+					s.listenSocket = try Socket.create(family: s.family.socketFamily)
 
-				guard let socket = self.listenSocket else {
+					guard let socket = self?.listenSocket else {
+						return
+					}
+
+					try socket.listen(on: s.port)
+				}
+				else {
 					return
 				}
 
-				try socket.listen(on: self.port)
-
 				repeat {
-					let newSocket = try socket.acceptClientConnection()
-					self.addNewConnection(socket: newSocket)
+					if let s = self?.listenSocket {
+						let newSocket = try s.acceptClientConnection()
+						self?.addNewConnection(socket: newSocket)
+					}
 
-				} while self.continueRunning
+				} while (self?.continueRunning ?? false)
 
 			}
 			catch let error {
@@ -522,7 +529,7 @@ public class QueryServer {
 					return
 				}
 
-				if self.continueRunning {
+				if self?.continueRunning ?? false {
 					Log.error("[SocketServer] Error reported:\n \(socketError.description)")
 				}
 			}

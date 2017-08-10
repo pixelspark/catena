@@ -97,11 +97,11 @@ public class Node<LedgerType: Ledger> {
 		return Date().addingTimeInterval(diffs.median)
 	}
 
-	public init(ledger: LedgerType, port: Int) {
+	public init(ledger: LedgerType, port: Int, miner: BlockType.IdentityType) throws {
 		self.uuid = UUID()
 		self.tickTimer = DispatchSource.makeTimerSource(flags: [], queue: self.workerQueue)
 		self.ledger = ledger
-		self.miner = Miner(node: self)
+		self.miner = Miner(node: self, miner: miner)
 		self.server = Server(node: self, port: port)
 		self.fetcher = Fetcher(node: self)
 	}
