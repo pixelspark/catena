@@ -23,9 +23,10 @@ let initializeOption = BoolOption(shortFlag: "i", longFlag: "initialize", helpMe
 let noReplayOption = BoolOption(shortFlag: "n", longFlag: "no-replay", helpMessage: "Do not replay database operations, just participate and validate transactions (default: false)")
 let peerDatabaseFileOption = StringOption(longFlag: "peer-database", required: false, helpMessage: "Backing database file for peer database (default: catena-peers.sqlite)")
 let noLocalPeersOption = BoolOption(longFlag: "no-local-discovery", helpMessage: "Disable local peer discovery")
+let nodeUUIDOption = StringOption(longFlag: "node-uuid", required: false, helpMessage: "Set the node's UUID (default: a randomly generated UUID)")
 
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, peerDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, peerDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption, nodeUUIDOption)
 
 do {
 	try cli.parse()
@@ -82,9 +83,22 @@ do {
 		_ = unlink(databaseFile.cString(using: .utf8)!)
 	}
 
+	let uuid: UUID
+	if let nu = nodeUUIDOption.value {
+		if let nuuid = UUID(uuidString: nu) {
+			uuid = nuuid
+		}
+		else {
+			fatalError("Invalid value for --node-uuid option; needs to be a valid UUID")
+		}
+	}
+	else {
+		uuid = UUID()
+	}
+
 	let ledger = try SQLLedger(genesis: genesisBlock, database: databaseFile, replay: !noReplayOption.value)
 	let netPort = netPortOption.value ?? 8338
-	let node = try Node<SQLLedger>(ledger: ledger, port: netPort, miner: SHA256Hash(of: rootIdentity.publicKey.data))
+	let node = try Node<SQLLedger>(ledger: ledger, port: netPort, miner: SHA256Hash(of: rootIdentity.publicKey.data), uuid: uuid)
 	let _ = SQLAPIEndpoint(node: node, router: node.server.router)
 
 	// Set up peer database
