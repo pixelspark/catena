@@ -248,7 +248,7 @@ extension SQLBlock {
 		}
 
 		// Check whether block is valid and consecutive
-		if self.index != 0 && (self.index != (headIndex + 1) || self.previous != headHash) {
+		if self.index != 0 && (self.index != (headIndex + SQLBlock.IndexType(1)) || self.previous != headHash) {
 			throw SQLBlockError.inconsecutiveBlockError
 		}
 
