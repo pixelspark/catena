@@ -270,7 +270,7 @@ extension Block {
 	}
 
 	public static func genesis(seed: String, version: VersionType) throws -> Self {
-		return try Self(version: version, index: 0, nonce: 0, previous: HashType.zeroHash, miner: IdentityType.zeroHash, timestamp: Date(), payload: Data())
+		return try Self(version: version, index: 0, nonce: 0, previous: HashType.zeroHash, miner: IdentityType.zeroHash, timestamp: Date(), payload: seed.data(using: .utf8)!)
 	}
 
 	public var isSignatureValid: Bool {
