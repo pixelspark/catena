@@ -59,7 +59,7 @@ docker build -t pixelspark/catena .
 The following command starts Catena and initializes a new chain:
 
 ````
-./.build/debug/Catena -p 8338 -s 'my seed string' -i -m
+./.build/debug/Catena -p 8338 -c -s 'my seed string' -m
 ````
 
 The -i switch tells Catena to initialize a chain (this deletes any persisted data, which is stored by default in catena.sqlite in the current directory). The -s switch provides Catena with a string that tells it which genesis block to accept.
@@ -76,7 +76,7 @@ Note, the node URL in the command above can be copied from the output of the fir
 
 ```
 docker pull pixelspark/catena
-docker run -p 8338:8338 -p 8339:8339 pixelspark/catena catena --help
+docker run -p 8338:8338 -p 8339:8339 pixelspark/catena [ARGS]
 ````
 
 Note: the port number on which Catena listens inside the container must be equal to the port number used outside the
