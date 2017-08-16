@@ -506,12 +506,12 @@ extension Ledger {
 extension Block {
 	public var json: [String: Any] {
 		return [
-			"version": self.version,
+			"version": NSNumber(value: self.version),
 			"hash": self.signature!.stringValue,
-			"index": self.index,
-			"nonce": self.nonce,
+			"index": NSNumber(value: self.index),
+			"nonce": NSNumber(value: self.nonce),
 			"miner": self.miner.stringValue,
-			"timestamp": Int(self.timestamp.timeIntervalSince1970),
+			"timestamp": NSNumber(value: Int(self.timestamp.timeIntervalSince1970)),
 			"payload": self.payloadData.base64EncodedString(),
 			"previous": self.previous.stringValue
 		]
