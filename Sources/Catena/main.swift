@@ -19,14 +19,15 @@ let peersOption = MultiStringOption(shortFlag: "j", longFlag: "join", helpMessag
 let mineOption = BoolOption(shortFlag: "m", longFlag: "mine", helpMessage: "Enable mining of blocks")
 let logOption = StringOption(shortFlag: "v", longFlag: "log", helpMessage: "The log level: debug, verbose, info, warning (default: info)")
 let testOption = BoolOption(shortFlag: "t", longFlag: "test", helpMessage: "Submit test queries to the chain periodically (default: off)")
-let initializeOption = BoolOption(shortFlag: "i", longFlag: "initialize", helpMessage: "Generate transactions to initialize basic database structure (default: false)")
+let initializeOption = BoolOption(shortFlag: "i", longFlag: "initialize", helpMessage: "Perform all initialization steps, then exit before starting the node.")
+let configureOption = BoolOption(shortFlag: "c", longFlag: "configure", helpMessage: "Generate transactions to initialize basic database structure (default: false)")
 let noReplayOption = BoolOption(shortFlag: "n", longFlag: "no-replay", helpMessage: "Do not replay database operations, just participate and validate transactions (default: false)")
 let nodeDatabaseFileOption = StringOption(longFlag: "node-database", required: false, helpMessage: "Backing database file for instance database (default: catena-node.sqlite)")
 let noLocalPeersOption = BoolOption(longFlag: "no-local-discovery", helpMessage: "Disable local peer discovery")
 let nodeUUIDOption = StringOption(longFlag: "node-uuid", required: false, helpMessage: "Set the node's UUID (default: a randomly generated UUID)")
 
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, nodeDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption, nodeUUIDOption)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, nodeDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption, nodeUUIDOption, configureOption)
 
 do {
 	try cli.parse()
@@ -40,6 +41,10 @@ catch {
 if helpOption.wasSet {
 	cli.printUsage()
 	exit(0)
+}
+
+if (configureOption.value || testOption.value) && initializeOption.value {
+	fatalError("The --configure and --test options cannot be set when --initialize is set")
 }
 
 // Configure logging
@@ -75,22 +80,6 @@ do {
 		configurationTable = try SQLKeyValueTable(database: nodeDatabase, table: SQLTable(name: "config"))
 	}
 
-	// Obtain root identity from the node database (if available) and not initializing; otherwise generate one
-	var rootCounter: SQLTransaction.CounterType = 0
-	let rootIdentity: Identity
-	if let pubString = try configurationTable?.get("publicKey"),
-		let privString = try configurationTable?.get("privateKey"),
-		let pubKey = PublicKey(string: pubString),
-		let privKey = PrivateKey(string: privString), !initializeOption.value {
-		rootIdentity = Identity(publicKey: pubKey, privateKey: privKey)
-	}
-	else {
-		// Generate root identity
-		rootIdentity = try Identity()
-		try configurationTable?.set(key: "publicKey", value: rootIdentity.publicKey.stringValue)
-		try configurationTable?.set(key: "privateKey", value: rootIdentity.privateKey.stringValue)
-	}
-
 	// Initialize database if we have to
 	let databaseFile = memoryDatabaseFileOption.value ? ":memory:" : (databaseFileOption.value ?? "catena.sqlite")
 
@@ -115,6 +104,27 @@ do {
 	// If the database is in a file and we are initializing, remove anything that was there before
 	if initializeOption.value && !memoryDatabaseFileOption.value {
 		_ = unlink(databaseFile.cString(using: .utf8)!)
+	}
+
+	// Obtain root identity from the node database (if available) and not initializing; otherwise generate one
+	var rootCounter: SQLTransaction.CounterType = 0
+	let rootIdentity: Identity
+	if let pubString = try configurationTable?.get("publicKey"),
+		let privString = try configurationTable?.get("privateKey"),
+		let pubKey = PublicKey(string: pubString),
+		let privKey = PrivateKey(string: privString), !initializeOption.value {
+		rootIdentity = Identity(publicKey: pubKey, privateKey: privKey)
+	}
+	else {
+		// Generate root identity
+		rootIdentity = try Identity()
+		try configurationTable?.set(key: "publicKey", value: rootIdentity.publicKey.stringValue)
+		try configurationTable?.set(key: "privateKey", value: rootIdentity.privateKey.stringValue)
+
+		if initializeOption.value {
+			Log.info("Root private key: \(rootIdentity.privateKey.stringValue)")
+			Log.info("Root public key: \(rootIdentity.publicKey.stringValue)")
+		}
 	}
 
 	// Determine node UUID
@@ -156,94 +166,91 @@ do {
 	}
 
 	// Query server
-	let queryServerV4 = NodeQueryServer(node: node, port: queryPortOption.value ?? (netPort+1), family: .ipv4)
-	let queryServerV6 = NodeQueryServer(node: node, port: queryPortOption.value ?? (netPort+1), family: .ipv6)
-	queryServerV6.run()
-	queryServerV4.run()
+	if !initializeOption.value {
+		let queryServerV4 = NodeQueryServer(node: node, port: queryPortOption.value ?? (netPort+1), family: .ipv4)
+		let queryServerV6 = NodeQueryServer(node: node, port: queryPortOption.value ?? (netPort+1), family: .ipv6)
+		queryServerV6.run()
+		queryServerV4.run()
 
-	node.miner.isEnabled = mineOption.value
-	node.announceLocally = !noLocalPeersOption.value
-	node.discoverLocally = !noLocalPeersOption.value
+		node.miner.isEnabled = mineOption.value
+		node.announceLocally = !noLocalPeersOption.value
+		node.discoverLocally = !noLocalPeersOption.value
 
-	Log.info("Node URL: \(node.url)")
-
-	if initializeOption.value {
-		// Generate root keypair
-
-		Log.info("Root private key: \(rootIdentity.privateKey.stringValue)")
-		Log.info("Root public key: \(rootIdentity.publicKey.stringValue)")
+		Log.info("Node URL: \(node.url)")
 		Swift.print("\r\nPGPASSWORD=\(rootIdentity.privateKey.stringValue) psql -h localhost -p \(netPort+1) -U \(rootIdentity.publicKey.stringValue)\r\n")
 
-		// Create grants table, etc.
-		let create = SQLStatement.create(table: SQLTable(name: SQLMetadata.grantsTableName), schema: SQLGrants.schema)
-		let createTransaction = try SQLTransaction(statement: create, invoker: rootIdentity.publicKey, counter: rootCounter)
-		rootCounter += 1
+		if configureOption.value {
+			// Create grants table, etc.
+			let create = SQLStatement.create(table: SQLTable(name: SQLMetadata.grantsTableName), schema: SQLGrants.schema)
+			let createTransaction = try SQLTransaction(statement: create, invoker: rootIdentity.publicKey, counter: rootCounter)
+			rootCounter += 1
 
-		let grant = SQLStatement.insert(SQLInsert(
-			orReplace: false,
-			into: SQLTable(name: SQLMetadata.grantsTableName),
-			columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
-			values: [
-				[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.create.rawValue), .null],
-				[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.drop.rawValue), .null],
-				[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString(SQLMetadata.grantsTableName)],
-				[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.delete.rawValue), .literalString(SQLMetadata.grantsTableName)]
-			]
-		))
-		let grantTransaction = try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey, counter: rootCounter)
-		rootCounter += 1
+			let grant = SQLStatement.insert(SQLInsert(
+				orReplace: false,
+				into: SQLTable(name: SQLMetadata.grantsTableName),
+				columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
+				values: [
+					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.create.rawValue), .null],
+					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.drop.rawValue), .null],
+					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString(SQLMetadata.grantsTableName)],
+					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.delete.rawValue), .literalString(SQLMetadata.grantsTableName)]
+				]
+			))
+			let grantTransaction = try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey, counter: rootCounter)
+			rootCounter += 1
 
-		try node.receive(transaction: try createTransaction.sign(with: rootIdentity.privateKey), from: nil)
-		try node.receive(transaction: try grantTransaction.sign(with: rootIdentity.privateKey), from: nil)
-	}
+			try node.receive(transaction: try createTransaction.sign(with: rootIdentity.privateKey), from: nil)
+			try node.receive(transaction: try grantTransaction.sign(with: rootIdentity.privateKey), from: nil)
+		}
 
-	// Start submitting test blocks if that's what the user requested
-	if testOption.value {
-		let identity = try Identity()
+		// Start submitting test blocks if that's what the user requested
+		if testOption.value {
+			let identity = try Identity()
 
-		node.start(blocking: false)
-		let q = try SQLStatement("CREATE TABLE test (origin TEXT, x TEXT);");
-		try node.receive(transaction: try SQLTransaction(statement: q, invoker: rootIdentity.publicKey, counter: rootCounter).sign(with: rootIdentity.privateKey), from: nil)
-		rootCounter += 1
+			node.start(blocking: false)
+			let q = try SQLStatement("CREATE TABLE test (origin TEXT, x TEXT);");
+			try node.receive(transaction: try SQLTransaction(statement: q, invoker: rootIdentity.publicKey, counter: rootCounter).sign(with: rootIdentity.privateKey), from: nil)
+			rootCounter += 1
 
-		// Grant to user
-		let grant = SQLStatement.insert(SQLInsert(
-			orReplace: false,
-			into: SQLTable(name: SQLMetadata.grantsTableName),
-			columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
-			values: [
-				[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString("test")]
-			]
-		))
-		try node.receive(transaction: try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey, counter: rootCounter).sign(with: rootIdentity.privateKey), from: nil)
-		rootCounter += 1
+			// Grant to user
+			let grant = SQLStatement.insert(SQLInsert(
+				orReplace: false,
+				into: SQLTable(name: SQLMetadata.grantsTableName),
+				columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
+				values: [
+					[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString("test")]
+				]
+			))
+			try node.receive(transaction: try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey, counter: rootCounter).sign(with: rootIdentity.privateKey), from: nil)
+			rootCounter += 1
 
-		sleep(10)
+			sleep(10)
 
-		Log.info("Start submitting demo blocks")
-		var testCounter: SQLTransaction.CounterType = 0
-		do {
-			var i = 0
-			while true {
-				i += 1
-				let q = try SQLStatement("INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));")
-				let tr = try SQLTransaction(statement: q, invoker: identity.publicKey, counter: testCounter).sign(with: identity.privateKey)
-				Log.info("[Test] submit \(tr)")
-				try node.receive(transaction: tr, from: nil)
-				testCounter += 1
-				sleep(2)
+			Log.info("Start submitting demo blocks")
+			var testCounter: SQLTransaction.CounterType = 0
+			do {
+				var i = 0
+				while true {
+					i += 1
+					let q = try SQLStatement("INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));")
+					let tr = try SQLTransaction(statement: q, invoker: identity.publicKey, counter: testCounter).sign(with: identity.privateKey)
+					Log.info("[Test] submit \(tr)")
+					try node.receive(transaction: tr, from: nil)
+					testCounter += 1
+					sleep(2)
+				}
+			}
+			catch {
+				Log.error(error.localizedDescription)
 			}
 		}
-		catch {
-			Log.error(error.localizedDescription)
+		else {
+			node.start(blocking: false)
 		}
-	}
-	else {
-		node.start(blocking: false)
-	}
 
-	withExtendedLifetime(node) {
-		RunLoop.main.run()
+		withExtendedLifetime(node) {
+			RunLoop.main.run()
+		}
 	}
 }
 catch {
