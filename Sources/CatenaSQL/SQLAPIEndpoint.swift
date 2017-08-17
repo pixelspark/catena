@@ -129,7 +129,7 @@ public class SQLAPIEndpoint {
 		for _ in 0..<10 {
 			if let block = b {
 				data.append([
-					"index": block.index,
+					"index": NSNumber(value: block.index),
 					"hash": block.signature!.stringValue
 					])
 				b = try chain.get(block: block.previous)
@@ -142,7 +142,7 @@ public class SQLAPIEndpoint {
 		response.send(json: [
 			"status": "ok",
 			"blocks": data
-			])
+		])
 		next()
 	}
 
