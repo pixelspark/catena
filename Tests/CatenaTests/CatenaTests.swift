@@ -158,9 +158,22 @@ private class TestLedger: Ledger {
 }
 
 class CatenaTests: XCTestCase {
-	func testFundamentals() {
+	func testFundamentals() throws {
 		XCTAssertEqual(SHA256Hash(of: "Catena".data(using: .utf8)!).stringValue.lowercased(), "13ab80a5ba95216129ea9d996937b4ed57faf7473e81288d99689da4d5f1d483")
 		XCTAssertEqual(SHA256Hash.zeroHash, SHA256Hash.zeroHash)
+		XCTAssert(SHA256Hash(of: "Catena".data(using: .utf8)!).hash.base58checkEncoded(version: 3) == "6ytyLFvgmcKJPr9YMgnto3hnt5g7vkPFrppNNvN96pNLwbRxAe")
+		XCTAssert(SHA256Hash(of: "Catena".data(using: .utf8)!).hash.base58checkEncoded(version: 1) == "36QcsMryvFs2kgjjCSnz9r9xerEpX4dgagbt5Ya9nobMdaUVVK")
+		XCTAssert(SHA256Hash(of: "Catena".data(using: .utf8)!).hash.base64EncodedString() == "E6uApbqVIWEp6p2ZaTe07Vf690c+gSiNmWidpNXx1IM=")
+		XCTAssert(String(data: SHA256Hash(of: "Catena".data(using: .utf8)!).hash.base64EncodedData(), encoding: .utf8)! == "E6uApbqVIWEp6p2ZaTe07Vf690c+gSiNmWidpNXx1IM=")
+
+		let ident = try Identity()
+		let pk = ident.publicKey.stringValue
+		let rpk = PublicKey(string: pk)
+		XCTAssert(ident.publicKey == rpk)
+
+		let d = "Hello".data(using: .utf8)!
+		let signed = try ident.publicKey.sign(data: d, with: ident.privateKey)
+		XCTAssert(try ident.publicKey.verify(message: d, signature: signed))
 	}
 
 	func testLedger() throws {
