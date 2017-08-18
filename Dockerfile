@@ -1,4 +1,4 @@
-FROM swift:latest
+FROM ibmcom/swift-ubuntu:3.1.1
 ENV CATENA_CONFIGURATION release
 
 RUN adduser --system --group catena
