@@ -412,7 +412,7 @@ extension Ledger {
 				}
 
 				// This block can simply be appended to the chain
-				if try self.longest.append(block: block) {
+				if try self.longest.canAppend(block: block, to: self.longest.highest) && self.longest.append(block: block) {
 					self.orphans.remove(orphan: block)
 					Log.info("[Ledger] can append directly")
 					return true
@@ -472,7 +472,7 @@ extension Ledger {
 
 								// Append the full sidechain
 								for b in stack.reversed() {
-									if !(try longest.append(block: b)) {
+									if !(try longest.canAppend(block: block, to: self.longest.highest) && longest.append(block: b)) {
 										fatalError("block should have been appendable: \(b)")
 									}
 									self.orphans.remove(orphan: block)
