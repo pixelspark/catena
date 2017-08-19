@@ -176,7 +176,7 @@ do {
 		node.announceLocally = !noLocalPeersOption.value
 		node.discoverLocally = !noLocalPeersOption.value
 
-		Log.info("Node URL: \(node.url)")
+		Log.info("Node URL: \(node.url.absoluteString)")
 		Swift.print("\r\nPGPASSWORD=\(rootIdentity.privateKey.stringValue) psql -h localhost -p \(netPort+1) -U \(rootIdentity.publicKey.stringValue)\r\n")
 
 		if configureOption.value {
