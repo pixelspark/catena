@@ -244,6 +244,13 @@ do {
 			Log.info("Start submitting demo blocks")
 			var testCounter: SQLTransaction.CounterType = 0
 			var i = 0
+
+			// Try to find current counter value
+			try ledger.longest.withUnverifiedTransactions { bc in
+				testCounter = try bc.meta.users.counter(for: identity.publicKey) ?? testCounter
+				Log.info("Key \(identity.publicKey.stringValue) has transaction counter=\(i)")
+			}
+
 			while true {
 				do {
 					i += 1

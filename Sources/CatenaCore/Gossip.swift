@@ -9,7 +9,7 @@ import Dispatch
 import Starscream
 #endif
 
-public enum GossipError: Error {
+public enum GossipError: LocalizedError {
 	case missingActionKey
 	case unknownAction(String)
 	case deserializationFailed
@@ -252,15 +252,26 @@ public struct Index<BlockType: Block>: Equatable {
 			let highestHash = json["highest"] as? String,
 			let genesis = BlockType.HashType(hash: genesisHash),
 			let highest = BlockType.HashType(hash: highestHash),
-			let height = json["height"] as? NSNumber,
-			let peers = json["peers"] as? [String],
-			let timestamp = json["time"] as? NSNumber
+			let peers = json["peers"] as? [String]
 		{
 			self.genesis = genesis
 			self.highest = highest
-			self.height = BlockType.IndexType(height.uint64Value)
-			self.timestamp = BlockType.TimestampType(timestamp.uint64Value)
 			self.peers = peers.flatMap { return URL(string: $0) }
+
+			if let height = json["height"] as? NSNumber, let timestamp = json["time"] as? NSNumber {
+				// Darwin
+				self.height = BlockType.IndexType(height.uint64Value)
+				self.timestamp = BlockType.TimestampType(timestamp.uint64Value)
+			}
+			else if let height = json["height"] as? Int, let timestamp = json["time"] as? Int {
+				// Linux
+				self.height = BlockType.IndexType(height)
+				self.timestamp = BlockType.TimestampType(timestamp)
+			}
+			else {
+				return nil
+			}
+
 		}
 		else {
 			return nil
@@ -278,7 +289,7 @@ public struct Index<BlockType: Block>: Equatable {
 	var json: [String: Any] {
 		return [
 			"highest": self.highest.stringValue,
-			"height": self.height,
+			"height": NSNumber(value: self.height),
 			"genesis": self.genesis.stringValue,
 			"time": NSNumber(value: self.timestamp),
 			"peers": self.peers.flatMap { $0.absoluteString }

@@ -532,11 +532,7 @@ extension Block {
 	}
 
 	public static func read(json: [String: Any]) throws -> Self {
-		if let nonce = json["nonce"] as? NSNumber,
-			let signature = json["hash"] as? String,
-			let height = json["index"] as? NSNumber,
-			let version = json["version"] as? NSNumber,
-			let timestamp = json["timestamp"] as? NSNumber,
+		if let signature = json["hash"] as? String,
 			let previous = json["previous"] as? String,
 			let payloadBase64 = json["payload"] as? String,
 			let minerSHA256 = json["miner"] as? String,
@@ -544,18 +540,45 @@ extension Block {
 			let payload = Data(base64Encoded: payloadBase64),
 			let previousHash = HashType(hash: previous),
 			let signatureHash = HashType(hash: signature) {
-			// FIXME: .uint64 is not generic (NonceType/IndexType may change to something else
-			var b = try Self.init(
-				version: VersionType(version.uint64Value),
-				index: IndexType(height.uint64Value),
-				nonce: NonceType(nonce.uint64Value),
-				previous: previousHash,
-				miner: minerHash,
-				timestamp: TimestampType(timestamp.uint64Value),
-				payload: payload
-			)
-			b.signature = signatureHash
-			return b
+
+			// Read numeric stuff (this apparently is inconsistent between Darwin/Linux)
+			if let height = json["index"] as? NSNumber,
+				let version = json["version"] as? NSNumber,
+				let timestamp = json["timestamp"] as? NSNumber,
+				let nonce = json["nonce"] as? NSNumber {
+				var b = try Self.init(
+					version: VersionType(version.uint64Value),
+					index: IndexType(height.uint64Value),
+					nonce: NonceType(nonce.uint64Value),
+					previous: previousHash,
+					miner: minerHash,
+					timestamp: TimestampType(timestamp.uint64Value),
+					payload: payload
+				)
+
+				b.signature = signatureHash
+				return b
+			}
+			else if let height = json["index"] as? Int,
+				let version = json["version"] as? Int,
+				let timestamp = json["timestamp"] as? Int,
+				let nonce = json["nonce"] as? Int {
+				var b = try Self.init(
+					version: VersionType(version),
+					index: IndexType(height),
+					nonce: NonceType(nonce),
+					previous: previousHash,
+					miner: minerHash,
+					timestamp: TimestampType(timestamp),
+					payload: payload
+				)
+
+				b.signature = signatureHash
+				return b
+			}
+			else {
+				throw BlockError.formatError
+			}
 		}
 		else {
 			throw BlockError.formatError
