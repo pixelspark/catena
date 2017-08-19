@@ -151,7 +151,7 @@ public class SQLBlockchain: Blockchain {
 		}
 	}
 
-	public var difficulty: Int {
+	public func difficulty(forBlockFollowing: SQLBlock) -> Int {
 		// TODO: this should be made dynamic. Can potentially store required difficulty in SQL (info table)?
 		return self.genesis.signature!.difficulty
 	}

@@ -39,7 +39,7 @@ public protocol Blockchain {
 	var genesis: BlockType { get }
 
 	/** The number of zero bits a signature is required to have at the beginning to be considered a valid proof of work. */
-	var difficulty: Int { get }
+	func difficulty(forBlockFollowing: BlockType) -> Int
 
 	/** Returns the block with the given signature hash, if it is on this chain. Returns nil when there is no block on
 	this chain with the given hash. */
@@ -176,13 +176,12 @@ public protocol Parameters {
 
 extension Blockchain {
 	/** The default implementation checks whether hashes and indexes are succeeding, and whether the block signature is
-	valid and conforms to the current difficulty level.
-	FIXME: check what happens when difficulty level changes! */
+	valid and conforms to the current difficulty level. */
 	public func canAppend(block: BlockType, to: BlockType) throws -> Bool {
 		if block.previous == to.signature!
 			&& block.index == (to.index + 1)
 			&& block.isSignatureValid
-			&& block.signature!.difficulty >= self.difficulty {
+			&& block.signature!.difficulty >= self.difficulty(forBlockFollowing: to) {
 
 			// Check block timestamp against median timestamp of previous blocks
 			/* Note: a block timestamp should also not be too far in the future, but this is checked by Node when

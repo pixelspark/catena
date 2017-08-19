@@ -142,9 +142,8 @@ public class Miner<LedgerType: Ledger> {
 					stop = !self.isEnabled
 
 					if let n = node {
-						let difficulty = n.ledger.longest.difficulty
-
 						if let base = self.node?.ledger.longest.highest {
+							let difficulty = n.ledger.longest.difficulty(forBlockFollowing: base)
 							// Set up the block
 							self.counter += BlockType.NonceType(1)
 							if var b = self.block {
