@@ -219,8 +219,8 @@ public struct Index<BlockType: Block>: Equatable {
 		{
 			self.genesis = genesis
 			self.highest = highest
-			self.height = BlockType.IndexType(height)
-			self.timestamp = BlockType.TimestampType(timestamp)
+			self.height = BlockType.IndexType(height.uint64Value)
+			self.timestamp = BlockType.TimestampType(timestamp.uint64Value)
 			self.peers = peers.flatMap { return URL(string: $0) }
 		}
 		else {
