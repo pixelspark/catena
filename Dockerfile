@@ -1,5 +1,6 @@
 FROM ibmcom/swift-ubuntu:3.1.1
-ENV CATENA_CONFIGURATION release
+ARG CATENA_CONFIGURATION=release
+ENV CATENA_CONFIGURATION $CATENA_CONFIGURATION
 
 RUN adduser --system --group catena
 RUN apt-get install libcurl4-openssl-dev
