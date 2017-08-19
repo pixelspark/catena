@@ -322,13 +322,19 @@ extension Block {
 		return self.previous == HashType.zeroHash && self.index == 0
 	}
 
+	/** Hash of the payload data for signing. This hash is included in the block data to be signed. Implementations could
+	also for instance return a Merkle tree root for the payload here. */
+	public var payloadRoot: HashType {
+		return HashType(of: self.payloadDataForSigning)
+	}
+
 	/** The block data that is to be signed. */
 	public var dataForSigning: Data {
-		let pd = self.payloadDataForSigning
+		let pd = self.payloadRoot
 
 		// Calculate the size of the data object to prevent multiple copies
 		let fieldSizes = MemoryLayout<VersionType>.size + MemoryLayout<IndexType>.size + MemoryLayout<NonceType>.size
-		let size = pd.count + miner.hash.count + previous.hash.count + fieldSizes + MemoryLayout<Int64>.size
+		let size = pd.hash.count + miner.hash.count + previous.hash.count + fieldSizes + MemoryLayout<Int64>.size
 		var data = Data(capacity: size)
 
 		data.appendRaw(self.version.littleEndian)
@@ -347,8 +353,8 @@ extension Block {
 			data.appendRaw(self.timestamp.littleEndian)
 		}
 
-		pd.withUnsafeBytes { bytes in
-			data.append(bytes, count: pd.count)
+		pd.hash.withUnsafeBytes { bytes in
+			data.append(bytes, count: pd.hash.count)
 		}
 
 		return data
