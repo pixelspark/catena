@@ -328,8 +328,12 @@ extension Block {
 		is generally low for a genesis block and this is only used for genesis blocks anyway, this should not be an
 		issue. */
 		while true {
-			let (partial, _) = self.nonce.addingReportingOverflow(UInt64(1))
-			self.nonce = partial
+			#if swift(>=4.0)
+				self.nonce = self.nonce.unsafeAdding(NonceType(1))
+			#else
+				self.nonce = self.nonce + NonceType(1)
+			#endif
+
 			let hash = HashType(of: self.dataForSigning)
 			if hash.difficulty >= difficulty {
 				self.signature = hash
