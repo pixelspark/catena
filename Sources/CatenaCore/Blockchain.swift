@@ -2,13 +2,24 @@ import Foundation
 import Cryptor
 import LoggerAPI
 
+/** Represents a ledger built on top of a blockchain. The ledger decides which blockchain is considered the 'truth' (it
+executes the 'longest chain rule'). */
 public protocol Ledger {
 	associatedtype BlockchainType: Blockchain
 	associatedtype ParametersType: Parameters
 
+	/** The blockchain currently considered to be the 'longest' and therefore the (current) truth. Implementations will
+	typically apply a 'longest chain rule' where the chain that has required the most work to be constructed (and
+	therefore is the least likely to be replaced by another chain with even more work) is selected. */
 	var longest: BlockchainType { get }
+
+	/** Blocks that the ledger knows about, are not currently on the longest chain, but may be needed in the future to
+	make the chain longer, are stored here. */
 	var orphans: Orphans<BlockchainType.BlockType> { get }
 	var mutex: Mutex { get }
+
+	/** The number of blocks a longer chain needs to be longer than the current one in order for the Ledger to switch to
+	the longer chain. */
 	var spliceLimit: UInt { get }
 
 	/** Returns whether a transaction is valid for inclusion in the transaction memory pool (to be mined). The optional
@@ -16,7 +27,9 @@ public protocol Ledger {
 	func canAccept(transaction: BlockchainType.BlockType.TransactionType, pool: BlockchainType.BlockType?) throws -> Bool
 }
 
+/** Represents a blockchain containing blocks. */
 public protocol Blockchain {
+	/** The type of the blocks that will be in this blockchain. */
 	associatedtype BlockType: Block
 
 	/** The block currently at the head of this blockchain. */
@@ -44,12 +57,19 @@ public protocol Blockchain {
 	func unwind(to: BlockType) throws
 }
 
+/** Represents a transaction in a block. */
 public protocol Transaction: Hashable {
+	/** Initialize a Transaction from the serialized representation. */
 	init(json: [String: Any]) throws
+
+	/** True if the signature of the transaction is valid, false otherwise. */
 	var isSignatureValid: Bool { get }
+
+	/** The serialized representation for this transaction. Must be readable by `init(json:)`. */
 	var json: [String: Any] { get }
 }
 
+/** Represents a block in a blockchain. */
 public protocol Block: CustomDebugStringConvertible, Equatable {
 	typealias NonceType = UInt64
 	typealias IndexType = UInt64
@@ -57,7 +77,10 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	typealias TimestampType = UInt64
 	typealias IdentityType = SHA256Hash // Hash used for identities (hashes of public keys)
 
+	/** The type of the transactions that will be contained by this block. */
 	associatedtype TransactionType: Transaction
+
+	/** The type of hash that will be used to sign and identify blocks. Signing a block also doubles as proof-of-work. */
 	associatedtype HashType: Hash
 
 	/** The block version. This can be used to switch signature algorithms or signature payload definitions within the
@@ -105,10 +128,12 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	func isPayloadValid() -> Bool
 }
 
+/** Represents a cryptographically secure hash that can be applied to any data (usually block data). */
 public protocol Hash: Hashable, CustomDebugStringConvertible {
 	var hash: Data { get }
 	var difficulty: Int { get }
 
+	/** Hash that is all zeroes. */
 	static var zeroHash: Self { get }
 
 	init(hash: Data)
@@ -117,6 +142,7 @@ public protocol Hash: Hashable, CustomDebugStringConvertible {
 	var stringValue: String { get }
 }
 
+/** Contains parameters for a particular type of Ledger. */
 public protocol Parameters {
 	/** Key that is used in gossip messages to indicate the mssage type */
 	static var actionKey: String { get }
@@ -175,6 +201,8 @@ extension Blockchain {
 		}
 	}
 
+	/** The median of the timestamps of the last `maximumLength` blocks, or nil if there are no blocks. The genesis block
+	timestamp is arbitrary (not included in its signature) and therefore never included. */
 	public func medianHeadTimestamp(startingAt: BlockType, maximumLength: Int = 10) throws -> Date? {
 		var times: [TimeInterval] = []
 		var block: BlockType? = startingAt
@@ -263,6 +291,7 @@ enum BlockError: LocalizedError {
 }
 
 extension Block {
+	/** Returns a new, empty 'template' block that can be used for mining. */
 	public static func template(for miner: IdentityType) throws -> Self {
 		/* Note that the previous hash here does not refer to any hash (but is just the hash of "fake"). This is done
 		so that the block is not seen as a genesis block, which would trigger assertions on attempting to append
@@ -273,11 +302,13 @@ extension Block {
 		return try Self(version: VersionType(1), index: 1, nonce: 0, previous: fakeHash, miner: miner, timestamp: ts, payload: Data())
 	}
 
+	/** Returns an (unsigned) genesis block for the given seed and version. */
 	public static func genesis(seed: String, version: VersionType) throws -> Self {
 		let ts = TimestampType(Date().timeIntervalSince1970)
 		return try Self(version: version, index: 0, nonce: 0, previous: HashType.zeroHash, miner: IdentityType.zeroHash, timestamp: ts, payload: seed.data(using: .utf8)!)
 	}
 
+	/** Returns true when the block's signature is valid, false when the block is unsigned or when the signature is invalid. */
 	public var isSignatureValid: Bool {
 		if let s = self.signature {
 			return HashType(of: self.dataForSigning) == s
@@ -285,10 +316,13 @@ extension Block {
 		return false
 	}
 
+	/** Returns true if this block is a genesis (i.e. can only be the first block in a chain), false otherwise. The block
+	signature is not required to be valid. */
 	public var isAGenesisBlock: Bool {
 		return self.previous == HashType.zeroHash && self.index == 0
 	}
 
+	/** The block data that is to be signed. */
 	public var dataForSigning: Data {
 		let pd = self.payloadDataForSigning
 
@@ -343,6 +377,8 @@ extension Block {
 	}
 }
 
+/** Set of blocks that are not yet part of a complete chain, but are to be remembered in case intermediate blocks are
+found that can complete a chain. */
 public class Orphans<BlockType: Block> {
 	private let mutex = Mutex()
 	private var orphansByHash: [BlockType.HashType: BlockType] = [:]
@@ -408,6 +444,8 @@ extension Ledger {
 		}
 	}
 
+	/** Notify the ledger of a new block. An attempt is made to append the block to the currently longest chain. If that
+	fails, the block is saved for later, in case (together with other blocks) a longer chain can be formed. */
 	func receive(block: BlockchainType.BlockType) throws -> Bool {
 		Log.debug("[Ledger] receive block #\(block.index) \(block.signature!.stringValue)")
 		return try self.mutex.locked { () -> Bool in

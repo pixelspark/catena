@@ -1,6 +1,7 @@
 import Foundation
 import Cryptor
 
+/** A mutually-exclusive lock that can be used to regulate access to resources in a multithreaded environment. */
 public class Mutex {
 	private var mutex: pthread_mutex_t = pthread_mutex_t()
 

@@ -23,6 +23,7 @@ struct Candidate<BlockType: Block>: Equatable, Hashable {
 	let peer: UUID
 }
 
+/** A database that stores URLs to known peers, for reconnecting in the future. */
 public protocol PeerDatabase {
 	/** Remember a peer in the peer database cache. Note that the peer database should only remember the most recent
 	address for a given node ID. */
@@ -32,6 +33,7 @@ public protocol PeerDatabase {
 	func forgetPeer(uuid: UUID) throws
 }
 
+/** Handles presence of the node on the network. */
 public class Node<LedgerType: Ledger> {
 	public typealias BlockchainType = LedgerType.BlockchainType
 	public typealias BlockType = BlockchainType.BlockType
