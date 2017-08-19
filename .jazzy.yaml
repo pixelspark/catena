@@ -1,0 +1,53 @@
+clean: true
+module: CatenaCore
+author: Tommy van der Vorst (Pixelspark)
+github_url: https://github.com/pixelspark/catena
+
+theme: apple
+clean: true
+exclude: [Packages]
+
+readme: README.md
+
+skip_undocumented: false
+hide_documentation_coverage: false
+
+custom_categories:
+  - name: Distributed ledger
+    children: 
+    - Ledger
+    - Parameters
+    - Block
+    - Blockchain
+    - Transaction
+
+  - name: Proof of work
+    children:
+    - Hash
+    - SHA256Hash
+    - Miner
+
+  - name: Authentication
+    children:
+    - Key
+    - Identity
+    - PublicKey
+    - PrivateKey
+
+  - name: Networking
+    children:
+    - Node
+    - Gossip
+    - GossipError
+    - Peer
+    - Server
+    - PeerState
+    - PeerIncomingConnection
+    - PeerOutgoingConnection
+    - PeerConnection
+    - PeerConnectionDelegate
+    - PeerDatabase
+    - Index
+    - Orphans
+
+xcodebuild_arguments: [-project, Catena.xcodeproj, -target, CatenaCore, LIBRARY_SEARCH_PATHS=build/debug]

@@ -7,3 +7,5 @@ catena.sqlite
 *.sqlite-shm
 *.sqlite-wal
 Package.pins
+build
+docs
