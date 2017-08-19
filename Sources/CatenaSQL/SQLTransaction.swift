@@ -104,7 +104,7 @@ public class SQLTransaction: Transaction, CustomDebugStringConvertible {
 		var json: [String: Any] = [
 			"tx": [
 				"sql": self.statement.sql(dialect: SQLStandardDialect()),
-				"counter": self.counter,
+				"counter": NSNumber(value: self.counter),
 				"invoker": self.invoker.stringValue
 			]
 		]
