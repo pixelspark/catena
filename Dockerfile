@@ -16,5 +16,5 @@ EXPOSE 8338
 EXPOSE 8339
 USER catena
 WORKDIR /data
-ENTRYPOINT ["/usr/bin/catena", "--no-local-discovery"]
+ENTRYPOINT ["/usr/bin/catena"]
 #HEALTHCHECK --interval=5m --timeout=3s CMD curl -f http://localhost:8338/api || exit 1

@@ -173,8 +173,23 @@ do {
 		queryServerV4.run()
 
 		node.miner.isEnabled = mineOption.value
-		node.announceLocally = !noLocalPeersOption.value
-		node.discoverLocally = !noLocalPeersOption.value
+
+		// Check whether local discovery should be enabled
+		if !noLocalPeersOption.value {
+			var hostname = Data(count: 255)
+			let hostnameString = try hostname.withUnsafeMutableBytes { (bytes: UnsafeMutablePointer<CChar>) -> String in
+				try posix(gethostname(bytes, 255))
+				return String(cString: bytes)
+			}
+
+			if !hostnameString.hasSuffix(".local") {
+				Log.info("[LocalDiscovery] Not enabling local discovery as host (\(hostnameString)) is not in local domain.")
+			}
+			else {
+				node.announceLocally = true
+				node.discoverLocally = true
+			}
+		}
 
 		Log.info("Node URL: \(node.url.absoluteString)")
 		Swift.print("\r\nPGPASSWORD=\(rootIdentity.privateKey.stringValue) psql -h localhost -p \(netPort+1) -U \(rootIdentity.publicKey.stringValue)\r\n")
@@ -228,9 +243,9 @@ do {
 
 			Log.info("Start submitting demo blocks")
 			var testCounter: SQLTransaction.CounterType = 0
-			do {
-				var i = 0
-				while true {
+			var i = 0
+			while true {
+				do {
 					i += 1
 					let q = try SQLStatement("INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));")
 					let tr = try SQLTransaction(statement: q, invoker: identity.publicKey, counter: testCounter).sign(with: identity.privateKey)
@@ -239,9 +254,10 @@ do {
 					testCounter += 1
 					sleep(2)
 				}
-			}
-			catch {
-				Log.error(error.localizedDescription)
+				catch {
+					Log.error(error.localizedDescription)
+					break
+				}
 			}
 		}
 		else {

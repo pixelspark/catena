@@ -92,6 +92,28 @@ enum Fallible<T> {
 	case failure(String)
 }
 
+struct POSIXError: Error {
+	let code: Int32
+	let file: String
+	let line: Int
+	let column: Int
+	let function: String
+
+	init(code: Int32? = nil, file: String = #file, line: Int = #line, column: Int = #column, function: String = #function) {
+		self.code = code ?? errno
+		self.file = file
+		self.line = line
+		self.column = column
+		self.function = function
+	}
+}
+
+public func posix(_ block: @autoclosure () -> Int32, file: String = #file, line: Int = #line, column: Int = #column, function: String = #function) throws {
+	guard block() == 0 else {
+		throw POSIXError(file: file, line: line, column: column, function: function)
+	}
+}
+
 internal func random<T: ExpressibleByIntegerLiteral> (_ type: T.Type) -> T {
 	var r: T = 0
 	let bytes = try! Random.generate(byteCount: MemoryLayout<T>.size)
