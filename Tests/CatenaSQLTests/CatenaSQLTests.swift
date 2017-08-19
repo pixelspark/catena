@@ -23,6 +23,77 @@ class CatenaSQLTests: XCTestCase {
 		XCTAssert(try pd.peers().count == 0)
 	}
 
+	func testTransaction() throws {
+		let id = try Identity()
+		let otherID = try Identity()
+		let st = SQLStatement.create(table: SQLTable(name: "foo"), schema: SQLSchema(primaryKey: SQLColumn(name: "id"), columns: (SQLColumn(name: "id"), .int)))
+		let tr = try SQLTransaction(statement: st, invoker: id.publicKey, counter: 0)
+		XCTAssert(!tr.isSignatureValid, "transaction signature must not be valid")
+
+		// Try signing with the wrong key
+		try tr.sign(with: otherID.privateKey)
+		XCTAssert(!tr.isSignatureValid, "transaction signature must not be valid")
+
+		try tr.sign(with: id.privateKey)
+		XCTAssert(tr.isSignatureValid, "transaction signature must be valid")
+
+		// Serialization
+		let str = try SQLTransaction(json: tr.json)
+		XCTAssert(tr == str, "serialized transaction must be equal to original")
+
+		// JSON serialization
+		let json = try JSONSerialization.data(withJSONObject: tr.json, options: [])
+		let jsonTr = try SQLTransaction(json: try JSONSerialization.jsonObject(with: json, options: []) as! [String: Any])
+		XCTAssert(tr == jsonTr, "serialized JSON transaction must be equal to original")
+
+		// JSON verification
+		XCTAssertThrowsError(try SQLTransaction(json: [:]))
+
+		// Signatures
+		XCTAssert(tr.isSignatureValid, "transaction signature must be valid")
+
+		let pubHash = SHA256Hash(of: id.publicKey.data)
+		var b = try SQLBlock.template(for: pubHash)
+
+		XCTAssert(!tr.shouldAlwaysBeReplayed, "this is not a transaction that requires replaying")
+		XCTAssert(b.isPayloadValid(), "block payload is valid")
+		XCTAssert(b.hasRoomFor(transaction: tr), "block can accomodate transaction")
+		XCTAssert(try b.append(transaction: tr), "block can append transaction")
+		XCTAssert(b.isPayloadValid(), "block payload is valid")
+		XCTAssert(!(try b.append(transaction: tr)), "block does not append existing transaction")
+	}
+
+	func testUsers() throws {
+		let db = SQLiteDatabase()
+		try db.open(":memory:")
+		let u = try SQLUsersTable(database: db, table: SQLTable(name: "users"))
+
+		let id = try Identity()
+		try u.setCounter(for: id.publicKey, to: 42)
+		XCTAssert(try u.counter(for: id.publicKey)! == 42, "counter must be set")
+
+		try u.setCounter(for: id.publicKey, to: 43)
+		XCTAssert(try u.counter(for: id.publicKey)! == 43, "counter must be updates")
+
+		let ctrs = try u.counters()
+		XCTAssert(ctrs.count == 1 && ctrs[SHA256Hash(of: id.publicKey.data).hash]! == 43, "counters must be ok")
+	}
+
+	func testArchive() throws {
+		let db = SQLiteDatabase()
+		try db.open(":memory:")
+		let arch = try SQLBlockArchive(table: SQLTable(name: "archive"), database: db)
+
+		let id = try Identity()
+
+		var b = try SQLBlock(version: 1, index: 1, nonce: UInt64.max, previous: SHA256Hash.zeroHash, miner: SHA256Hash(of: id.publicKey.data), timestamp: UInt64(Date().timeIntervalSince1970), payload: "foo".data(using: .utf8)!)
+		b.mine(difficulty: 2)
+		try arch.archive(block: b)
+
+		let c = try arch.get(block: b.signature!)
+		XCTAssert(b == c, "archived block must be the same as the original")
+	}
+
 	func testGrants() throws {
 		let db = SQLiteDatabase()
 		try db.open(":memory:")

@@ -263,7 +263,7 @@ enum BlockError: LocalizedError {
 }
 
 extension Block {
-	static func template(for miner: IdentityType) throws -> Self {
+	public static func template(for miner: IdentityType) throws -> Self {
 		/* Note that the previous hash here does not refer to any hash (but is just the hash of "fake"). This is done
 		so that the block is not seen as a genesis block, which would trigger assertions on attempting to append
 		transactions to it (that is not allowed for a genesis block) */
