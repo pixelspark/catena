@@ -509,11 +509,14 @@ extension Ledger {
 
 extension Block {
 	public var json: [String: Any] {
+		var nonce = self.nonce.littleEndian
+		let nonceData = Data(bytes: &nonce, count: MemoryLayout<NonceType>.size)
+
 		return [
 			"version": NSNumber(value: self.version),
 			"hash": self.signature!.stringValue,
 			"index": NSNumber(value: self.index),
-			"nonce": NSNumber(value: self.nonce),
+			"nonce": nonceData.base64EncodedString(),
 			"miner": self.miner.stringValue,
 			"timestamp": NSNumber(value: self.timestamp),
 			"payload": self.payloadData.base64EncodedString(),
@@ -539,17 +542,28 @@ extension Block {
 			let minerHash = IdentityType(hash: minerSHA256),
 			let payload = Data(base64Encoded: payloadBase64),
 			let previousHash = HashType(hash: previous),
-			let signatureHash = HashType(hash: signature) {
+			let signatureHash = HashType(hash: signature),
+			let nonceBase64 = json["nonce"] as? String,
+			let nonceData = Data(base64Encoded: nonceBase64) {
+
+			// Decode nonce from base64
+			var nonceValue: NonceType = 0
+			let buffer = UnsafeMutableBufferPointer(start: &nonceValue, count: 1)
+			guard nonceData.copyBytes(to: buffer) == MemoryLayout<NonceType>.size else {
+				throw BlockError.formatError
+			}
+			if nonceValue.littleEndian != nonceValue {
+				nonceValue = nonceValue.byteSwapped
+			}
 
 			// Read numeric stuff (this apparently is inconsistent between Darwin/Linux)
 			if let height = json["index"] as? NSNumber,
 				let version = json["version"] as? NSNumber,
-				let timestamp = json["timestamp"] as? NSNumber,
-				let nonce = json["nonce"] as? NSNumber {
+				let timestamp = json["timestamp"] as? NSNumber {
 				var b = try Self.init(
 					version: VersionType(version.uint64Value),
 					index: IndexType(height.uint64Value),
-					nonce: NonceType(nonce.uint64Value),
+					nonce: nonceValue,
 					previous: previousHash,
 					miner: minerHash,
 					timestamp: TimestampType(timestamp.uint64Value),
@@ -561,12 +575,11 @@ extension Block {
 			}
 			else if let height = json["index"] as? Int,
 				let version = json["version"] as? Int,
-				let timestamp = json["timestamp"] as? Int,
-				let nonce = json["nonce"] as? Int {
+				let timestamp = json["timestamp"] as? Int {
 				var b = try Self.init(
 					version: VersionType(version),
 					index: IndexType(height),
-					nonce: NonceType(nonce),
+					nonce: nonceValue,
 					previous: previousHash,
 					miner: minerHash,
 					timestamp: TimestampType(timestamp),

@@ -122,7 +122,7 @@ A `block` message is sent in reply to a `fetch` message, or sent as request (`un
 
 * previous: the hash of the block this block follows to (hash as String)
 * hash: the hash signature of this block (hash as String)
-* nonce: the nonce value for this block (Integer)
+* nonce: the nonce value for this block (little-endian UInt64 represented as a Base64 encoded string)
 * payload: the payload of this block (as Base-64 encoded String). The format of the payload is application-specific; for Catena SQL blocks, it is a JSON array of transactions for all blocks except the genesis block. The transaction JSON format is described below.
 
 ### passive
