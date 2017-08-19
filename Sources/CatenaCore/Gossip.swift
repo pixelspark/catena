@@ -192,19 +192,19 @@ public class Server<LedgerType: Ledger>: WebSocketService {
 	}
 }
 
-public struct Index<BlockType: Block> {
+public struct Index<BlockType: Block>: Equatable {
 	let genesis: BlockType.HashType
 	let peers: [URL]
 	let highest: BlockType.HashType
 	let height: BlockType.IndexType
-	let date: Date
+	let timestamp: BlockType.TimestampType
 
-	init(genesis: BlockType.HashType, peers: [URL], highest: BlockType.HashType, height: BlockType.IndexType) {
+	init(genesis: BlockType.HashType, peers: [URL], highest: BlockType.HashType, height: BlockType.IndexType, timestamp: BlockType.TimestampType) {
 		self.genesis = genesis
 		self.peers = peers
 		self.highest = highest
 		self.height = height
-		self.date = Date()
+		self.timestamp = timestamp
 	}
 
 	init?(json: [String: Any]) {
@@ -213,14 +213,14 @@ public struct Index<BlockType: Block> {
 			let highestHash = json["highest"] as? String,
 			let genesis = BlockType.HashType(hash: genesisHash),
 			let highest = BlockType.HashType(hash: highestHash),
-			let height = json["height"] as? Int,
+			let height = json["height"] as? NSNumber,
 			let peers = json["peers"] as? [String],
-			let timestamp = json["time"] as? Double
+			let timestamp = json["time"] as? NSNumber
 		{
 			self.genesis = genesis
 			self.highest = highest
 			self.height = BlockType.IndexType(height)
-			self.date = Date(timeIntervalSince1970: timestamp)
+			self.timestamp = BlockType.TimestampType(timestamp)
 			self.peers = peers.flatMap { return URL(string: $0) }
 		}
 		else {
@@ -228,12 +228,20 @@ public struct Index<BlockType: Block> {
 		}
 	}
 
+	public static func ==(lhs: Index<BlockType>, rhs: Index<BlockType>) -> Bool {
+		return lhs.genesis == rhs.genesis &&
+			lhs.peers == rhs.peers &&
+			lhs.highest == rhs.highest &&
+			lhs.height == rhs.height &&
+			lhs.timestamp == rhs.timestamp
+	}
+
 	var json: [String: Any] {
 		return [
 			"highest": self.highest.stringValue,
 			"height": self.height,
 			"genesis": self.genesis.stringValue,
-			"time": Int(self.date.timeIntervalSince1970),
+			"time": NSNumber(value: self.timestamp),
 			"peers": self.peers.flatMap { $0.absoluteString }
 		]
 	}
@@ -619,7 +627,8 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 							genesis: n.ledger.longest.genesis.signature!,
 							peers: Array(n.validPeers),
 							highest: n.ledger.longest.highest.signature!,
-							height: n.ledger.longest.highest.index
+							height: n.ledger.longest.highest.index,
+							timestamp: BlockchainType.BlockType.TimestampType(Date().timeIntervalSince1970)
 						)
 					}
 					try connection.reply(counter: counter, gossip: .index(idx))

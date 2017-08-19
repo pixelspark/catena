@@ -128,7 +128,7 @@ public class Miner<LedgerType: Ledger> {
 		var stop = self.mutex.locked { () -> Bool in
 			if var b = self.block, self.isEnabled {
 				// FIXME: also update timestamp every few retries
-				b.timestamp = Date()
+				b.date = Date()
 				return false
 			}
 			else {

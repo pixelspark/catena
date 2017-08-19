@@ -352,8 +352,8 @@ public class Node<LedgerType: Ledger> {
 					Log.warning("Our time (\(Date().iso8601FormattedUTCDate)) is more than 24 hours away from median network time (\(nt.iso8601FormattedUTCDate). Please check local clock.")
 				}
 
-				if nt.timeIntervalSince(block.timestamp) < -LedgerType.ParametersType.futureBlockThreshold {
-					Log.info("[Node] block #\(block.index) from \(peer?.url.absoluteString ?? "self") has a timestamp (\(block.timestamp.iso8601FormattedUTCDate)) that is too far in the future; ignoring")
+				if nt.timeIntervalSince(block.date) < -LedgerType.ParametersType.futureBlockThreshold {
+					Log.info("[Node] block #\(block.index) from \(peer?.url.absoluteString ?? "self") has a timestamp (\(block.date.iso8601FormattedUTCDate)) that is too far in the future; ignoring")
 					return
 				}
 			}

@@ -61,6 +61,7 @@ public struct SQLBlock: Block, CustomDebugStringConvertible {
 	public typealias HashType = SHA256Hash
 	public typealias NonceType = UInt64
 	public typealias IndexType = UInt64
+	public typealias TimestampType = UInt64
 
 	public static let basicVersion: Block.VersionType = 0x1
 
@@ -76,11 +77,11 @@ public struct SQLBlock: Block, CustomDebugStringConvertible {
 	public var previous: HashType
 	public var payload: SQLPayload
 	public var nonce: UInt64 = 0
-	public var timestamp: Date = Date()
+	public var timestamp: TimestampType = 0
 	public var signature: HashType? = nil
 	private let seed: String! // Only used for genesis blocks, in which case hash==zeroHash and payload is empty
 
-	public init(version: VersionType, index: IndexType, nonce: NonceType, previous: HashType, miner: IdentityType, timestamp: Date, payload: Data) throws {
+	public init(version: VersionType, index: IndexType, nonce: NonceType, previous: HashType, miner: IdentityType, timestamp: TimestampType, payload: Data) throws {
 		self.version = version
 		self.index = index
 		self.nonce = nonce
@@ -199,7 +200,7 @@ struct SQLBackendVisitor: SQLVisitor {
 			switch v {
 			case "invoker": return SQLExpression.literalBlob(context.invoker.data.sha256)
 			case "miner": return SQLExpression.literalBlob(context.block.miner.hash)
-			case "timestamp": return SQLExpression.literalInteger(Int(context.block.timestamp.timeIntervalSince1970))
+			case "timestamp": return SQLExpression.literalInteger(Int(context.block.date.timeIntervalSince1970))
 			case "blockSignature": return SQLExpression.literalBlob(context.block.signature!.hash)
 			case "previousBlockSignature": return SQLExpression.literalBlob(context.block.previous.hash)
 			case "blockHeight": return SQLExpression.literalInteger(Int(context.block.index))

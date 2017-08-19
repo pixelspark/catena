@@ -54,6 +54,7 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	typealias NonceType = UInt64
 	typealias IndexType = UInt64
 	typealias VersionType = UInt64
+	typealias TimestampType = UInt64
 	typealias IdentityType = SHA256Hash // Hash used for identities (hashes of public keys)
 
 	associatedtype TransactionType: Transaction
@@ -77,8 +78,8 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	/** The identity of the miner of this block (hash of PublicKey). */
 	var miner: IdentityType { get set }
 
-	/** The block's timestamp */
-	var timestamp: Date { get set }
+	/** The block's timestamp as encoded in the block. */
+	var timestamp: TimestampType { get set }
 
 	/** The signature hash for this block, or nil if the block has not been signed yet. */
 	var signature: HashType? { get set }
@@ -90,7 +91,7 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	var payloadDataForSigning: Data { get }
 
 	/** Create a block with the given index, previous hash and payload data. */
-	init(version: VersionType, index: IndexType, nonce: NonceType, previous: HashType, miner: IdentityType, timestamp: Date, payload: Data) throws
+	init(version: VersionType, index: IndexType, nonce: NonceType, previous: HashType, miner: IdentityType, timestamp: TimestampType, payload: Data) throws
 
 	/** Append a transaction to the payload data of this block. Returns true if the transaction was appended, and false
 	when it wasn't (e.g. when the block already contains the transaction). */
@@ -162,7 +163,7 @@ extension Blockchain {
 			receiving a block from someone else. */
 			if let ts = try self.medianHeadTimestamp(startingAt: to) {
 				// Block timestamp must be above median timestamp of last x blocks
-				return block.timestamp.timeIntervalSince(ts) >= 0.0
+				return block.date.timeIntervalSince(ts) >= 0.0
 			}
 			else {
 				// No timestamps to compare to
@@ -174,13 +175,13 @@ extension Blockchain {
 		}
 	}
 
-	func medianHeadTimestamp(startingAt: BlockType, maximumLength: Int = 10) throws -> Date? {
+	public func medianHeadTimestamp(startingAt: BlockType, maximumLength: Int = 10) throws -> Date? {
 		var times: [TimeInterval] = []
 		var block: BlockType? = startingAt
 
 		for _ in 0..<maximumLength {
 			if let b = block, !b.isAGenesisBlock {
-				times.append(b.timestamp.timeIntervalSince1970)
+				times.append(b.date.timeIntervalSince1970)
 				block = try self.get(block: b.previous)
 			}
 			else {
@@ -192,7 +193,7 @@ extension Blockchain {
 			return nil
 		}
 
-		return Date(timeIntervalSince1970: times.median)
+		return Date(timeIntervalSince1970: TimeInterval(times.median))
 	}
 }
 
@@ -268,11 +269,13 @@ extension Block {
 		transactions to it (that is not allowed for a genesis block) */
 		let data = Data()
 		let fakeHash = HashType(of: data)
-		return try Self(version: VersionType(1), index: 1, nonce: 0, previous: fakeHash, miner: miner, timestamp: Date(), payload: Data())
+		let ts = TimestampType(Date().timeIntervalSince1970)
+		return try Self(version: VersionType(1), index: 1, nonce: 0, previous: fakeHash, miner: miner, timestamp: ts, payload: Data())
 	}
 
 	public static func genesis(seed: String, version: VersionType) throws -> Self {
-		return try Self(version: version, index: 0, nonce: 0, previous: HashType.zeroHash, miner: IdentityType.zeroHash, timestamp: Date(), payload: seed.data(using: .utf8)!)
+		let ts = TimestampType(Date().timeIntervalSince1970)
+		return try Self(version: version, index: 0, nonce: 0, previous: HashType.zeroHash, miner: IdentityType.zeroHash, timestamp: ts, payload: seed.data(using: .utf8)!)
 	}
 
 	public var isSignatureValid: Bool {
@@ -307,7 +310,7 @@ extension Block {
 		}
 
 		if !self.isAGenesisBlock {
-			data.appendRaw(UInt64(self.timestamp.timeIntervalSince1970).littleEndian)
+			data.appendRaw(self.timestamp.littleEndian)
 		}
 
 		pd.withUnsafeBytes { bytes in
@@ -319,7 +322,7 @@ extension Block {
 
 	/** Mine this block (note: use this only for the genesis block, Miner provides threaded mining) */
 	public mutating func mine(difficulty: Int) {
-		self.timestamp = Date()
+		self.date = Date()
 
 		/* Note: if mining takes longer than a few hours, the mined block will not be accepted. As the difficulty level
 		is generally low for a genesis block and this is only used for genesis blocks anyway, this should not be an
@@ -472,8 +475,9 @@ extension Ledger {
 
 								// Append the full sidechain
 								for b in stack.reversed() {
-									if !(try longest.canAppend(block: block, to: self.longest.highest) && longest.append(block: b)) {
-										fatalError("block should have been appendable: \(b)")
+									let p = longest.highest
+									if !(try longest.canAppend(block: b, to: p) && longest.append(block: b)) {
+										fatalError("block should have been appendable: \(b) to \(p)")
 									}
 									self.orphans.remove(orphan: block)
 								}
@@ -511,10 +515,20 @@ extension Block {
 			"index": NSNumber(value: self.index),
 			"nonce": NSNumber(value: self.nonce),
 			"miner": self.miner.stringValue,
-			"timestamp": NSNumber(value: Int(self.timestamp.timeIntervalSince1970)),
+			"timestamp": NSNumber(value: self.timestamp),
 			"payload": self.payloadData.base64EncodedString(),
 			"previous": self.previous.stringValue
 		]
+	}
+
+	/** The block's timestamp converted to a date */
+	public var date: Date {
+		get {
+			return Date(timeIntervalSince1970: TimeInterval(self.timestamp))
+		}
+		set {
+			self.timestamp = TimestampType(newValue.timeIntervalSince1970)
+		}
 	}
 
 	public static func read(json: [String: Any]) throws -> Self {
@@ -537,7 +551,7 @@ extension Block {
 				nonce: NonceType(nonce.uint64Value),
 				previous: previousHash,
 				miner: minerHash,
-				timestamp: Date(timeIntervalSince1970: TimeInterval(timestamp.doubleValue)),
+				timestamp: TimestampType(timestamp.uint64Value),
 				payload: payload
 			)
 			b.signature = signatureHash

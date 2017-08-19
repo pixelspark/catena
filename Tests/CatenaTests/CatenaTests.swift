@@ -37,6 +37,7 @@ private struct TestTransaction: Transaction {
 private struct TestBlock: Block {
 	typealias HashType = SHA256Hash
 	typealias TransactionType = TestTransaction
+	typealias TimestampType = UInt64
 
 	var index: Block.IndexType
 	var previous: SHA256Hash
@@ -47,9 +48,9 @@ private struct TestBlock: Block {
 	var payloadDataForSigning: Data { return payloadData }
 	var version: Block.VersionType
 	var miner: Block.IdentityType
-	var timestamp: Date = Date()
+	var timestamp: TimestampType = 0
 
-	init(version: Block.VersionType, index: Block.IndexType, nonce: Block.NonceType, previous: SHA256Hash, miner: Block.IdentityType, timestamp: Date, payload: Data) throws {
+	init(version: Block.VersionType, index: Block.IndexType, nonce: Block.NonceType, previous: SHA256Hash, miner: Block.IdentityType, timestamp: TimestampType, payload: Data) throws {
 		self.version = version
 		self.index = index
 		self.nonce = nonce
@@ -176,8 +177,29 @@ class CatenaTests: XCTestCase {
 		XCTAssert(try ident.publicKey.verify(message: d, signature: signed))
 	}
 
+	func testSerialization() throws {
+		let gen = SHA256Hash(of: "foo".data(using: .utf8)!)
+		let peer = URL(string: "ws://BFF43B46-164D-41AC-B73E-733782E58839@z3.pixelspark.nl:8338")!
+		let height = UInt64(100)
+		let miner = SHA256Hash(of: try Identity().publicKey.data)
+		let payload = "bar".data(using: .utf8)!
+		var highest = try TestBlock(version: 1, index: height, nonce: 0, previous: gen, miner: miner, timestamp: UInt64(Date().timeIntervalSince1970), payload: payload)
+		highest.mine(difficulty: 2)
+		let index = Index<TestBlock>(genesis: gen, peers: [peer], highest: highest.signature!, height: height, timestamp: UInt64(Date().timeIntervalSince1970))
+
+		let deserialized = Index<TestBlock>(json: index.json)!
+		print("o=\(index.json), s=\(deserialized.json)")
+		XCTAssert(index.height == deserialized.height)
+		XCTAssert(index.highest == deserialized.highest)
+		XCTAssert(index.genesis == deserialized.genesis)
+		XCTAssert(index.timestamp == deserialized.timestamp)
+		XCTAssert(index.peers == deserialized.peers)
+		XCTAssert(index == deserialized, "deserialized index must match original index")
+	}
+
 	func testLedger() throws {
-		var genesis = try TestBlock(version: 1, index: 0, nonce: 0, previous: SHA256Hash.zeroHash, miner: SHA256Hash.zeroHash, timestamp: Date(), payload: Data())
+		let ts = UInt64(Date().timeIntervalSince1970)
+		var genesis = try TestBlock(version: 1, index: 0, nonce: 0, previous: SHA256Hash.zeroHash, miner: SHA256Hash.zeroHash, timestamp: ts, payload: Data())
 		genesis.mine(difficulty: 2)
 		XCTAssert(genesis.isSignatureValid && genesis.isAGenesisBlock)
 		let ledger = TestLedger(genesis: genesis)
@@ -189,25 +211,30 @@ class CatenaTests: XCTestCase {
 		let miner = try Identity()
 		let minerID = SHA256Hash(of: miner.publicKey.data)
 
-		var b = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: Date(), payload: Data())
+		var b = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: ts, payload: Data())
 		b.mine(difficulty: ledger.longest.difficulty)
 		XCTAssert(try ledger.receive(block: b))
 		XCTAssert(ledger.longest.highest == b)
 
 		// Attempt to append an invalid block
-		var c = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: Date(), payload: Data())
+		var c = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: ts, payload: Data())
 		c.mine(difficulty: ledger.longest.difficulty)
 		c.nonce = 0
 		XCTAssert(!(try ledger.receive(block: c)))
 
 		// Attempt to add an outdated block should fail
-		var d = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: Date(), payload: Data())
+		var d = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: ts, payload: Data())
 		d.mine(difficulty: ledger.longest.difficulty)
 		XCTAssert(!(try ledger.receive(block: d)))
 
 		// Attempt to add an easier block should fail
-		var e = try TestBlock(version: 1, index: 2, nonce: 0, previous: b.signature!, miner: minerID, timestamp: Date(), payload: Data())
-		e.mine(difficulty: 1)
+		var e = try TestBlock(version: 1, index: 2, nonce: 0, previous: b.signature!, miner: minerID, timestamp: ts, payload: Data())
+
+		// Force block to have signature with difficulty=1
+		while e.signature == nil || e.signature!.difficulty != 1 {
+			e.mine(difficulty: 1)
+		}
+		XCTAssert(!(try ledger.longest.canAppend(block: e, to: ledger.longest.highest)))
 		XCTAssert(!(try ledger.receive(block: e)))
 		e.mine(difficulty: ledger.longest.difficulty)
 		XCTAssert(try ledger.receive(block: e))
