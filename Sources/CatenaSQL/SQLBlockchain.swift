@@ -76,7 +76,7 @@ public class SQLBlockchain: Blockchain {
 	database. If a chain splice/switch occurs that required rewinding to less than maxQueueSize blocks, this can be done
 	efficiently by removing blocks from the queue. If the splice happens earlier, the full database needs to be rebuilt.*/
 	private(set) var database: Database
-	private(set) var meta: SQLMetadata
+	public private(set) var meta: SQLMetadata
 	private let maxQueueSize = 7
 	private var queue: [SQLBlock] = []
 	private let mutex = Mutex()
@@ -257,7 +257,7 @@ public class SQLBlockchain: Blockchain {
 		}
 	}
 
-	func withUnverifiedTransactions<T>(_ block: @escaping ((SQLBlockchain) throws -> (T))) rethrows -> T {
+	public func withUnverifiedTransactions<T>(_ block: @escaping ((SQLBlockchain) throws -> (T))) rethrows -> T {
 		return try self.mutex.locked {
 			return try self.database.hypothetical {
 				// Replay queued blocks
@@ -272,7 +272,7 @@ public class SQLBlockchain: Blockchain {
 	}
 }
 
-class SQLUsersTable {
+public class SQLUsersTable {
 	let database: Database
 	let table: SQLTable
 
@@ -298,7 +298,7 @@ class SQLUsersTable {
 		}
 	}
 
-	func counter(for key: PublicKey) throws -> SQLTransaction.CounterType? {
+	public func counter(for key: PublicKey) throws -> SQLTransaction.CounterType? {
 		let selectStatement = SQLStatement.select(SQLSelect(
 			these: [.column(self.counterColumn)],
 			from: self.table,
@@ -326,7 +326,7 @@ class SQLUsersTable {
 		try _ = self.database.perform(insertStatement.sql(dialect: self.database.dialect))
 	}
 
-	func counters() throws -> [Data: Int] {
+	public func counters() throws -> [Data: Int] {
 		let selectStatement = SQLStatement.select(SQLSelect(
 			these: [.column(self.userColumn), .column(self.counterColumn)],
 			from: self.table,
@@ -591,8 +591,8 @@ public struct SQLMetadata {
 	static let specialInvisibleTables = [infoTableName, blocksTableName, usersTableName]
 
 	let info: SQLKeyValueTable
-	let grants: SQLGrants
-	let users: SQLUsersTable
+	public let grants: SQLGrants
+	public let users: SQLUsersTable
 	let database: Database
 	private let archive: SQLBlockArchive
 

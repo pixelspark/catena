@@ -195,6 +195,11 @@ class CatenaTests: XCTestCase {
 		XCTAssert(index.timestamp == deserialized.timestamp)
 		XCTAssert(index.peers == deserialized.peers)
 		XCTAssert(index == deserialized, "deserialized index must match original index")
+
+		let jsonData = try JSONSerialization.data(withJSONObject: index.json, options: [])
+		let deserializedJSON = try JSONSerialization.jsonObject(with: jsonData, options: [])
+		let deserializedFromJSON = Index<TestBlock>(json: deserializedJSON as! [String: Any])!
+		XCTAssert(deserializedFromJSON == index, "deserialized index from JSON must match original index")
 	}
 
 	func testLedger() throws {

@@ -9,6 +9,20 @@ import Dispatch
 import Starscream
 #endif
 
+public enum GossipError: Error {
+	case missingActionKey
+	case unknownAction(String)
+	case deserializationFailed
+
+	public var localizedDescription: String {
+		switch self {
+		case .missingActionKey: return "action key is missing"
+		case .unknownAction(let a): return "unknown action '\(a)'"
+		case .deserializationFailed: return "deserialization of payload failed"
+		}
+	}
+}
+
 public enum Gossip<LedgerType: Ledger> {
 	public typealias BlockchainType = LedgerType.BlockchainType
 	public typealias BlockType = BlockchainType.BlockType
@@ -37,25 +51,50 @@ public enum Gossip<LedgerType: Ledger> {
 	/** The peer requests to be forgotten, most probably because its UUID does not match the requested UUID. */
 	case forget
 
-	init?(json: [String: Any]) {
+	init(json: [String: Any]) throws {
 		if let q = json[LedgerType.ParametersType.actionKey] as? String {
 			if q == "query" {
 				self = .query
 			}
-			else if q == "block", let blockData = json["block"] as? [String: Any] {
-				self = .block(blockData)
+			else if q == "block" {
+				if let blockData = json["block"] as? [String: Any] {
+					self = .block(blockData)
+				}
+				else {
+					throw GossipError.deserializationFailed
+				}
 			}
-			else if q == "fetch", let hash = json["hash"] as? String, let hashValue = BlockType.HashType(hash: hash) {
-				self = .fetch(hashValue)
+			else if q == "fetch" {
+				if let hash = json["hash"] as? String, let hashValue = BlockType.HashType(hash: hash) {
+					self = .fetch(hashValue)
+				}
+				else {
+					throw GossipError.deserializationFailed
+				}
 			}
-			else if q == "index", let idx = json["index"] as? [String: Any], let index = Index<BlockType>(json: idx) {
-				self = .index(index)
+			else if q == "index" {
+				if let idx = json["index"] as? [String: Any], let index = Index<BlockType>(json: idx) {
+					self = .index(index)
+				}
+				else {
+					throw GossipError.deserializationFailed
+				}
 			}
-			else if q == "error", let message = json["message"] as? String {
-				self = .error(message)
+			else if q == "error" {
+				if let message = json["message"] as? String {
+					self = .error(message)
+				}
+				else {
+					throw GossipError.deserializationFailed
+				}
 			}
-			else if q == "tx", let tx = json["tx"] as? [String: Any] {
-				self = .transaction(tx)
+			else if q == "tx" {
+				if let tx = json["tx"] as? [String: Any] {
+					self = .transaction(tx)
+				}
+				else {
+					throw GossipError.deserializationFailed
+				}
 			}
 			else if q == "passive" {
 				self = .passive
@@ -64,11 +103,11 @@ public enum Gossip<LedgerType: Ledger> {
 				self  = .forget
 			}
 			else {
-				return nil
+				throw GossipError.unknownAction(q)
 			}
 		}
 		else {
-			return nil
+			throw GossipError.missingActionKey
 		}
 	}
 
@@ -269,7 +308,8 @@ public class PeerConnection<LedgerType: Ledger> {
 
 	public func receive(data: [Any]) {
 		if data.count == 2, let counter = data[0] as? Int, let gossipData = data[1] as? [String: Any] {
-			if let g = GossipType(json: gossipData) {
+			do {
+				let g = try GossipType(json: gossipData)
 				self.mutex.locked {
 					if counter != 0, let cb = callbacks[counter] {
 						self.callbacks.removeValue(forKey: counter)
@@ -291,12 +331,12 @@ public class PeerConnection<LedgerType: Ledger> {
 					}
 				}
 			}
-			else {
-				Log.warning("[Gossip] Receive unknown gossip: \(gossipData)")
+			catch {
+				Log.warning("[Gossip] Received invalid gossip \(error.localizedDescription): \(gossipData)")
 			}
 		}
 		else {
-			Log.warning("[Gossip] Receive malformed: \(data)")
+			Log.warning("[Gossip] Received malformed gossip: \(data)")
 		}
 	}
 
