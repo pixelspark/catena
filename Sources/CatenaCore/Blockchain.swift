@@ -368,11 +368,13 @@ extension Block {
 		is generally low for a genesis block and this is only used for genesis blocks anyway, this should not be an
 		issue. */
 		while true {
-			#if swift(>=4.0)
-				self.nonce = self.nonce.unsafeAdding(NonceType(1))
-			#else
+			// FIXME replace with unsafeAdding in Swift 4
+			if self.nonce == NonceType.max {
+				self.nonce = NonceType.min
+			}
+			else {
 				self.nonce = self.nonce + NonceType(1)
-			#endif
+			}
 
 			let hash = HashType(of: self.dataForSigning)
 			if hash.difficulty >= difficulty {
