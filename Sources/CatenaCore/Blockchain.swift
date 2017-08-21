@@ -174,6 +174,18 @@ public protocol Parameters {
 	static var futureBlockThreshold: TimeInterval { get }
 }
 
+/** Default values for ledger parameters. Override as you see fit. */
+public extension Parameters {
+	public static var actionKey: String { return "t" }
+	public static var uuidRequestKey: String { return "uuid" }
+	public static var portRequestKey: String { return "port" }
+	public static var serviceDomain: String { return "local." }
+	public static var peerReplaceInterval: TimeInterval { return 60.0 }
+	public static var peerMaximumAgeForAdvertisement: TimeInterval { return 3600.0 }
+	public static var futureBlockThreshold: TimeInterval { return 2 * 3600.0 }
+	public static var serviceType: String { return "_\(self.protocolVersion)._tcp." }
+}
+
 extension Blockchain {
 	/** The default implementation checks whether hashes and indexes are succeeding, and whether the block signature is
 	valid and conforms to the current difficulty level. */

@@ -131,16 +131,9 @@ private class TestChain: Blockchain {
 }
 
 private struct TestParameters: Parameters {
-	public static let actionKey: String = "t"
 	public static let protocolVersion = "test-v1"
-	public static let uuidRequestKey = "uuid"
-	public static let portRequestKey = "port"
-	public static let peerReplaceInterval: TimeInterval = 60.0
-	public static let peerMaximumAgeForAdvertisement: TimeInterval = 3600.0
-	public static let serviceType = "_test._tcp."
-	public static let serviceDomain = "local."
-	public static let futureBlockThreshold = 2 * 3600.0
 }
+
 private class TestLedger: Ledger {
 	typealias ParametersType = TestParameters
 

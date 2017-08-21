@@ -54,15 +54,7 @@ public class SQLLedger: Ledger {
 }
 
 public struct SQLParameters: Parameters {
-	public static let actionKey: String = "t"
 	public static let protocolVersion = "catena-v1"
-	public static let uuidRequestKey = "uuid"
-	public static let portRequestKey = "port"
-	public static let peerReplaceInterval: TimeInterval = 60.0
-	public static let peerMaximumAgeForAdvertisement: TimeInterval = 3600.0
-	public static let serviceType = "_catena._tcp."
-	public static let serviceDomain = "local."
-	public static let futureBlockThreshold = 2 * 3600.0
 }
 
 public class SQLBlockchain: Blockchain {
