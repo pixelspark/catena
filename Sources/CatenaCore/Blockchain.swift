@@ -18,10 +18,6 @@ public protocol Ledger {
 	var orphans: Orphans<BlockchainType.BlockType> { get }
 	var mutex: Mutex { get }
 
-	/** The number of blocks a longer chain needs to be longer than the current one in order for the Ledger to switch to
-	the longer chain. */
-	var spliceLimit: UInt { get }
-
 	/** Returns whether a transaction is valid for inclusion in the transaction memory pool (to be mined). The optional
 	`pool` argument may refer to a block that contains transactions currently in the memory pool (for mining). */
 	func canAccept(transaction: BlockchainType.BlockType.TransactionType, pool: BlockchainType.BlockType?) throws -> Bool
@@ -172,6 +168,10 @@ public protocol Parameters {
 
 	/** The amount of time a block's timestamp may be in the future (compared to 'network time'). */
 	static var futureBlockThreshold: TimeInterval { get }
+
+	/** The number of blocks a longer chain needs to be longer than the current one in order for the Ledger to switch to
+	the longer chain. */
+	static var spliceLimit: UInt { get }
 }
 
 /** Default values for ledger parameters. Override as you see fit. */
@@ -184,6 +184,7 @@ public extension Parameters {
 	public static var peerMaximumAgeForAdvertisement: TimeInterval { return 3600.0 }
 	public static var futureBlockThreshold: TimeInterval { return 2 * 3600.0 }
 	public static var serviceType: String { return "_\(self.protocolVersion)._tcp." }
+	public static var spliceLimit: UInt { return 1 }
 }
 
 extension Blockchain {

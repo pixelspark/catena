@@ -130,19 +130,16 @@ private class TestChain: Blockchain {
 
 }
 
-private struct TestParameters: Parameters {
-	public static let protocolVersion = "test-v1"
-}
-
 private class TestLedger: Ledger {
-	typealias ParametersType = TestParameters
-
 	typealias BlockchainType = TestChain
+
+	struct ParametersType: Parameters {
+		public static let protocolVersion = "test-v1"
+	}
 
 	var longest: TestChain
 	var orphans = Orphans<TestBlock>()
 	var mutex: Mutex = Mutex()
-	var spliceLimit: UInt = 1
 
 	init(genesis: TestBlock) {
 		longest = TestChain(genesis: genesis)

@@ -9,7 +9,6 @@ public class SQLLedger: Ledger {
 	public let mutex = Mutex()
 	public let orphans = Orphans<SQLBlock>()
 	public var longest: SQLBlockchain
-	public let spliceLimit: UInt = 1
 
 	/** Instantiate an SQLLedger that tracks chains starting at the indicated genesis block and uses the indicated database
 	file for storage. When`replay` is true, the ledger will process database transactions, whereas if it is false, the
