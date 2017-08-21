@@ -427,13 +427,45 @@ public class PeerIncomingConnection<LedgerType: Ledger>: PeerConnection<LedgerTy
 public class PeerOutgoingConnection<LedgerType: Ledger>: PeerConnection<LedgerType>, WebSocketDelegate {
 	let connection: Starscream.WebSocket
 
+	public init?(to url: URL, from uuid: UUID? = nil, at port: Int? = nil) {
+		assert((uuid != nil && port != nil) || (uuid == nil && port == nil), "either set both a port and uuid or set neither (passive mode)")
+
+		if var uc = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+			// Set source peer port and UUID
+			if let uuid = uuid, let port = port {
+				if port <= 0 {
+					return nil
+				}
+
+				uc.queryItems = [
+					URLQueryItem(name: LedgerType.ParametersType.uuidRequestKey, value: uuid.uuidString),
+					URLQueryItem(name: LedgerType.ParametersType.portRequestKey, value: String(port))
+				]
+			}
+
+			self.connection = Starscream.WebSocket(url: uc.url!, protocols: [LedgerType.ParametersType.protocolVersion])
+			super.init(isIncoming: false)
+			self.setup()
+		}
+		else {
+			return nil
+		}
+	}
+
 	init(connection: Starscream.WebSocket) {
 		self.connection = connection
-		connection.timeout = 10
-
 		super.init(isIncoming: false)
-		connection.delegate = self
-		connection.callbackQueue = DispatchQueue.global(qos: .background)
+		self.setup()
+	}
+
+	private func setup() {
+		self.connection.timeout = 10
+		self.connection.delegate = self
+		self.connection.callbackQueue = DispatchQueue.global(qos: .background)
+
+		if !self.connection.isConnected {
+			self.connection.connect()
+		}
 	}
 
 	deinit {
@@ -536,31 +568,20 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 					switch self.state {
 					case .new, .failed(_):
 						// Perhaps reconnect to this peer
-						if var uc = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-							uc.queryItems = [
-								URLQueryItem(name: LedgerType.ParametersType.uuidRequestKey, value: n.uuid.uuidString),
-								URLQueryItem(name: LedgerType.ParametersType.portRequestKey, value: String(n.server.port))
-							]
-
-							// If the peer's URL has an empty or 0 port, this indicates the peer can only connect to us
-							if uc.port == nil || uc.port! == 0 {
+						#if !os(Linux)
+							if url.port == nil || url.port! == 0 {
 								self.state = .ignored(reason: "disconnected, and peer does not accept incoming connections")
 							}
-							else {
-								#if !os(Linux)
-									let ws = Starscream.WebSocket(url: uc.url!, protocols: [LedgerType.ParametersType.protocolVersion])
-									let pic = PeerOutgoingConnection<LedgerType>(connection: ws)
-									pic.delegate = self
-									Log.debug("[Peer] connect outgoing \(url)")
-									ws.connect()
-									self.state = .connecting
-									self.connection = pic
-								#else
-									// Outgoing connections are not supported on Linux (yet!)
-									self.state = .ignored(reason: "disconnected, and cannot make outgoing connections")
-								#endif
+							else if let pic = PeerOutgoingConnection<LedgerType>(to: url, from: n.uuid, at: n.server.port) {
+								pic.delegate = self
+								Log.debug("[Peer] connect outgoing \(url)")
+								self.state = .connecting
+								self.connection = pic
 							}
-						}
+						#else
+							// Outgoing connections are not supported on Linux (yet!)
+							self.state = .ignored(reason: "disconnected, and cannot make outgoing connections")
+						#endif
 
 					case .connected(_), .queried(_):
 						try self.query()
