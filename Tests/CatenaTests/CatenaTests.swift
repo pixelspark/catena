@@ -90,12 +90,14 @@ private class TestChain: Blockchain {
 		return self.chain.first!
 	}
 
-	var difficulty: Int
 	var chain: [TestBlock] = []
 
 	init(genesis: TestBlock) {
 		self.chain = [genesis]
-		self.difficulty = 2
+	}
+
+	func difficulty(forBlockFollowing: TestBlock) -> Int {
+		return 2
 	}
 
 	func get(block: SHA256Hash) throws -> TestBlock? {
@@ -217,19 +219,19 @@ class CatenaTests: XCTestCase {
 		let minerID = SHA256Hash(of: miner.publicKey.data)
 
 		var b = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: ts, payload: Data())
-		b.mine(difficulty: ledger.longest.difficulty)
+		b.mine(difficulty: ledger.longest.difficulty(forBlockFollowing: ledger.longest.genesis))
 		XCTAssert(try ledger.receive(block: b))
 		XCTAssert(ledger.longest.highest == b)
 
 		// Attempt to append an invalid block
 		var c = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: ts, payload: Data())
-		c.mine(difficulty: ledger.longest.difficulty)
+		c.mine(difficulty: ledger.longest.difficulty(forBlockFollowing: ledger.longest.genesis))
 		c.nonce = 0
 		XCTAssert(!(try ledger.receive(block: c)))
 
 		// Attempt to add an outdated block should fail
 		var d = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: ts, payload: Data())
-		d.mine(difficulty: ledger.longest.difficulty)
+		d.mine(difficulty: ledger.longest.difficulty(forBlockFollowing: ledger.longest.genesis))
 		XCTAssert(!(try ledger.receive(block: d)))
 
 		// Attempt to add an easier block should fail
@@ -241,7 +243,7 @@ class CatenaTests: XCTestCase {
 		}
 		XCTAssert(!(try ledger.longest.canAppend(block: e, to: ledger.longest.highest)))
 		XCTAssert(!(try ledger.receive(block: e)))
-		e.mine(difficulty: ledger.longest.difficulty)
+		e.mine(difficulty: ledger.longest.difficulty(forBlockFollowing: ledger.longest.highest))
 		XCTAssert(try ledger.receive(block: e))
 
 
