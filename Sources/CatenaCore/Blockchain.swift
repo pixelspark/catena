@@ -183,10 +183,11 @@ extension Blockchain {
 			&& block.isSignatureValid
 			&& block.signature!.difficulty >= self.difficulty(forBlockFollowing: to) {
 
-			// Check block timestamp against median timestamp of previous blocks
+			/* Check block timestamp against median timestamp of previous blocks. The last 11 blocks are looked at by
+			default. */
 			/* Note: a block timestamp should also not be too far in the future, but this is checked by Node when
 			receiving a block from someone else. */
-			if let ts = try self.medianHeadTimestamp(startingAt: to) {
+			if let ts = try self.medianHeadTimestamp(startingAt: to, maximumLength: 11) {
 				// Block timestamp must be above median timestamp of last x blocks
 				return block.date.timeIntervalSince(ts) >= 0.0
 			}
@@ -202,7 +203,7 @@ extension Blockchain {
 
 	/** The median of the timestamps of the last `maximumLength` blocks, or nil if there are no blocks. The genesis block
 	timestamp is arbitrary (not included in its signature) and therefore never included. */
-	public func medianHeadTimestamp(startingAt: BlockType, maximumLength: Int = 10) throws -> Date? {
+	public func medianHeadTimestamp(startingAt: BlockType, maximumLength: Int) throws -> Date? {
 		var times: [TimeInterval] = []
 		var block: BlockType? = startingAt
 
