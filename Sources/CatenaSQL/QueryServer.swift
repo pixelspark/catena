@@ -28,10 +28,10 @@ extension Value {
 }
 
 public class NodeQueryServer: QueryServer {
-	var node: Node<SQLLedger>
+	var agent: SQLAgent
 
-	public init(node: Node<SQLLedger>, port: Int, family: Family = .ipv6) {
-		self.node = node
+	public init(agent: SQLAgent, port: Int, family: Family = .ipv6) {
+		self.agent = agent
 		super.init(port: port, family: family)
 	}
 
@@ -74,17 +74,12 @@ public class NodeQueryServer: QueryServer {
 			// Mutating statements are queued
 			if statement.isMutating {
 				// This needs to go to the ledger
-				let counter = try node.ledger.longest.withUnverifiedTransactions { chain in
-					return try chain.meta.users.counter(for: identity.publicKey) ?? 0
-				}
-
-				let transaction = try SQLTransaction(statement: statement, invoker: identity.publicKey, counter: counter + SQLTransaction.CounterType(1))
-				try transaction.sign(with: identity.privateKey)
-				try self.node.receive(transaction: transaction, from: nil)
-				try connection.send(error: "OK \(transaction.counter) \(transaction.signature!.base58encoded) \(transaction.statement.sql(dialect: SQLStandardDialect()))", severity: .info)
+				let transaction = try SQLTransaction(statement: statement, invoker: identity.publicKey, counter: SQLTransaction.CounterType(0))
+				let result = try self.agent.submit(transaction: transaction, signWith: identity.privateKey)
+				try connection.send(error: "\(result ? "OK" : "NOT OK") \(transaction.counter) \(transaction.signature!.base58encoded) \(transaction.statement.sql(dialect: SQLStandardDialect()))", severity: result ? .info : .error)
 			}
 			else {
-				try node.ledger.longest.withUnverifiedTransactions { chain in
+				try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
 					let context = SQLContext(metadata: chain.meta, invoker: identity.publicKey, block: chain.highest)
 					let result = try chain.database.perform(statement.backendStatement(context: context).sql(dialect: chain.database.dialect))
 					if case .row = result.state {

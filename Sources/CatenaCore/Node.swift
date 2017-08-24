@@ -132,14 +132,15 @@ public class Node<LedgerType: Ledger> {
 		}
 	}
 
-	/** Append a transaction to the memory pool (maintained by the miner). */
-	public func receive(transaction: BlockType.TransactionType, from peer: Peer<LedgerType>?) throws {
+	/** Append a transaction to the memory pool (maintained by the miner). Returns true if the transaction was successfully
+	appended (to the miner memory pool) or was already in the miner pool. */
+	public func receive(transaction: BlockType.TransactionType, from peer: Peer<LedgerType>?) throws -> Bool {
 		// Do not accept any transactions from peers we should be ignoring
 		if let p = peer {
 			switch p.state {
 			case .connecting, .new, .querying, .ignored(reason: _), .failed(error: _):
 				Log.info("[Node] Ignoring block received from peer \(p) because peer's state is \(p.state)")
-				return
+				return false
 
 			case .queried, .connected, .passive:
 				break
@@ -174,9 +175,11 @@ public class Node<LedgerType: Ledger> {
 					}
 				}
 			}
+			return true
 		}
 		else {
 			Log.error("[Node] Not appending transaction \(transaction) to memory pool: ledger says it isn't acceptable")
+			return false
 		}
 	}
 

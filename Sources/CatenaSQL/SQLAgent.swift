@@ -1,12 +1,55 @@
 import Foundation
 import Kitura
 import CatenaCore
+import LoggerAPI
+
+/** The SQL agent coordinates participation in a dist*/
+public class SQLAgent {
+	let node: Node<SQLLedger>
+	private var counters: [PublicKey: SQLTransaction.CounterType] = [:]
+	private let mutex = Mutex()
+
+	public init(node: Node<SQLLedger>) {
+		self.node = node
+	}
+
+	/** Submit a transaction, after issue'ing a consecutive counter value to it and signing it with the private key
+	provided. */
+	public func submit(transaction: SQLTransaction, signWith key: PrivateKey) throws -> Bool {
+		try self.mutex.locked {
+			if let previous = self.counters[transaction.invoker] {
+				Log.debug("[SQLAgent] last counter for \(transaction.invoker) was \(previous)")
+				transaction.counter = previous + SQLTransaction.CounterType(1)
+			}
+			else {
+				// Look up the counter value
+				try self.node.ledger.longest.withUnverifiedTransactions { chain in
+					if let previous = try chain.meta.users.counter(for: transaction.invoker) {
+						Log.debug("[SQLAgent] last counter for \(transaction.invoker) was \(previous) according to ledger")
+						transaction.counter = previous + SQLTransaction.CounterType(1)
+					}
+					else {
+						Log.debug("[SQLAgent] no previous counter for \(transaction.invoker)")
+						transaction.counter = SQLTransaction.CounterType(0)
+					}
+				}
+			}
+
+			Log.debug("[SQLAgent] using counter \(transaction.counter) for \(transaction.invoker)")
+			self.counters[transaction.invoker] = transaction.counter
+		}
+
+		// Submit
+		try transaction.sign(with: key)
+		return try self.node.receive(transaction: transaction, from: nil)
+	}
+}
 
 public class SQLAPIEndpoint {
-	let node: Node<SQLLedger>
+	let agent: SQLAgent
 
-	public init(node: Node<SQLLedger>, router: Router) {
-		self.node = node
+	public init(agent: SQLAgent, router: Router) {
+		self.agent = agent
 
 		router.get("/api", handler: self.handleIndex)
 		router.get("/api/block/:hash", handler: self.handleGetBlock)
@@ -17,11 +60,11 @@ public class SQLAPIEndpoint {
 	}
 
 	private func handleIndex(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let longest = self.node.ledger.longest
+		let longest = self.agent.node.ledger.longest
 
 		var networkTime: [String: Any] = [:]
 
-		if let nt = self.node.medianNetworkTime {
+		if let nt = self.agent.node.medianNetworkTime {
 			let d = Date()
 			networkTime["ownTime"] = d.iso8601FormattedUTCDate
 			networkTime["ownTimestamp"] = Int(d.timeIntervalSince1970)
@@ -31,7 +74,7 @@ public class SQLAPIEndpoint {
 		}
 
 		response.send(json: [
-			"uuid": self.node.uuid.uuidString,
+			"uuid": self.agent.node.uuid.uuidString,
 
 			"time": networkTime,
 
@@ -40,7 +83,7 @@ public class SQLAPIEndpoint {
 				"genesis": longest.genesis.json
 			],
 
-			"peers": self.node.peers.map { (url, peer) -> [String: Any] in
+			"peers": self.agent.node.peers.map { (url, peer) -> [String: Any] in
 				return peer.mutex.locked {
 					let desc: String
 					switch peer.state {
@@ -76,8 +119,8 @@ public class SQLAPIEndpoint {
 
 	private func handleGetBlock(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
 		if let hashString = request.parameters["hash"], let hash = SQLBlock.HashType(hash: hashString) {
-			let block = try self.node.ledger.mutex.locked {
-				return try self.node.ledger.longest.get(block: hash)
+			let block = try self.agent.node.ledger.mutex.locked {
+				return try self.agent.node.ledger.longest.get(block: hash)
 			}
 
 			if let b = block {
@@ -96,7 +139,7 @@ public class SQLAPIEndpoint {
 	}
 
 	private func handleGetPool(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let pool = self.node.miner.block?.payload.transactions.map { return $0.json } ?? []
+		let pool = self.agent.node.miner.block?.payload.transactions.map { return $0.json } ?? []
 
 		response.send(json: [
 			"status": "ok",
@@ -106,7 +149,7 @@ public class SQLAPIEndpoint {
 	}
 
 	private func handleGetUsers(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let data = try self.node.ledger.longest.withUnverifiedTransactions { chain in
+		let data = try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
 			return try chain.meta.users.counters()
 		}
 
@@ -123,7 +166,7 @@ public class SQLAPIEndpoint {
 	}
 
 	private func handleGetLast(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let chain = self.node.ledger.longest
+		let chain = self.agent.node.ledger.longest
 		var b: SQLBlock? = chain.highest
 		var data: [[String: Any]] = []
 		for _ in 0..<10 {
@@ -147,14 +190,14 @@ public class SQLAPIEndpoint {
 	}
 
 	private func handleGetJournal(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let chain = self.node.ledger.longest
+		let chain = self.agent.node.ledger.longest
 		var b: SQLBlock? = chain.highest
 		var data: [String] = [];
 		while let block = b {
 			data.append("")
 
 			for tr in block.payload.transactions.reversed() {
-				data.append(tr.statement.sql(dialect: SQLStandardDialect()))
+				data.append(tr.statement.sql(dialect: SQLStandardDialect()) + " -- @\(tr.counter)")
 			}
 
 			data.append("-- #\(block.index): \(block.signature!.stringValue)")

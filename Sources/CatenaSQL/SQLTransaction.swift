@@ -20,9 +20,9 @@ public class SQLTransaction: Transaction, CustomDebugStringConvertible {
 	}
 
 	public typealias CounterType = UInt64
-	public let invoker: CatenaCore.PublicKey
-	public let counter: CounterType
-	public let statement: SQLStatement
+	public var invoker: CatenaCore.PublicKey
+	public var counter: CounterType
+	public var statement: SQLStatement
 	var signature: Data? = nil
 
 	/** The maximum size of a transaction (as measured by `dataForSigning`) */
@@ -33,7 +33,7 @@ public class SQLTransaction: Transaction, CustomDebugStringConvertible {
 		case syntaxError
 	}
 
-	public init(statement: SQLStatement, invoker: CatenaCore.PublicKey, counter: CounterType) throws {
+	public init(statement: SQLStatement, invoker: CatenaCore.PublicKey, counter: CounterType = CounterType(0)) throws {
 		self.invoker = invoker
 		self.statement = statement
 		self.counter = counter

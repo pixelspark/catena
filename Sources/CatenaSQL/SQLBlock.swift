@@ -241,6 +241,7 @@ extension SQLBlock {
 
 		// Check whether block is valid and consecutive
 		if self.index != 0 && (self.index != (headIndex + SQLBlock.IndexType(1)) || self.previous != headHash) {
+			Log.debug("[SQLBlock] block is not appendable: \(self.index) vs. head=\(headIndex) \(self.previous.stringValue) vs. head=\(headHash.stringValue)")
 			throw SQLBlockError.inconsecutiveBlockError
 		}
 

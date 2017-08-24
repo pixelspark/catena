@@ -148,7 +148,8 @@ do {
 	let ledger = try SQLLedger(genesis: genesisBlock, database: databaseFile, replay: !noReplayOption.value)
 	let netPort = netPortOption.value ?? 8338
 	let node = try Node<SQLLedger>(ledger: ledger, port: netPort, miner: SHA256Hash(of: rootIdentity.publicKey.data), uuid: uuid)
-	let _ = SQLAPIEndpoint(node: node, router: node.server.router)
+	let agent = SQLAgent(node: node)
+	let _ = SQLAPIEndpoint(agent: agent, router: node.server.router)
 
 	// Add peers from database
 	if let pd = peerTable {
@@ -167,8 +168,8 @@ do {
 
 	// Query server
 	if !initializeOption.value {
-		let queryServerV4 = NodeQueryServer(node: node, port: queryPortOption.value ?? (netPort+1), family: .ipv4)
-		let queryServerV6 = NodeQueryServer(node: node, port: queryPortOption.value ?? (netPort+1), family: .ipv6)
+		let queryServerV4 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv4)
+		let queryServerV6 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv6)
 		queryServerV6.run()
 		queryServerV4.run()
 
@@ -197,8 +198,7 @@ do {
 		if configureOption.value {
 			// Create grants table, etc.
 			let create = SQLStatement.create(table: SQLTable(name: SQLMetadata.grantsTableName), schema: SQLGrants.schema)
-			let createTransaction = try SQLTransaction(statement: create, invoker: rootIdentity.publicKey, counter: rootCounter)
-			rootCounter += 1
+			let createTransaction = try SQLTransaction(statement: create, invoker: rootIdentity.publicKey)
 
 			let grant = SQLStatement.insert(SQLInsert(
 				orReplace: false,
@@ -211,11 +211,9 @@ do {
 					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.delete.rawValue), .literalString(SQLMetadata.grantsTableName)]
 				]
 			))
-			let grantTransaction = try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey, counter: rootCounter)
-			rootCounter += 1
-
-			try node.receive(transaction: try createTransaction.sign(with: rootIdentity.privateKey), from: nil)
-			try node.receive(transaction: try grantTransaction.sign(with: rootIdentity.privateKey), from: nil)
+			let grantTransaction = try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey)
+			_ = try agent.submit(transaction: createTransaction, signWith: rootIdentity.privateKey)
+			_ = try agent.submit(transaction: grantTransaction, signWith: rootIdentity.privateKey)
 		}
 
 		// Start submitting test blocks if that's what the user requested
@@ -224,8 +222,9 @@ do {
 
 			node.start(blocking: false)
 			let q = try SQLStatement("CREATE TABLE test (origin TEXT, x TEXT);");
-			try node.receive(transaction: try SQLTransaction(statement: q, invoker: rootIdentity.publicKey, counter: rootCounter).sign(with: rootIdentity.privateKey), from: nil)
-			rootCounter += 1
+			let createTransaction = try SQLTransaction(statement: q, invoker: rootIdentity.publicKey)
+			_ = try agent.submit(transaction: createTransaction, signWith: rootIdentity.privateKey)
+			_ = try agent.submit(transaction: try SQLTransaction(statement: q, invoker: rootIdentity.publicKey), signWith: rootIdentity.privateKey)
 
 			// Grant to user
 			let grant = SQLStatement.insert(SQLInsert(
@@ -236,29 +235,19 @@ do {
 					[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString("test")]
 				]
 			))
-			try node.receive(transaction: try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey, counter: rootCounter).sign(with: rootIdentity.privateKey), from: nil)
-			rootCounter += 1
-
+			_ = try agent.submit(transaction: try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey), signWith: rootIdentity.privateKey)
 			sleep(10)
 
 			Log.info("Start submitting demo blocks")
-			var testCounter: SQLTransaction.CounterType = 0
 			var i = 0
-
-			// Try to find current counter value
-			try ledger.longest.withUnverifiedTransactions { bc in
-				testCounter = try bc.meta.users.counter(for: identity.publicKey) ?? testCounter
-				Log.info("Key \(identity.publicKey.stringValue) has transaction counter=\(i)")
-			}
 
 			while true {
 				do {
 					i += 1
 					let q = try SQLStatement("INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));")
-					let tr = try SQLTransaction(statement: q, invoker: identity.publicKey, counter: testCounter).sign(with: identity.privateKey)
-					Log.info("[Test] submit \(tr)")
-					try node.receive(transaction: tr, from: nil)
-					testCounter += 1
+					let tr = try SQLTransaction(statement: q, invoker: identity.publicKey)
+					_ = try agent.submit(transaction: tr, signWith: identity.privateKey)
+					Log.info("[Test] submitted \(tr)")
 					sleep(2)
 				}
 				catch {
