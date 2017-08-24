@@ -148,38 +148,49 @@ public class Node<LedgerType: Ledger> {
 		}
 
 		// Is this transaction in-order?
-		if try self.ledger.canAccept(transaction: transaction, pool: self.miner.block) {
+		switch try self.ledger.canAccept(transaction: transaction, pool: self.miner.block) {
+		case .now:
 			let isNew = try self.miner.append(transaction: transaction)
-
-			// Did we get this block from someone else and is it new? Then rebroadcast
 			if isNew {
-				Log.info("[Node] Re-broadcasting transaction \(transaction) to peers as it is new")
-				let transactionGossip = Gossip<LedgerType>.transaction(transaction.json)
-				self.peers.forEach { (url, otherPeer) in
-					if peer == nil || otherPeer.url != peer!.url {
-						switch otherPeer.state {
-						case .queried, .passive:
-							if let otherConnection = otherPeer.connection {
-								do {
-									try otherConnection.request(gossip: transactionGossip)
-								}
-								catch {
-									// Not a problem if this fails
-								}
-							}
-
-						default:
-							// Do not send
-							break
-						}
-					}
-				}
+				self.rebroadcast(transaction: transaction, from: peer)
 			}
 			return true
-		}
-		else {
+
+		case .future:
+			let isNew = self.miner.setAside(transaction: transaction)
+			if isNew {
+				self.rebroadcast(transaction: transaction, from: peer)
+			}
+			return true
+
+		case .never:
 			Log.error("[Node] Not appending transaction \(transaction) to memory pool: ledger says it isn't acceptable")
 			return false
+		}
+	}
+
+	private func rebroadcast(transaction: BlockType.TransactionType, from peer: Peer<LedgerType>?) {
+		// Did we get this block from someone else and is it new? Then rebroadcast
+		Log.info("[Node] Re-broadcasting transaction \(transaction) to peers as it is new")
+		let transactionGossip = Gossip<LedgerType>.transaction(transaction.json)
+		self.peers.forEach { (url, otherPeer) in
+			if peer == nil || otherPeer.url != peer!.url {
+				switch otherPeer.state {
+				case .queried, .passive:
+					if let otherConnection = otherPeer.connection {
+						do {
+							try otherConnection.request(gossip: transactionGossip)
+						}
+						catch {
+							// Not a problem if this fails
+						}
+					}
+
+				default:
+					// Do not send
+					break
+				}
+			}
 		}
 	}
 
@@ -248,7 +259,7 @@ public class Node<LedgerType: Ledger> {
 			// Check whether the connecting peer is ourselves
 			let isSelf = connectingUUID == self.uuid
 			if isSelf {
-				Log.info("[Server] dropping connection \(reverseURL): is ourselves")
+				Log.debug("[Server] dropping connection \(reverseURL): is ourselves")
 				connection.close()
 				return
 			}
@@ -268,7 +279,7 @@ public class Node<LedgerType: Ledger> {
 				}
 				else {
 					try connection.request(gossip: .forget)
-					Log.info("[Server] dropping connection \(reverseURL): did not specify node UUID to connect to (request URL: '\(connection.connection.request.urlURL.absoluteString)')")
+					Log.debug("[Server] dropping connection \(reverseURL): did not specify node UUID to connect to (request URL: '\(connection.connection.request.urlURL.absoluteString)')")
 					connection.close()
 					return
 				}
@@ -276,7 +287,7 @@ public class Node<LedgerType: Ledger> {
 				// Check if the URL user is a valid UUID
 				if let userUUID = UUID(uuidString: user) {
 					if userUUID != self.uuid {
-						Log.info("[Server] dropping connection \(reverseURL): is looking for different UUID \(userUUID)")
+						Log.debug("[Server] dropping connection \(reverseURL): is looking for different UUID \(userUUID)")
 						try connection.request(gossip: .forget)
 						connection.close()
 						return
@@ -285,7 +296,7 @@ public class Node<LedgerType: Ledger> {
 				else {
 					// Requested node UUID is invalid
 					try connection.request(gossip: .forget)
-					Log.info("[Server] dropping connection \(reverseURL): invalid UUID '\(user)'")
+					Log.debug("[Server] dropping connection \(reverseURL): invalid UUID '\(user)'")
 					connection.close()
 					return
 				}

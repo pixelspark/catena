@@ -2,6 +2,18 @@ import Foundation
 import Cryptor
 import LoggerAPI
 
+/** Whether a transaction is eligible for being processed. */
+public enum Eligibility {
+	/** The transaction will never be accepted **/
+	case never
+
+	/** The transaction can be accepted right now */
+	case now
+
+	/** The transaction may be accepted in the future, but not right now. */
+	case future
+}
+
 /** Represents a ledger built on top of a blockchain. The ledger decides which blockchain is considered the 'truth' (it
 executes the 'longest chain rule'). */
 public protocol Ledger {
@@ -20,7 +32,7 @@ public protocol Ledger {
 
 	/** Returns whether a transaction is valid for inclusion in the transaction memory pool (to be mined). The optional
 	`pool` argument may refer to a block that contains transactions currently in the memory pool (for mining). */
-	func canAccept(transaction: BlockchainType.BlockType.TransactionType, pool: BlockchainType.BlockType?) throws -> Bool
+	func canAccept(transaction: BlockchainType.BlockType.TransactionType, pool: BlockchainType.BlockType?) throws -> Eligibility
 }
 
 /** Represents a blockchain containing blocks. */

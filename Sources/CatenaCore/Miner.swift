@@ -63,6 +63,19 @@ public class Miner<LedgerType: Ledger> {
 		return isNew
 	}
 
+	/** Add a transaction to the 'aside' table, which means it will be considered for the next mining block (use this for
+	transactions that are not currently acceptable but may become acceptable in the future). Returns true if the
+	transaction is not yet in the aside list, and false if it already is. */
+	public func setAside(transaction: BlockType.TransactionType) -> Bool {
+		return self.mutex.locked {
+			if self.aside.contains(member: transaction) {
+				return false
+			}
+			self.aside.append(transaction)
+			return true
+		}
+	}
+
 	private func start() {
 		let shouldStart = self.mutex.locked { () -> Bool in
 			if !self.isEnabled {
@@ -100,19 +113,27 @@ public class Miner<LedgerType: Ledger> {
 			}
 
 			// Do we have transactions set aside for the next block?
-			if !self.aside.isEmpty {
+			if let n = node, !self.aside.isEmpty {
 				// Keep adding transactions until block is full or set is empty
 				while let next = self.aside.first {
 					if self.block!.hasRoomFor(transaction: next) {
-						do {
-							// This can fail, but transactions in the 'aside' set just get one chance
-							_ = try self.append(transaction: next)
+						switch try n.ledger.canAccept(transaction: next, pool: self.block!) {
+						case .now:
+							do {
+								/* If a transaction fails, it stays in the 'aside' set. The transactions in the aside set
+								need to be pruned every now and then. */
+								_ = try self.append(transaction: next)
+								_ = self.aside.removeFirst()
+							}
+							catch {
+								// For some reason this transaction fails to append, and it is not about the size. Just forget it
+								Log.error("[Miner] transaction \(next) failed to add from aside: \(error.localizedDescription)")
+							}
+						case .future:
+							break
+						case .never:
+							_ = self.aside.removeFirst()
 						}
-						catch {
-							// For some reason this transaction fails to append, and it is not about the size. Just forget it
-							Log.error("[Miner] transaction \(next) failed to add from aside: \(error.localizedDescription)")
-						}
-						_ = self.aside.removeFirst()
 					}
 					else {
 						break

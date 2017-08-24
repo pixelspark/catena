@@ -166,7 +166,7 @@ public class Server<LedgerType: Ledger>: WebSocketService {
 	}
 
 	public func connected(connection: WebSocketConnection) {
-		Log.info("[Server] gossip connected incoming \(connection.request.remoteAddress) \(connection.request.urlURL.absoluteString)")
+		Log.debug("[Server] gossip connected incoming \(connection.request.remoteAddress) \(connection.request.urlURL.absoluteString)")
 
 		self.mutex.locked {
 			do {
@@ -482,7 +482,7 @@ public class PeerOutgoingConnection<LedgerType: Ledger>: PeerConnection<LedgerTy
 	}
 
 	public func websocketDidConnect(socket: Starscream.WebSocket) {
-		Log.info("[Gossip] Connected outgoing to \(socket.currentURL)")
+		Log.debug("[Gossip] Connected outgoing to \(socket.currentURL)")
 		self.delegate?.peer(connected: self)
 	}
 
@@ -667,7 +667,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 
 			case .transaction(let trData):
 				let tr = try TransactionType(json: trData)
-				try self.node?.receive(transaction: tr, from: self)
+				_ = try self.node?.receive(transaction: tr, from: self)
 
 			case .block(let blockData):
 				do {

@@ -17,38 +17,56 @@ public class SQLLedger: Ledger {
 		self.longest = try SQLBlockchain(genesis: genesis, database: path, replay: replay)
 	}
 
-	public func canAccept(transaction: SQLTransaction, pool: SQLBlock?) throws -> Bool {
+	public func canAccept(transaction: SQLTransaction, pool: SQLBlock?) throws -> Eligibility {
 		if !transaction.isSignatureValid {
 			Log.info("[Ledger] cannot accept tx \(transaction): signature invalid")
-			return false
-		}
-
-		/* A transaction is acceptable when its counter is one above the stored counter for the invoker key, or zero when
-		the invoker has no counter yet (not executed any transactions before on this chain). */
-		let appendable = try self.mutex.locked { () -> Bool in
-			return try self.longest.withUnverifiedTransactions { chain in
-				if let counter = try chain.meta.users.counter(for: transaction.invoker) {
-					return (counter + 1) == transaction.counter
-				}
-				return transaction.counter == 0
-			}
-		}
-
-		if appendable {
-			return true
+			return .never
 		}
 
 		// Perhaps the transaction is appendable to another pooled transaction?
 		if let p = pool {
 			for tr in p.payload.transactions {
 				if tr.invoker == transaction.invoker && (tr.counter + 1) == transaction.counter {
-					return true
+					return .now
 				}
 			}
 		}
 
-		Log.info("[SQLLedger] cannot accept tx \(transaction): not appendable (\(transaction.counter)) invoker hash=\(transaction.invoker.data.sha256.base64EncodedString())")
-		return false
+		/* A transaction is acceptable when its counter is one above the stored counter for the invoker key, or zero when
+		the invoker has no counter yet (not executed any transactions before on this chain). */
+		let counter = try self.mutex.locked { () -> SQLTransaction.CounterType? in
+			return try self.longest.withUnverifiedTransactions { chain in
+				return try chain.meta.users.counter(for: transaction.invoker)
+			}
+		}
+
+		if let counter = counter {
+			/* The transaction counter directly follows the counter in the ledger (but may conflict with another
+			transaction in the pool). It is nevertheless acceptable. */
+			if (counter + 1) == transaction.counter {
+				return .now
+			}
+			else if (counter + 1) < transaction.counter {
+				/* The counter is too far ahead of the current counter, so it is acceptable in the future if transactions
+				appear that use the intermediate counter values. */
+				return .future
+			}
+			else {
+				/* The counter value is lower than what is currently in the ledger, so this transaction will never become
+				acceptable. */
+				return .never
+			}
+		}
+		else {
+			/* No transactions have been made by this invoker yet on the ledger, so this should be the first one (with
+			counter=0) to be acceptable now. If the counter value is higher, it may become acceptable in the future. */
+			if transaction.counter == 0 {
+				return .now
+			}
+			else {
+				return .future
+			}
+		}
 	}
 }
 

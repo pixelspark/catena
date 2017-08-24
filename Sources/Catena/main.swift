@@ -107,7 +107,6 @@ do {
 	}
 
 	// Obtain root identity from the node database (if available) and not initializing; otherwise generate one
-	var rootCounter: SQLTransaction.CounterType = 0
 	let rootIdentity: Identity
 	if let pubString = try configurationTable?.get("publicKey"),
 		let privString = try configurationTable?.get("privateKey"),
