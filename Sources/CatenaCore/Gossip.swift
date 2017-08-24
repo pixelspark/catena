@@ -568,7 +568,8 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 					switch self.state {
 					case .failed(error: _, at: let date):
 						// Failed peers become 'new' after a certain amount of time, so we can retry
-						if Date().timeIntervalSinceNow > LedgerType.ParametersType.peerRetryAfterFailureInterval {
+						if Date().timeIntervalSince(date) > LedgerType.ParametersType.peerRetryAfterFailureInterval {
+							self.connection = nil
 							self.state = .new
 						}
 
@@ -581,7 +582,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 							else if let pic = PeerOutgoingConnection<LedgerType>(to: url, from: n.uuid, at: n.server.port) {
 								pic.delegate = self
 								Log.debug("[Peer] connect outgoing \(url)")
-								self.state = .connecting
+								self.state = .connecting(since: Date())
 								self.connection = pic
 							}
 						#else
@@ -592,9 +593,16 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 					case .connected(_), .queried(_):
 						try self.query()
 
-					case .passive, .ignored(reason: _), .connecting, .querying:
+					case .passive, .ignored(reason: _):
 						// Do nothing (perhaps ping in the future?)
 						break
+
+					case .connecting(since: let date), .querying(since: let date):
+						// Reset hung peers
+						if Date().timeIntervalSince(date) > LedgerType.ParametersType.peerRetryAfterFailureInterval {
+							self.connection = nil
+							self.state = .new
+						}
 					}
 				}
 			}
@@ -615,7 +623,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 	private func query() throws {
 		if let n = self.node, let c = self.connection {
 			self.mutex.locked {
-				self.state = .querying
+				self.state = .querying(since: Date())
 			}
 
 			let requestTime = Date()
@@ -745,9 +753,9 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 
 public enum PeerState {
 	case new // Peer has not yet connected
-	case connecting
+	case connecting(since: Date)
 	case connected // The peer is connected but has not been queried yet
-	case querying // The peer is currently being queried
+	case querying(since: Date) // The peer is currently being queried
 	case queried // The peer has last been queried successfully
 	case passive // Peer is active, but should not be queried (only listens passively)
 	case ignored(reason: String) // The peer is ourselves or believes in another genesis, ignore it forever

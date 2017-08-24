@@ -89,11 +89,11 @@ public class SQLAPIEndpoint {
 					switch peer.state {
 					case .new: desc = "new"
 					case .connected(_): desc = "connected"
-					case .connecting(_): desc = "connecting"
-					case .failed(error: let e): desc = "error(\(e))"
+					case .connecting(since: let d): desc = "connecting since \(d.iso8601FormattedLocalDate)"
+					case .failed(error: let e, at: let d): desc = "error(\(e)) at \(d.iso8601FormattedLocalDate)"
 					case .ignored(reason: let e): desc = "ignored(\(e))"
 					case .queried(_): desc = "queried"
-					case .querying(_): desc = "querying"
+					case .querying(since: let d): desc = "querying since \(d.iso8601FormattedLocalDate)"
 					case .passive: desc = "passive"
 					}
 
