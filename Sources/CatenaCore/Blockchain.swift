@@ -184,6 +184,9 @@ public protocol Parameters {
 	/** The number of blocks a longer chain needs to be longer than the current one in order for the Ledger to switch to
 	the longer chain. */
 	static var spliceLimit: UInt { get }
+
+	/** The time after which a failed peer is tried again (reset to state new) */
+	static var peerRetryAfterFailureInterval: TimeInterval { get }
 }
 
 /** Default values for ledger parameters. Override as you see fit. */
@@ -197,6 +200,7 @@ public extension Parameters {
 	public static var futureBlockThreshold: TimeInterval { return 2 * 3600.0 }
 	public static var serviceType: String { return "_\(self.protocolVersion)._tcp." }
 	public static var spliceLimit: UInt { return 1 }
+	public static var peerRetryAfterFailureInterval: TimeInterval { return 3600.0 }
 }
 
 extension Blockchain {

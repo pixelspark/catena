@@ -446,12 +446,17 @@ public class Node<LedgerType: Ledger> {
 
 	private func tick() {
 		self.mutex.locked {
-			// Take the first from the query queue...
-			if let p = self.queryQueue.first {
+			// Take the first N from the query queue...
+			var concurrent = 5
+
+			while let p = self.queryQueue.first {
 				self.queryQueue.remove(at: 0)
 				if let peer = self.peers[p] {
 					peer.advance()
-					return
+					concurrent -= 1
+					if concurrent == 0 {
+						return
+					}
 				}
 			}
 

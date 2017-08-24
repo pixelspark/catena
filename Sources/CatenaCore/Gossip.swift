@@ -566,7 +566,13 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 			do {
 				if let n = node {
 					switch self.state {
-					case .new, .failed(_):
+					case .failed(error: _, at: let date):
+						// Failed peers become 'new' after a certain amount of time, so we can retry
+						if Date().timeIntervalSinceNow > LedgerType.ParametersType.peerRetryAfterFailureInterval {
+							self.state = .new
+						}
+
+					case .new:
 						// Perhaps reconnect to this peer
 						#if !os(Linux)
 							if url.port == nil || url.port! == 0 {
@@ -593,8 +599,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 				}
 			}
 			catch {
-				self.connection = nil
-				self.state = .failed(error: "advance error: \(error.localizedDescription)")
+				self.fail(error: "advance error: \(error.localizedDescription)")
 			}
 		}
 	}
@@ -603,7 +608,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 		Log.info("[Peer] \(self.url.absoluteString) failing: \(error)")
 		self.mutex.locked {
 			self.connection = nil
-			self.state = .failed(error: error)
+			self.state = .failed(error: error, at: Date())
 		}
 	}
 
@@ -648,8 +653,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 						self.state = .passive
 					}
 					else {
-						self.connection = nil
-						self.state = .failed(error: "Invalid reply received to query request")
+						self.fail(error: "Invalid reply received to query request")
 					}
 				}
 			}
@@ -733,8 +737,8 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 	public func peer(disconnected _: PeerConnection<LedgerType>) {
 		self.mutex.locked {
 			Log.debug("[Peer] \(url) disconnected outgoing")
-			self.state = .new
 			self.connection = nil
+			self.fail(error: "disconnected")
 		}
 	}
 }
@@ -747,5 +751,5 @@ public enum PeerState {
 	case queried // The peer has last been queried successfully
 	case passive // Peer is active, but should not be queried (only listens passively)
 	case ignored(reason: String) // The peer is ourselves or believes in another genesis, ignore it forever
-	case failed(error: String) // Talking to the peer failed for some reason, ignore it for a while
+	case failed(error: String, at: Date) // Talking to the peer failed for some reason, ignore it for a while
 }
