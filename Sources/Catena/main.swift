@@ -101,8 +101,8 @@ do {
 	genesisBlock.mine(difficulty: 10)
 	Log.info("Genesis seed=\(seedValue) block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
 
-	// If the database is in a file and we are initializing, remove anything that was there before
-	if initializeOption.value && !memoryDatabaseFileOption.value {
+	// If the database is in a file and we are initializing or configuring, remove anything that was there before
+	if (configureOption.value || initializeOption.value) && !memoryDatabaseFileOption.value {
 		_ = unlink(databaseFile.cString(using: .utf8)!)
 	}
 
