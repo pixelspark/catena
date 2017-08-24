@@ -721,7 +721,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 	public func peer(connected _: PeerConnection<LedgerType>) {
 		self.mutex.locked {
 			if case .connecting = self.state {
-				Log.info("[Peer] \(url) connected outgoing")
+				Log.debug("[Peer] \(url) connected outgoing")
 				self.state = .connected
 			}
 			else {
@@ -732,7 +732,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 
 	public func peer(disconnected _: PeerConnection<LedgerType>) {
 		self.mutex.locked {
-			Log.info("[Peer] \(url) disconnected outgoing")
+			Log.debug("[Peer] \(url) disconnected outgoing")
 			self.state = .new
 			self.connection = nil
 		}
