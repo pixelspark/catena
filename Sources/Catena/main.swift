@@ -47,6 +47,11 @@ if (configureOption.value || testOption.value) && initializeOption.value {
 	fatalError("The --configure and --test options cannot be set when --initialize is set")
 }
 
+// Handle SIGTERM (this ensures we can cleanly exit when running under Docker)
+signal(SIGTERM) { s in
+	exit(0)
+}
+
 // Configure logging
 let logLevel = logOption.value ?? "info"
 let logLevelType: LoggerMessageType
