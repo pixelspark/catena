@@ -302,10 +302,10 @@ public class SQLiteDatabase: Database {
 			}
 			catch {
 				if self.counter == 1 {
-					try _ = self.perform("COMMIT")
+					try _ = self.perform("ROLLBACK")
 				}
 				else {
-					try _ = self.perform("RELEASE SAVEPOINT \(savepointName)")
+					try _ = self.perform("ROLLBACK TO SAVEPOINT \(savepointName)")
 				}
 				throw error
 			}
