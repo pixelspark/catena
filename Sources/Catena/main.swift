@@ -52,6 +52,10 @@ signal(SIGTERM) { s in
 	exit(0)
 }
 
+signal(SIGINT) { s in
+	exit(0)
+}
+
 // Configure logging
 let logLevel = logOption.value ?? "info"
 let logLevelType: LoggerMessageType
