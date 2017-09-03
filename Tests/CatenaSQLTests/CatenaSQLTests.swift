@@ -129,11 +129,21 @@ class CatenaSQLTests: XCTestCase {
 			"DELETE FROM a WHERE x=y;",
 			"UPDATE a SET z=y WHERE a=b;",
 			"INSERT INTO x (a,b,c) VALUES (1,2,3),(4,5,6);",
-			"CREATE TABLE x(a TEXT, b TEXT, c TEXT PRIMARY KEY);"
+			"CREATE TABLE x(a TEXT, b TEXT, c TEXT PRIMARY KEY);",
+			"INSERT INTO x (a,b,c) VALUES (?x, ?yy, ?zy1);",
+			"INSERT INTO x (a,b,c) VALUES (?xy, ?yy:1, ?zy:'123', ?foo:$bar);",
 		]
 
 		let invalid = [
-			"SELECT 1+1" // missing ';'
+			"SELECT 1+1", // missing ';'
+			"SELECT $0x;", // Variable name cannot start with digit
+			"SELECT ?0x;", // Parameter name cannot start with digit
+			"SELECT ?empty:;", // Parameter has no value
+			"SELECT ?empty:?other;", // Parameter value may not be another parameter
+			"SELECT ?empty:(1+1);", // Parameter value may not be an expression
+			"SELECT ?empty:?other:1;", // Parameter value may not be another parameter
+			"SELECT ?empty:column;", // Parameter value may not be another column (non-constant)
+			"SELECT ?empty:*;", // Parameter value may not be all columns (non-constant)
 		]
 
 		for v in valid {
@@ -141,13 +151,42 @@ class CatenaSQLTests: XCTestCase {
 		}
 
 		for v in invalid {
-			XCTAssert(!p.parse(v), "Failed to parse \(v)")
+			XCTAssert(!p.parse(v), "Parsed, but shouldn't have: \(v)")
+		}
+	}
+
+	func testSQLBackend() throws {
+		let p = SQLParser()
+		let mem = SQLiteDatabase()
+		let invoker = try Identity()
+		let block = try SQLBlock(version: 1, index: 1, nonce: 1, previous: SHA256Hash.zeroHash, miner: SHA256Hash(of: invoker.publicKey.data), timestamp: 1, payload: Data())
+		try mem.open(":memory:")
+		let md = try SQLMetadata(database: mem)
+		let ctx = SQLContext(metadata: md, invoker: invoker.publicKey, block: block, parameterValues: [:])
+		let be = SQLBackendVisitor(context: ctx)
+
+		// See if the backend visitor properly rejects stuff
+		let failing = [
+			"SELECT ?x, ?x:2;", // Unbound parameter
+			"SELECT ?x:1, ?x:2;", // Parameter value mismatch
+			"SELECT $foo;", // Unknown variable
+		];
+
+		for f in failing {
+			XCTAssert(p.parse(f), "Failed to parse \(f)")
+			if case .statement(let s) = p.root! {
+				XCTAssertThrowsError(try s.visit(be))
+			}
+			else {
+				XCTFail("parsing failed")
+			}
 		}
 	}
 
     static var allTests = [
         ("testPeerDatabase", testPeerDatabase),
         ("testGrants", testGrants),
-        ("testParser", testParser)
+        ("testParser", testParser),
+        ("testSQLBackend", testSQLBackend),
     ]
 }

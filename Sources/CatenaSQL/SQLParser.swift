@@ -311,12 +311,16 @@ public enum SQLBinary {
 	}
 }
 
-public struct SQLWhen {
+public struct SQLWhen: Equatable {
 	var when: SQLExpression
 	var then: SQLExpression
+
+	public static func ==(lhs: SQLWhen, rhs: SQLWhen) -> Bool {
+		return lhs.when == rhs.when && lhs.then == rhs.then
+	}
 }
 
-public enum SQLExpression {
+public enum SQLExpression: Equatable {
 	case literalInteger(Int)
 	case literalUnsigned(UInt)
 	case literalString(String)
@@ -325,6 +329,8 @@ public enum SQLExpression {
 	case allColumns
 	case null
 	case variable(String)
+	case unboundParameter(name: String)
+	indirect case boundParameter(name: String, value: SQLExpression)
 	indirect case when([SQLWhen], else: SQLExpression?)
 	indirect case binary(SQLExpression, SQLBinary, SQLExpression)
 	indirect case unary(SQLUnary, SQLExpression)
@@ -355,6 +361,18 @@ public enum SQLExpression {
 		case .variable(let v):
 			return "$\(v)"
 
+		case .unboundParameter(name: let n):
+			return "?\(n)"
+
+		case .boundParameter(name: let n, value: let v):
+			switch v {
+			case .boundParameter(name: _, value: _), .unboundParameter(name: _):
+				fatalError("bound parameter cannot have another parameter as its value")
+
+			default:
+				return "?\(n)=\(v.sql(dialect: dialect))"
+			}
+
 		case .binary(let left, let binary, let right):
 			return "(\(left.sql(dialect: dialect)) \(binary.sql(dialect: dialect)) \(right.sql(dialect: dialect)))"
 
@@ -375,6 +393,25 @@ public enum SQLExpression {
 			}
 
 			return "CASE\(whensString)\(elseString) END"
+		}
+	}
+
+	public static func ==(lhs: SQLExpression, rhs: SQLExpression) -> Bool {
+		switch (lhs, rhs) {
+			case (.literalString(let ls), .literalString(let rs)): return ls == rs
+			case (.literalInteger(let ls), .literalInteger(let rs)): return ls == rs
+			case (.literalUnsigned(let ls), .literalUnsigned(let rs)): return ls == rs
+			case (.literalBlob(let ls), .literalBlob(let rs)): return ls == rs
+			case (.column(let ls), .column(let rs)): return ls == rs
+			case (.variable(let ls), .variable(let rs)): return ls == rs
+			case (.allColumns, .allColumns): return true
+			case (.null, .null): return true
+			case (.unboundParameter(name: let ls), .unboundParameter(name: let rs)): return ls == rs
+			case (.boundParameter(name: let ls, value: let lv), .boundParameter(name: let rs, value: let rv)): return ls == rs && lv == rv
+			case (.when(let lw, else: let le), .when(let rw, else: let re)): return lw == rw && le == re
+			case (.binary(let ll, let lo, let lr), .binary(let rl, let ro, let rr)): return ll == rl && lo == ro && lr == rr
+			case (.unary(let lu, let le), .unary(let ru, let re)):return lu == ru && le == re
+			default: return false
 		}
 	}
 }
@@ -454,6 +491,20 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			self.stack.append(.expression(.variable(self.text)))
 		}))
 
+		add_named_rule("lit-parameter", rule:
+			Parser.matchLiteral("?")
+			~ ((firstCharacter ~ (followingCharacter*)/~) => {
+				self.stack.append(.expression(.unboundParameter(name: self.text)))
+			})
+			~ ((Parser.matchLiteral(":") ~ ^"lit-constant") => {
+				guard case .expression(let right) = self.stack.popLast()! else { fatalError() }
+				guard case .expression(let p) = self.stack.popLast()! else { fatalError() }
+				guard case .unboundParameter(name: let name) = p else { fatalError() }
+
+				self.stack.append(.expression(.boundParameter(name: name, value: right)))
+			})/~
+		)
+
 		add_named_rule("lit-column-naked", rule: (firstCharacter ~ (followingCharacter*)/~) => {
 			self.stack.append(.columnIdentifier(SQLColumn(name: self.text)))
 		})
@@ -469,18 +520,24 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		add_named_rule("lit-string", rule: Parser.matchLiteral("'")
 			~ (Parser.matchAnyCharacterExcept([Character("'")]) | Parser.matchLiteral("''"))* => pushLiteralString
 			~ Parser.matchLiteral("'"))
-		add_named_rule("lit", rule:
+
+		add_named_rule("lit-constant", rule:
 			^"lit-int"
-			| ^"lit-all-columns"
 			| ^"lit-variable"
 			| ^"lit-blob"
 			| ^"lit-string"
 			| ^"lit-null"
+		)
+
+		add_named_rule("lit", rule:
+			^"lit-parameter"
+			| ^"lit-all-columns"
 			| (^"lit-column" => {
 				guard case .columnIdentifier(let c) = self.stack.popLast()! else { fatalError() }
 				self.stack.append(.expression(.column(c)))
-			  })
-			)
+			})
+			| ^"lit-constant"
+		)
 
 		// Expressions
 		add_named_rule("ex-sub", rule: Parser.matchLiteral("(") ~~ ^"ex" ~~ Parser.matchLiteral(")"))
@@ -925,7 +982,7 @@ fileprivate extension Parser {
 SQLVisitor instance. By returning a different object than the one passed into a `visit` call, you can modify the source
 expression. For items that have visitable children, the children will be visited first, and then visit will be called
 for the parent with the updated children (if applicable). */
-protocol SQLVisitor {
+protocol SQLVisitor: class {
 	func visit(column: SQLColumn) throws -> SQLColumn
 	func visit(expression: SQLExpression) throws -> SQLExpression
 	func visit(table: SQLTable) throws -> SQLTable
@@ -1047,10 +1104,13 @@ extension SQLExpression {
 		let newSelf: SQLExpression
 
 		switch self {
-		case .allColumns, .null, .literalInteger(_), .literalString(_), .literalBlob(_), .variable(_), .literalUnsigned(_):
+		case .allColumns, .null, .literalInteger(_), .literalString(_), .literalBlob(_), .variable(_), .unboundParameter(_), .literalUnsigned(_):
 			// Literals are not currently visited separately
 			newSelf = self
 			break
+
+		case .boundParameter(name: let name, value: let v):
+			newSelf = .boundParameter(name: name, value: try v.visit(visitor))
 
 		case .binary(let a, let b, let c):
 			newSelf = .binary(try a.visit(visitor), try b.visit(visitor), try c.visit(visitor))
@@ -1070,3 +1130,5 @@ extension SQLExpression {
 		return try visitor.visit(expression: newSelf)
 	}
 }
+
+

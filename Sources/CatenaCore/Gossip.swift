@@ -337,7 +337,7 @@ public class PeerConnection<LedgerType: Ledger> {
 							}
 						}
 						else {
-							Log.error("[Server] cannot handle gossip \(counter) for \(self): no delegate")
+							Log.error("[Server] cannot handle gossip \(counter) for \(self): no delegate. Message is \(g.json)")
 						}
 					}
 				}

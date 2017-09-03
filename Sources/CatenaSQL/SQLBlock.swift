@@ -7,7 +7,15 @@ public struct SQLPayload {
 
 	enum SQLPayloadError: Error {
 		case formatError
-		case invalidVariableError
+
+		/** The SQL query references a variable that is undefined. */
+		case invalidVariableError(name: String)
+
+		/** The SQL query contains an unbound parameter reference. */
+		case unboundParameterError(name: String)
+
+		/** The SQL query contains (at least) two bound parameters with the same name, but different values */
+		case inconsistentParameterValue(name: String)
 	}
 
 	init(json: Data) throws {
@@ -175,10 +183,11 @@ struct SQLContext {
 	let metadata: SQLMetadata
 	let invoker: PublicKey
 	let block: SQLBlock
+	var parameterValues: [String: SQLExpression] = [:]
 }
 
-struct SQLBackendVisitor: SQLVisitor {
-	let context: SQLContext
+class SQLBackendVisitor: SQLVisitor {
+	var context: SQLContext
 
 	init(context: SQLContext) {
 		self.context = context
@@ -195,6 +204,17 @@ struct SQLBackendVisitor: SQLVisitor {
 
 	func visit(expression: SQLExpression) throws -> SQLExpression {
 		switch expression {
+		case .unboundParameter(name: let name):
+			throw SQLPayload.SQLPayloadError.unboundParameterError(name: name)
+
+		case .boundParameter(name: let name, value: let value):
+			// If this parameter has appeared before, it needs to have the exact same value
+			if let old = context.parameterValues[name], old != value {
+				throw SQLPayload.SQLPayloadError.inconsistentParameterValue(name: name)
+			}
+			context.parameterValues[name] = value
+			return value
+
 		case .variable(let v):
 			// Replace variables with corresponding literals
 			switch v {
@@ -204,7 +224,7 @@ struct SQLBackendVisitor: SQLVisitor {
 			case "blockSignature": return SQLExpression.literalBlob(context.block.signature!.hash)
 			case "previousBlockSignature": return SQLExpression.literalBlob(context.block.previous.hash)
 			case "blockHeight": return SQLExpression.literalInteger(Int(context.block.index))
-			default: throw SQLPayload.SQLPayloadError.invalidVariableError
+			default: throw SQLPayload.SQLPayloadError.invalidVariableError(name: v)
 			}
 
 		default:
@@ -322,7 +342,7 @@ extension SQLBlock {
 					let transactionSavepointName = "tr-\(transaction.signature?.base58encoded ?? "unsigned")"
 
 					try database.transaction(name: transactionSavepointName) {
-						let context = SQLContext(metadata: meta, invoker: transaction.invoker, block: self)
+						let context = SQLContext(metadata: meta, invoker: transaction.invoker, block: self, parameterValues: [:])
 						let statement = transaction.statement
 						let query = try statement.backendStatement(context: context).sql(dialect: database.dialect)
 
