@@ -43,6 +43,26 @@ public struct SQLColumn: Equatable, Hashable {
 	}
 }
 
+public struct SQLFunction: Equatable, Hashable {
+	public var name: String
+
+	public init(name: String) {
+		self.name = name
+	}
+
+	func sql(dialect: SQLDialect) -> String {
+		return name.lowercased()
+	}
+
+	public var hashValue: Int {
+		return self.name.lowercased().hashValue
+	}
+
+	public static func ==(lhs: SQLFunction, rhs: SQLFunction) -> Bool {
+		return lhs.name.lowercased() == rhs.name.lowercased()
+	}
+}
+
 public enum SQLType {
 	case text
 	case int
@@ -334,6 +354,7 @@ public enum SQLExpression: Equatable {
 	indirect case when([SQLWhen], else: SQLExpression?)
 	indirect case binary(SQLExpression, SQLBinary, SQLExpression)
 	indirect case unary(SQLUnary, SQLExpression)
+	indirect case call(SQLFunction, parameters: [SQLExpression])
 
 	func sql(dialect: SQLDialect) -> String {
 		switch self {
@@ -357,6 +378,10 @@ public enum SQLExpression: Equatable {
 
 		case .null:
 			return "NULL"
+
+		case .call(let fun, parameters: let ps):
+			let parameterString = ps.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
+			return "\(fun.sql(dialect: dialect))(\(parameterString))"
 
 		case .variable(let v):
 			return "$\(v)"
@@ -437,6 +462,7 @@ public enum SQLFragment {
 	case columnList([SQLColumn])
 	case tableIdentifier(SQLTable)
 	case columnIdentifier(SQLColumn)
+	case functionIdentifier(SQLFunction)
 	case type(SQLType)
 	case columnDefinition(column: SQLColumn, type: SQLType, primary: Bool)
 	case binaryOperator(SQLBinary)
@@ -509,7 +535,30 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			self.stack.append(.columnIdentifier(SQLColumn(name: self.text)))
 		})
 
-		add_named_rule("lit-column", rule: (Parser.matchLiteral("\"") ~ ^"lit-column-naked" ~ Parser.matchLiteral("\"")) | ^"lit-column-naked")
+		add_named_rule("lit-column-wrapped", rule: Parser.matchLiteral("\"") ~ ^"lit-column-naked" ~ Parser.matchLiteral("\""))
+
+		add_named_rule("lit-column", rule: ^"lit-column-wrapped" | ^"lit-column-naked")
+
+		add_named_rule("lit-call", rule:
+			Parser.matchLiteral("(") => {
+				// Turn the column reference into a function call
+				guard case .columnIdentifier(let col) = self.stack.popLast()! else { fatalError() }
+				self.stack.append(.expression(SQLExpression.call(SQLFunction(name: col.name), parameters: [])))
+			}
+			~ (Parser.matchList(^"ex" => {
+				guard case .expression(let parameter) = self.stack.popLast()! else { fatalError() }
+				guard case .expression(let e) = self.stack.popLast()! else { fatalError() }
+				guard case .call(let fn, parameters: var ps) = e else { fatalError() }
+				ps.append(parameter)
+				self.stack.append(.expression(.call(fn, parameters: ps)))
+			}, separator: Parser.matchLiteral(","))/~)
+			~ Parser.matchLiteral(")")
+		)
+
+		add_named_rule("lit-column-or-call", rule:
+			^"lit-column-wrapped"
+			| (^"lit-column-naked" ~ (^"lit-call")/~)
+		)
 
 		add_named_rule("lit-all-columns", rule: Parser.matchLiteral("*") => {
 			self.stack.append(.expression(.allColumns))
@@ -532,9 +581,16 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		add_named_rule("lit", rule:
 			^"lit-parameter"
 			| ^"lit-all-columns"
-			| (^"lit-column" => {
-				guard case .columnIdentifier(let c) = self.stack.popLast()! else { fatalError() }
-				self.stack.append(.expression(.column(c)))
+			| (^"lit-column-or-call" => {
+				switch self.stack.popLast()! {
+				case .columnIdentifier(let c):
+					self.stack.append(.expression(.column(c)))
+
+				case .expression(let e):
+					self.stack.append(.expression(e))
+
+				default: fatalError()
+				}
 			})
 			| ^"lit-constant"
 		)
@@ -1117,6 +1173,10 @@ extension SQLExpression {
 
 		case .column(let c):
 			newSelf = .column(try c.visit(visitor))
+
+		case .call(let f, parameters: let ps):
+			let mapped = try ps.map { try $0.visit(visitor) }
+			newSelf = .call(f, parameters: mapped)
 
 		case .unary(let unary, let ex):
 			newSelf = .unary(try unary.visit(visitor), try ex.visit(visitor))

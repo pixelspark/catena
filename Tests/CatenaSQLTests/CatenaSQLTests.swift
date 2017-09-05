@@ -132,6 +132,10 @@ class CatenaSQLTests: XCTestCase {
 			"CREATE TABLE x(a TEXT, b TEXT, c TEXT PRIMARY KEY);",
 			"INSERT INTO x (a,b,c) VALUES (?x, ?yy, ?zy1);",
 			"INSERT INTO x (a,b,c) VALUES (?xy, ?yy:1, ?zy:'123', ?foo:$bar);",
+			"SELECT FOO();",
+			"SELECT FOO()+BAR();",
+			"SELECT FOO(BAR(BAZ()));",
+			"SELECT FOO(BAR(BAZ(1+2+3), 2+3), 4);",
 		]
 
 		let invalid = [

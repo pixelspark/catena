@@ -145,8 +145,8 @@ private class TestLedger: Ledger {
 		longest = TestChain(genesis: genesis)
 	}
 
-	func canAccept(transaction: TestTransaction, pool: TestBlock?) throws -> Bool {
-		return true
+	func canAccept(transaction: TestTransaction, pool: TestBlock?) throws -> Eligibility {
+		return .now
 	}
 }
 

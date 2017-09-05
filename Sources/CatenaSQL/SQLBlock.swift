@@ -5,7 +5,7 @@ import CatenaCore
 public struct SQLPayload {
 	var transactions: [SQLTransaction]
 
-	enum SQLPayloadError: Error {
+	enum SQLPayloadError: LocalizedError {
 		case formatError
 
 		/** The SQL query references a variable that is undefined. */
@@ -16,6 +16,23 @@ public struct SQLPayload {
 
 		/** The SQL query contains (at least) two bound parameters with the same name, but different values */
 		case inconsistentParameterValue(name: String)
+
+		/** An unknown function was referenced. */
+		case invalidFunctionError(name: String)
+
+		/** A function was called with an invalid parameter count */
+		case invalidParameterCountError
+
+		var errorDescription: String? {
+			switch self {
+			case .formatError: return "format error"
+			case .invalidVariableError(name: let name): return "invalid variable: \(name)"
+			case .unboundParameterError(name: let name): return "parameter is unbound: \(name)"
+			case .inconsistentParameterValue(name: let name): return "inconsistent value for parameter: \(name)"
+			case .invalidFunctionError(name: let name): return "unknown function: \(name)"
+			case .invalidParameterCountError: return "function call has incorrect parameter count"
+			}
+		}
 	}
 
 	init(json: Data) throws {
@@ -186,7 +203,32 @@ struct SQLContext {
 	var parameterValues: [String: SQLExpression] = [:]
 }
 
-class SQLBackendVisitor: SQLVisitor {
+/** Translates function calls in SQL to function calls (or other expressions) in the backend SQL. */
+fileprivate enum SQLBackendFunction: String {
+	case length = "length"
+	case abs = "abs"
+
+	var arity: Int? {
+		switch self {
+		case .length: return 1
+		case .abs: return 1
+		}
+	}
+
+	func backend(parameters: [SQLExpression]) throws -> SQLExpression {
+		if let a = self.arity, parameters.count != a {
+			throw SQLPayload.SQLPayloadError.invalidParameterCountError
+		}
+
+		switch self {
+		case .length: return SQLExpression.call(SQLFunction(name: "LENGTH"), parameters: parameters)
+		case .abs: return SQLExpression.call(SQLFunction(name: "ABS"), parameters: parameters)
+		}
+	}
+}
+
+/** Translates frontend to backend SQL queries by traversing the SQL parse tree and generating a new one. */
+fileprivate class SQLBackendVisitor: SQLVisitor {
 	var context: SQLContext
 
 	init(context: SQLContext) {
@@ -215,6 +257,14 @@ class SQLBackendVisitor: SQLVisitor {
 			context.parameterValues[name] = value
 			return value
 
+		case .call(let function, parameters: let parameters):
+			if let bef = SQLBackendFunction(rawValue: function.name.lowercased()) {
+				return try bef.backend(parameters: parameters)
+			}
+			else {
+				throw SQLPayload.SQLPayloadError.invalidFunctionError(name: function.name)
+			}
+
 		case .variable(let v):
 			// Replace variables with corresponding literals
 			switch v {
@@ -233,12 +283,22 @@ class SQLBackendVisitor: SQLVisitor {
 	}
 }
 
-extension SQLStatement {
-	/** Translates a Catena SQL statement into something our backend (SQLite) can execute. Replace variables with their
-	values (as literals), etc. */
-	func backendStatement(context: SQLContext) throws -> SQLStatement {
-		let visitor = SQLBackendVisitor(context: context)
-		return try self.visit(visitor)
+class SQLExecutive {
+	let context: SQLContext
+	let database: Database
+
+	init(context: SQLContext, database: Database) {
+		self.context = context
+		self.database = database
+	}
+
+	func perform(_ statement: SQLStatement) throws -> Result {
+		/* Translate the transaction SQL to SQL we can execute on our backend. This includes binding
+		variable and parameter values. */
+		let be = SQLBackendVisitor(context: context)
+		let query = try statement.visit(be).sql(dialect: database.dialect)
+
+		return try database.perform(query)
 	}
 }
 
@@ -338,22 +398,21 @@ extension SQLBlock {
 
 			// Write block's transactions to the database
 			for transaction in privilegedTransactions {
-				do {
-					let transactionSavepointName = "tr-\(transaction.signature?.base58encoded ?? "unsigned")"
+				if replay || transaction.shouldAlwaysBeReplayed {
+					do {
+						let transactionSavepointName = "tr-\(transaction.signature?.base58encoded ?? "unsigned")"
+						try database.transaction(name: transactionSavepointName) {
+							let context = SQLContext(metadata: meta, invoker: transaction.invoker, block: self, parameterValues: [:])
+							let statement = transaction.statement
 
-					try database.transaction(name: transactionSavepointName) {
-						let context = SQLContext(metadata: meta, invoker: transaction.invoker, block: self, parameterValues: [:])
-						let statement = transaction.statement
-						let query = try statement.backendStatement(context: context).sql(dialect: database.dialect)
-
-						if replay || transaction.shouldAlwaysBeReplayed {
-							_ = try database.perform(query)
+							let executive = SQLExecutive(context: context, database: database)
+							try executive.perform(statement)
 						}
 					}
-				}
-				catch {
-					// Transactions can fail, this is not a problem - the block can be processed
-					Log.debug("Transaction failed, but block will continue to be processed: \(error.localizedDescription)")
+					catch {
+						// Transactions can fail, this is not a problem - the block can be processed
+						Log.debug("Transaction failed, but block will continue to be processed: \(error.localizedDescription)")
+					}
 				}
 
 				// Update counter
