@@ -147,6 +147,10 @@ public struct SQLUpdate {
 	}
 }
 
+public enum SQLShow {
+	case tables
+}
+
 public enum SQLStatement {
 	case create(table: SQLTable, schema: SQLSchema)
 	case delete(from: SQLTable, where: SQLExpression?)
@@ -154,6 +158,7 @@ public enum SQLStatement {
 	case insert(SQLInsert)
 	case select(SQLSelect)
 	case update(SQLUpdate)
+	case show(SQLShow)
 
 	enum SQLStatementError: LocalizedError {
 		case syntaxError(query: String)
@@ -186,7 +191,7 @@ public enum SQLStatement {
 		case .create, .drop, .delete, .update, .insert(_):
 			return true
 
-		case .select(_):
+		case .select(_), .show(_):
 			return false
 		}
 	}
@@ -276,6 +281,11 @@ public enum SQLStatement {
 			}
 			else {
 				return "SELECT\(distinctSQL) \(selectList);"
+			}
+
+		case .show(let s):
+			switch s {
+			case .tables: return "SHOW TABLES;"
 			}
 		}
 	}
@@ -949,10 +959,17 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 					}, separator: Parser.matchLiteral(","))
 			))
 
+		add_named_rule("show-statement", rule: Parser.matchLiteralInsensitive("SHOW") ~~ (
+			Parser.matchLiteralInsensitive("TABLES") => {
+				self.stack.append(.statement(.show(.tables)))
+			}
+		))
+
 		// Statement categories
 		add_named_rule("dql-statement", rule: ^"select-dql-statement")
-		add_named_rule("ddl-statement", rule: ^"create-ddl-statement" | ^"drop-ddl-statement")
+		add_named_rule("ddl-statement", rule: ^"create-ddl-statement" | ^"drop-ddl-statement" | ^"show-statement")
 		add_named_rule("dml-statement", rule: ^"update-dml-statement" | ^"insert-dml-statement" | ^"delete-dml-statement")
+
 
 		// Statement
 		add_named_rule("statement", rule: (^"ddl-statement" | ^"dml-statement" | ^"dql-statement") ~~ Parser.matchLiteral(";"))
@@ -1149,6 +1166,9 @@ extension SQLStatement {
 			}
 			u.set = newSet
 			newSelf = .update(u)
+
+		case .show(let s):
+			newSelf = .show(s)
 		}
 
 		return try visitor.visit(statement: newSelf)

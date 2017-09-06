@@ -135,23 +135,6 @@ Currently, the following types of statements are supported:
 * UPDATE foo SET bar=baz WHERE bar=1;
 * DROP TABLE foo;
 
-SQL has the following limitations:
-
-* Column and table names are case-insensitive, and must start with an alphabetic (a-Z) character, and may subsequently contain numbers and underscores. Column names may be placed between double quotes.
-* SQL keywords (such as 'SELECT') are case-insensitive.
-* Whitespace is allowed between different tokens in an SQL statement, but not inside (e.g. "123 45" will not parse).
-* All statements must end with a semicolon.
-* Values can be a string (between 'single quotes'), an integer, blobs (X'hex' syntax) or NULL.
-* An expression can be a value, '*' a column name, or a supported operation
-* Supported comparison operators are "=", "<>", "<", ">", ">=", "<="
-* Supported mathematical operators are "+", "-", "/" and "*". The concatenation operator "||" is also supported.
-* Other supported operators are the prefix "-" for negation, "NOT", and "x IS NULL" / "x IS NOT NULL"
-* Currently only the types 'TEXT' , 'INT' and 'BLOB' are supported.
-* The special `$invoker` variable can be used to refer to the SHA256-hash of the current public key of the transaction invoker
-
-In the future, the Catena parser will be expanded to support more types of statements. Only deterministic queries will
-be supported (e.g. no functions that return current date/time or random values).
-
 ### What kind of blockchain is implemented by Catena?
 
 Catena uses a Blockchain based on SHA-256 hashes for proof of work, with configurable difficulty. Blocks contain 

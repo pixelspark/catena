@@ -28,6 +28,7 @@ public extension SQLStatement {
 		case .delete(from: let t, where: _): return [SQLPrivilege(kind: .delete, table: t)]
 		case .drop(table: let t): return [SQLPrivilege(kind: .drop, table: t)]
 		case .select(_): return []
+		case .show(_): return []
 		case .update(let update): return [SQLPrivilege(kind: .update, table: update.table)]
 		case .insert(let ins): return [SQLPrivilege(kind: .insert, table: ins.into)]
 		}

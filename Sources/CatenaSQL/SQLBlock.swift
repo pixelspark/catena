@@ -296,9 +296,22 @@ class SQLExecutive {
 		/* Translate the transaction SQL to SQL we can execute on our backend. This includes binding
 		variable and parameter values. */
 		let be = SQLBackendVisitor(context: context)
-		let query = try statement.visit(be).sql(dialect: database.dialect)
+		let backendStatement = try statement.visit(be)
 
-		return try database.perform(query)
+		// See if the backend can executive this type of statement
+		switch backendStatement {
+		case .show(let s):
+			switch s {
+			case .tables:
+				// TODO make this database-independent (i.e. implement a Database.listOfTables protocol function)
+				let query = "SELECT name FROM sqlite_master WHERE type='table' AND NOT(name LIKE '\\_%' ESCAPE '\\');"
+				return try database.perform(query)
+			}
+
+		default:
+			let query = backendStatement.sql(dialect: database.dialect)
+			return try database.perform(query)
+		}
 	}
 }
 
@@ -406,7 +419,7 @@ extension SQLBlock {
 							let statement = transaction.statement
 
 							let executive = SQLExecutive(context: context, database: database)
-							try executive.perform(statement)
+							_ = try executive.perform(statement)
 						}
 					}
 					catch {
