@@ -60,10 +60,10 @@ public class Node<LedgerType: Ledger> {
 		return Set(peers.flatMap { (uuid, peer) -> URL? in
 			return peer.mutex.locked {
 				switch peer.state {
-				case .failed(_), .querying(_), .new, .ignored, .connected(_), .connecting(_), .passive:
+				case .failed(_), .querying(_), .new, .ignored, .connected, .connecting(_), .passive:
 					return nil
 
-				case .queried(_):
+				case .queried:
 					if let ls = peer.lastSeen, Date().timeIntervalSince(ls) > LedgerType.ParametersType.peerMaximumAgeForAdvertisement {
 						return peer.url
 					}
@@ -472,10 +472,10 @@ public class Node<LedgerType: Ledger> {
 	}
 
 	public func start(blocking: Bool) {
-		self.tickTimer.setEventHandler { [unowned self] _ in
+		self.tickTimer.setEventHandler { [unowned self] in
 			self.tick()
 		}
-		self.tickTimer.scheduleRepeating(deadline: .now(), interval: 2.0)
+		self.tickTimer.schedule(deadline: .now(), repeating: 2.0)
 		self.tickTimer.resume()
 
 		if blocking {

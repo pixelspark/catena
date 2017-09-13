@@ -1,4 +1,4 @@
-FROM ibmcom/swift-ubuntu:3.1.1
+FROM ibmcom/swift-ubuntu
 ARG CATENA_CONFIGURATION=release
 ENV CATENA_CONFIGURATION $CATENA_CONFIGURATION
 

@@ -1,6 +1,6 @@
 import Foundation
-import Base58
 import Ed25519
+import Base58
 
 public struct Identity {
 	public let privateKey: PrivateKey

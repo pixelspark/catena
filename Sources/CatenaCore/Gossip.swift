@@ -292,7 +292,7 @@ public struct Index<BlockType: Block>: Equatable {
 			"height": NSNumber(value: self.height),
 			"genesis": self.genesis.stringValue,
 			"time": NSNumber(value: self.timestamp),
-			"peers": self.peers.flatMap { $0.absoluteString }
+			"peers": self.peers.map { $0.absoluteString }
 		]
 	}
 }
@@ -590,7 +590,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 							self.state = .ignored(reason: "disconnected, and cannot make outgoing connections")
 						#endif
 
-					case .connected(_), .queried(_):
+					case .connected, .queried:
 						try self.query()
 
 					case .passive, .ignored(reason: _):

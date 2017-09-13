@@ -256,7 +256,7 @@ public struct OrderedSet<Element : Hashable> : Hashable, Collection, MutableColl
 	}
 }
 
-public func ==<T : Hashable>(lhs: OrderedSet<T>, rhs: OrderedSet<T>) -> Bool {
+public func ==<T>(lhs: OrderedSet<T>, rhs: OrderedSet<T>) -> Bool {
 	return lhs.set == rhs.set
 }
 
