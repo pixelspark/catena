@@ -1,4 +1,4 @@
-FROM ibmcom/swift-ubuntu
+FROM swiftdocker/swift:latest
 ARG CATENA_CONFIGURATION=release
 ENV CATENA_CONFIGURATION $CATENA_CONFIGURATION
 
