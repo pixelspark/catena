@@ -167,7 +167,7 @@ class CatenaSQLTests: XCTestCase {
 		try mem.open(":memory:")
 		let md = try SQLMetadata(database: mem)
 		let ctx = SQLContext(metadata: md, invoker: invoker.publicKey, block: block, parameterValues: [:])
-		let be = SQLBackendVisitor(context: ctx)
+		let ex = SQLExecutive(context: ctx, database: mem)
 
 		// See if the backend visitor properly rejects stuff
 		let failing = [
@@ -179,7 +179,7 @@ class CatenaSQLTests: XCTestCase {
 		for f in failing {
 			XCTAssert(p.parse(f), "Failed to parse \(f)")
 			if case .statement(let s) = p.root! {
-				XCTAssertThrowsError(try s.visit(be))
+				XCTAssertThrowsError(try ex.perform(s))
 			}
 			else {
 				XCTFail("parsing failed")

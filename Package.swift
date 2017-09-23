@@ -38,6 +38,8 @@ let package = Package(
     dependencies: deps,
 
     targets: [
+		.testTarget(name: "CatenaTests", dependencies: ["CatenaCore"]),
+		.testTarget(name: "CatenaSQLTests", dependencies: ["CatenaSQL"]),
 		.target(
 			name: "Catena",
 			dependencies: [
