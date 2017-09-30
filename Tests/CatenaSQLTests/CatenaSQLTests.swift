@@ -136,6 +136,7 @@ class CatenaSQLTests: XCTestCase {
 			"SELECT FOO()+BAR();",
 			"SELECT FOO(BAR(BAZ()));",
 			"SELECT FOO(BAR(BAZ(1+2+3), 2+3), 4);",
+            "INSERT INTO grants (\"user\", \"kind\", \"table\") VALUES (X\'b6c8c9c9cd55f5914e29941390a5b69e3d5d59bc11bacb27bf0b9940b4398a33\',\'insert\',\'test\');"
 		]
 
 		let invalid = [

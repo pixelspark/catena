@@ -583,13 +583,13 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		add_named_rule("lit-constant", rule:
 			^"lit-int"
 			| ^"lit-variable"
-			| ^"lit-blob"
 			| ^"lit-string"
 			| ^"lit-null"
 		)
 
 		add_named_rule("lit", rule:
-			^"lit-parameter"
+            ^"lit-blob"
+			| ^"lit-parameter"
 			| ^"lit-all-columns"
 			| (^"lit-column-or-call" => {
 				switch self.stack.popLast()! {
