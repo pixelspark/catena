@@ -270,7 +270,7 @@ public class Node<LedgerType: Ledger> {
 			// Check whether the connecting peer is looking for someone else
 			do {
 				// Find the user URL string, either from the HTTP request URL, or from the Origin header
-				let user: String
+				let user: String?
 				if let u = connection.connection.request.urlURL.user {
 					user = u
 				}
@@ -278,43 +278,48 @@ public class Node<LedgerType: Ledger> {
 					user = u
 				}
 				else {
-					try connection.request(gossip: .forget)
-					Log.debug("[Server] dropping connection \(reverseURL): did not specify node UUID to connect to (request URL: '\(connection.connection.request.urlURL.absoluteString)')")
-					connection.close()
-					return
+                    Log.debug("[Server] dropping connection \(reverseURL): did not specify node UUID to connect to (request URL: '\(connection.connection.request.urlURL.absoluteString)'); adding as passive peer")
+                    peer.state = .passive
+                    user = nil
 				}
-
-				// Check if the URL user is a valid UUID
-				if let userUUID = UUID(uuidString: user) {
-					if userUUID != self.uuid {
-						Log.debug("[Server] dropping connection \(reverseURL): is looking for different UUID \(userUUID)")
-						try connection.request(gossip: .forget)
-						connection.close()
-						return
-					}
-				}
-				else {
-					// Requested node UUID is invalid
-					try connection.request(gossip: .forget)
-					Log.debug("[Server] dropping connection \(reverseURL): invalid UUID '\(user)'")
-					connection.close()
-					return
-				}
+                
+                if let user = user {
+                    // Check if the URL user is a valid UUID
+                    if let userUUID = UUID(uuidString: user) {
+                        if userUUID != self.uuid {
+                            Log.debug("[Server] dropping connection \(reverseURL): is looking for different UUID \(userUUID)")
+                            try connection.request(gossip: .forget)
+                            connection.close()
+                            return
+                        }
+                    }
+                    else {
+                        // Requested node UUID is invalid
+                        try connection.request(gossip: .forget)
+                        Log.debug("[Server] dropping connection \(reverseURL): invalid UUID '\(user)'")
+                        connection.close()
+                        return
+                    }
+                }
 			}
 			catch {
 				Log.error("[Server] could not properly reject peer \(reverseURL) looking for someone else: \(error.localizedDescription)")
 			}
 
 			self.mutex.locked {
-				if let alreadyConnected = self.peers[connectingUUID] {
+				if let alreadyConnected = self.peers[connectingUUID]  {
 					switch alreadyConnected.state {
 					case .connected, .queried, .querying:
 						// Reject connection because we are already connected!
 						return
+                        
+                    case .passive:
+                        // Always replace passive connections
+                        break
 
 					default:
 						if let ls = alreadyConnected.lastSeen, ls.timeIntervalSince(Date()) < LedgerType.ParametersType.peerReplaceInterval {
-							Log.info("Not replacing connection \(alreadyConnected) (state=\(alreadyConnected.state) with \(peer): the peer was recently seen")
+							Log.info("Not replacing connection \(alreadyConnected.uuid) (state=\(alreadyConnected.state) with \(peer.uuid): the peer was recently seen")
 							return
 						}
 						Log.info("Replacing connection \(alreadyConnected) (state=\(alreadyConnected.state)) with \(peer)")

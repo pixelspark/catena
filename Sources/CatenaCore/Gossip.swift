@@ -526,7 +526,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 	/** The time difference observed during the last index request */
 	public internal(set) var timeDifference: TimeInterval? = nil
 
-	public fileprivate(set) var state: PeerState
+	public internal(set) var state: PeerState
 	fileprivate(set) var connection: PeerConnection<LedgerType>? = nil
 	weak var node: Node<LedgerType>?
 	public let mutex = Mutex()
