@@ -45,19 +45,114 @@ public class SQLAgent {
 	}
 }
 
+private class SQLAPIEndpointCORS: RouterMiddleware {
+    let allowCorsOrigin: String?
+    
+    init(allowOrigin: String?) {
+        self.allowCorsOrigin = allowOrigin
+    }
+    
+    public func handle(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+        if let ac = self.allowCorsOrigin {
+            response.headers.append("Access-Control-Allow-Origin", value: ac)
+            response.headers.append("Access-Control-Allow-Methods", value: "GET, POST, OPTIONS")
+            response.headers.append("Content-Type", value: "application/json")
+            response.headers.append("Access-Control-Allow-Headers", value: "Content-Type, Accept")
+            if request.method == .options {
+                _ = response.send(status: .OK)
+            }
+            else {
+                next()
+            }
+        }
+        else {
+            next()
+        }
+    }
+}
+
 public class SQLAPIEndpoint {
 	let agent: SQLAgent
-
-	public init(agent: SQLAgent, router: Router) {
+    
+    /** Set 'allowCorsOrigin' to the domain name(s) from which requests may be made. Set to nil to
+     disallow any requests from other domains, or set to '*' to allow from any domain. */
+    public init(agent: SQLAgent, router: Router, allowCorsOrigin: String?) {
 		self.agent = agent
-
+        
+        let mw = SQLAPIEndpointCORS(allowOrigin: allowCorsOrigin)
+        router.options("/api/*", middleware: mw)
+        router.get("/api/*", middleware: mw)
+        router.post("/api/*", middleware: mw)
+        
 		router.get("/api", handler: self.handleIndex)
 		router.get("/api/block/:hash", handler: self.handleGetBlock)
 		router.get("/api/head", handler: self.handleGetLast)
 		router.get("/api/journal", handler: self.handleGetJournal)
 		router.get("/api/pool", handler: self.handleGetPool)
 		router.get("/api/users", handler: self.handleGetUsers)
+        router.post("/api/query", handler: self.handleQuery)
 	}
+    
+    private func handleQuery(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+        do {
+            var data = Data(capacity: 1024)
+            try _ = request.read(into: &data)
+            let query = try JSONSerialization.jsonObject(with: data, options: [])
+            
+            // Parse the statement
+            if let q = query as? [String: Any], let sql = q["sql"] as? String {
+                let statement = try SQLStatement(sql)
+                
+                // Mutating statements are queued
+                if statement.isMutating {
+                    _ = response.status(.internalServerError)
+                    response.send(json: ["message": "Performing mutating queries through this API is not supported at this time."])
+                    try response.end()
+                    
+                    /* TODO: implement mutating queries. Needs identity information from the client (and/or a signed transaction)
+                     let transaction = try SQLTransaction(statement: statement, invoker: identity.publicKey, counter: SQLTransaction.CounterType(0))
+                     let result = try self.agent.submit(transaction: transaction, signWith: identity.privateKey) */
+                }
+                else {
+                    try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
+                        let anon = try Identity()
+                        let context = SQLContext(metadata: chain.meta, invoker: anon.publicKey, block: chain.highest, parameterValues: [:])
+                        let ex = SQLExecutive(context: context, database: chain.database)
+                        let result = try ex.perform(statement)
+                        
+                        var res: [String: Any] = [
+                            "sql": sql
+                        ];
+                        
+                        if case .row = result.state {
+                            res["columns"] = result.columns
+                            
+                            var rows: [[Any]] = []
+                            while case .row = result.state {
+                                let values = result.values.map { val in
+                                    return val.json
+                                }
+                                rows.append(values)
+                                result.step()
+                            }
+                            res["rows"] = rows
+                        }
+                        
+                        response.send(json: res)
+                        try response.end()
+                    }
+                }
+            }
+            else {
+                response.status(.badRequest)
+                try response.end()
+            }
+        }
+        catch {
+            _ = response.status(.internalServerError)
+            response.send(json: ["message": error.localizedDescription])
+        }
+    }
 
 	private func handleIndex(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
 		let longest = self.agent.node.ledger.longest

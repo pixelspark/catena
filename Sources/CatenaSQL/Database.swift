@@ -35,6 +35,17 @@ public enum Value {
 	case float(Double)
 	case bool(Bool)
 	case null
+    
+    var json: Any {
+        switch self {
+        case .int(let i): return i
+        case .text(let s): return s
+        case .blob(let d): return d.base64EncodedString()
+        case .float(let d): return d
+        case .bool(let b): return b
+        case .null: return NSNull()
+        }
+    }
 }
 
 public protocol Result {
