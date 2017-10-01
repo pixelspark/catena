@@ -84,8 +84,10 @@ container (as Catena advertises it to peers).
 
 ## Using Catena
 
-Catena provides an HTTP interface on port 8338 (default), which can be used for introspecting the blockchain. It also
-provides a WebSocket service which is used for communication between peers. 
+Catena provides a web interface on port 8338 (default), which can be used for introspecting the blockchain and performing queries. It also provides a WebSocket service (on the same port) which is used for communication between peers. Provide the --no-web-client command-line option to disable the web client and associated API (note that the currently exposed API does not allow for any mutating actions).
+
+![Web client showing blocks](/Documentation/Webclient-blocks.png)
+![Web client showing data](/Documentation/Webclient-data.png)
 
 The (private)  SQL interface is available on port 8339 (by default). If you set a different HTTP port (using the '-p' command line switch), the SQL interface will assume that port+1. You can connect to the SQL interface using the PostgreSQL command line client:
 

@@ -24,11 +24,12 @@ let configureOption = BoolOption(shortFlag: "c", longFlag: "configure", helpMess
 let noReplayOption = BoolOption(shortFlag: "n", longFlag: "no-replay", helpMessage: "Do not replay database operations, just participate and validate transactions (default: false)")
 let nodeDatabaseFileOption = StringOption(longFlag: "node-database", required: false, helpMessage: "Backing database file for instance database (default: catena-node.sqlite)")
 let noLocalPeersOption = BoolOption(longFlag: "no-local-discovery", helpMessage: "Disable local peer discovery")
+let noWebClient = BoolOption(longFlag: "no-web-client", helpMessage: "Disable serving of the web client")
 let nodeUUIDOption = StringOption(longFlag: "node-uuid", required: false, helpMessage: "Set the node's UUID (default: a randomly generated UUID)")
 let allowCorsDomains = StringOption(longFlag: "allow-domain", required: false, helpMessage: "Domains from which to allow HTTP API requests (set to '*' to allow all)")
 
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, nodeDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption, nodeUUIDOption, configureOption, allowCorsDomains)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, nodeDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption, nodeUUIDOption, configureOption, allowCorsDomains, noWebClient)
 
 do {
 	try cli.parse()
@@ -162,7 +163,10 @@ do {
 	let netPort = netPortOption.value ?? 8338
 	let node = try Node<SQLLedger>(ledger: ledger, port: netPort, miner: SHA256Hash(of: rootIdentity.publicKey.data), uuid: uuid)
 	let agent = SQLAgent(node: node)
-    let _ = SQLAPIEndpoint(agent: agent, router: node.server.router, allowCorsOrigin: allowCorsDomains.value)
+    
+    if(!noWebClient.wasSet) {
+        let _ = SQLAPIEndpoint(agent: agent, router: node.server.router, allowCorsOrigin: allowCorsDomains.value)
+    }
 
 	// Add peers from database
 	if let pd = peerTable {
