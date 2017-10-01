@@ -457,8 +457,10 @@ public class Node<LedgerType: Ledger> {
 			while let p = self.queryQueue.first {
 				self.queryQueue.remove(at: 0)
 				if let peer = self.peers[p] {
-					peer.advance()
-					concurrent -= 1
+                    if peer.advance() {
+                        concurrent -= 1
+                    }
+                    
 					if concurrent == 0 {
 						return
 					}

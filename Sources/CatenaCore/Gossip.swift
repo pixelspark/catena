@@ -558,8 +558,9 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 		return false
 	}
 
-	public func advance() {
-		self.mutex.locked {
+    /** Returns true when a peer action was performed, false when no action was required. */
+    public func advance() -> Bool {
+		return self.mutex.locked { () -> Bool in
 			Log.debug("Advance peer \(url) from state \(self.state)")
 			do {
 				if let n = node {
@@ -570,6 +571,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 							self.connection = nil
 							self.state = .new
 						}
+                        return false
 
 					case .new:
 						// Perhaps reconnect to this peer
@@ -588,13 +590,15 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 							// Outgoing connections are not supported on Linux (yet!)
 							self.state = .ignored(reason: "disconnected, and cannot make outgoing connections")
 						#endif
+                        return true
 
 					case .connected, .queried:
 						try self.query()
+                        return true
 
 					case .passive, .ignored(reason: _):
 						// Do nothing (perhaps ping in the future?)
-						break
+						return false
 
 					case .connecting(since: let date), .querying(since: let date):
 						// Reset hung peers
@@ -602,18 +606,23 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 							self.connection = nil
 							self.state = .new
 						}
+                        return true
 					}
 				}
+                else {
+                    return false
+                }
 			}
 			catch {
 				self.fail(error: "advance error: \(error.localizedDescription)")
+                return false
 			}
 		}
 	}
 
 	public func fail(error: String) {
-		Log.info("[Peer] \(self.url.absoluteString) failing: \(error)")
 		self.mutex.locked {
+            Log.info("[Peer] \(self.url.absoluteString) failing: \(error)")
 			self.connection = nil
 			self.state = .failed(error: error, at: Date())
 		}
