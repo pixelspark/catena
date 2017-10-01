@@ -445,7 +445,6 @@ public class PeerOutgoingConnection<LedgerType: Ledger>: PeerConnection<LedgerTy
 
 			self.connection = Starscream.WebSocket(url: uc.url!, protocols: [LedgerType.ParametersType.protocolVersion])
 			super.init(isIncoming: false)
-			self.setup()
 		}
 		else {
 			return nil
@@ -455,10 +454,9 @@ public class PeerOutgoingConnection<LedgerType: Ledger>: PeerConnection<LedgerTy
 	init(connection: Starscream.WebSocket) {
 		self.connection = connection
 		super.init(isIncoming: false)
-		self.setup()
 	}
 
-	private func setup() {
+	public func connect() {
 		self.connection.timeout = 10
 		self.connection.delegate = self
 		self.connection.callbackQueue = DispatchQueue.global(qos: .background)
@@ -581,9 +579,10 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 							}
 							else if let pic = PeerOutgoingConnection<LedgerType>(to: url, from: n.uuid, at: n.server.port) {
 								pic.delegate = self
+                                self.state = .connecting(since: Date())
+                                self.connection = pic
 								Log.debug("[Peer] connect outgoing \(url)")
-								self.state = .connecting(since: Date())
-								self.connection = pic
+                                pic.connect()
 							}
 						#else
 							// Outgoing connections are not supported on Linux (yet!)
