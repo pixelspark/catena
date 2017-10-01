@@ -83,7 +83,7 @@ public class SQLAPIEndpoint {
         router.options("/api/*", middleware: mw)
         router.get("/api/*", middleware: mw)
         router.post("/api/*", middleware: mw)
-        
+    
 		router.get("/api", handler: self.handleIndex)
 		router.get("/api/block/:hash", handler: self.handleGetBlock)
 		router.get("/api/head", handler: self.handleGetLast)
@@ -91,6 +91,8 @@ public class SQLAPIEndpoint {
 		router.get("/api/pool", handler: self.handleGetPool)
 		router.get("/api/users", handler: self.handleGetUsers)
         router.post("/api/query", handler: self.handleQuery)
+        
+        router.all("/", middleware: StaticFileServer(path: "./Resources"))
 	}
     
     private func handleQuery(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {

@@ -156,13 +156,7 @@ public class Server<LedgerType: Ledger>: WebSocketService {
 		self.port = port
 
 		WebSocket.register(service: self, onPath: "/")
-		router.get("/", handler: handleIndex)
 		Kitura.addHTTPServer(onPort: port, with: router)
-	}
-
-	private func handleIndex(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		response.headers.setLocation("/api")
-		_ = response.send(status: .movedPermanently)
 	}
 
 	public func connected(connection: WebSocketConnection) {

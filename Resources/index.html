@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+
+<html>
+	<head>
+		<title>Catena</title>
+		<meta charset="UTF-8">
+		<link rel="stylesheet" type="text/css" href="default.css" />
+		<link rel="stylesheet" href="lib/css/font-awesome.min.css" />
+	</head>
+
+	<body>
+		<div id="app" v-cloak>
+			<nav>
+				<h1>Catena</h1>
+
+				<template v-if="connection == null">
+					Address: <input :value="url" placholder="address:port" v-on:keyup="set('url', $event.target.value)">
+					<button @click="connect">Connect</button>
+				</template> 
+				<template v-else>
+					{{url}}
+						<button @click="disconnect">Disconnect</button>
+				</template>
+				
+				<template v-if="index !== null">
+					<span>{{index.peers.length}} peers</span>,
+					<span>{{index.height}} blocks</span>
+					<span>(last updated at <catena-timestamp :timestamp="index.time"></catena-timestamp>)</span>
+				</template>
+			</nav>
+
+			<main>
+				<catena-tabs>
+					<catena-tab name="Data">
+						<catena-data :url="dataURL"></catena-data>
+					</catena-tab>
+
+					<catena-tab name="Blocks">
+						<aside>
+							<template v-if="index != null">
+								<catena-chain 
+									:hash="index.highest" 
+									@select="select" 
+									:connection="connection"
+									:selected-hash="selectedBlock ? selectedBlock.hash: null"/>
+							</template>
+						</aside>
+		
+						<article>
+							<template v-if="connection != null">
+								<input 
+									:value="selectedBlock ? selectedBlock.hash : ''" 
+									placeholder="Go to block hash..." 
+									type="text" 
+									v-on:keyup.enter="goToBlock" 
+									style="width: 80%; clear: both;"/>
+		
+								<a href="javascript:void(0);" @click="selectHash(index.genesis)">Genesis</a>
+								<br/>
+						</template>
+		
+							<template v-if="selectedBlock !== null">
+								<catena-block-details 
+									:block="selectedBlock"
+									@select="selectHash"
+								>
+								</catena-block-details>
+							</template>
+						</article>
+					</catena-tab>
+
+					<catena-tab name="Peers">
+						<article>
+							<h1>Peers</h1>
+							<ul v-if="index !== null">
+								<li v-for="peer in index.peers">{{peer}}</li>
+							</ul>
+						</article>
+						
+					</catena-tab>
+				</catena-tabs>
+			</main>
+		</div>
+
+		<template id="catena-data">
+			<div class="catena-data">
+				<aside>
+					<ul>
+						<li v-for="(q, idx) in queries" @click="select(q)" :class="{'selected': query == q}">
+							<a href="javascript:void(0);" style="float:right;" @click="remove(idx)"><i class="fa fa-times"></i></a>
+							<code>{{q}}</code>
+						</li>
+					</ul>
+				</aside>
+				<article style="overflow-y: auto;">
+					<textarea @keyup="setQuery" :value="typedQuery"></textarea>
+					<button @click="perform">Query</button>
+
+					<catena-query :sql="query" v-if="query != '' " :url="url"></catena-query>
+				</article>
+			</div>
+		</template>
+
+		<template id="catena-query">
+			<div class="catena-query">
+				<span v-if="error !== null">Error: {{error}}</span>
+				<span v-else-if="result == null">Loading...</span>
+				<div v-else>
+					<table>
+						<thead>
+							<tr>
+								<th v-for="col in result.columns">{{col}}</th>
+							</tr>
+						</thead>
+
+						<tbody>
+							<tr v-for="row in result.rows">
+								<td v-for="cell in row">
+									<span v-if="cell === null" class="null">NULL</span>
+									<span v-else>
+										{{cell}}
+									</span>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</template>
+
+		<template id="catena-hash">
+			<abbr :title="hash">{{shortHash}}</abbr>
+		</template>
+
+		<template id="catena-block">
+			<li class="catena-block" @click="select">
+				<div style="float:right;">
+					<slot></slot>
+				</div>
+
+				<h3>
+					<i class="fa fa-cube" aria-hidden="true"></i>
+					Block #{{block.index}}:
+					<template v-if="isGenesis">
+						(Genesis)
+					</template>
+					<catena-hash :hash="block.hash"></catena-hash><br/>
+				</h3>
+
+				<i class="fa fa-clock-o" aria-hidden="true"></i> <catena-timestamp :timestamp="block.timestamp"></catena-timestamp>
+			</div>
+		</template>
+
+		<template id="catena-block-details">
+			<div>
+				<h1><i class="fa fa-cube" aria-hidden="true"></i> Block #{{block.index}}</h1>
+				
+				<dl>
+					<dt><i class="fa fa-clock-o" aria-hidden="true"></i> Time</dt>
+					<dd>
+							<catena-timestamp :timestamp="block.timestamp"></catena-timestamp>
+					</dd>
+
+					<dt><i class="fa fa-certificate" aria-hidden="true"></i> Miner</dt>
+					<dd>
+							<catena-hash :hash="block.miner"></catena-hash>
+					</dd>
+
+					<dt><i class="fa fa-certificate" aria-hidden="true"></i> Nonce</dt>
+					<dd>
+						<code>{{block.nonce}}</code>
+					</dd>
+
+					<dt><i class="fa fa-archive" aria-hidden="true"></i> Payload</dt>
+					<dd>
+							<catena-payload :payload="block.payload"></catena-payload>
+					</dd>
+
+					<dt><i class="fa fa-cube" aria-hidden="true"></i> Related</dt>
+					<dd>
+							<a href="javascript:void(0);" @click="select(block.previous)">Previous block</a>
+					</dd>
+				</dl>
+			</div>
+		</template>
+
+		<template id="catena-payload">
+			<div>
+				<table v-if="data.length &gt; 0">
+					<tr>
+						<th>SQL</th>
+						<th>Invoker</th>
+					</tr>
+					<tr v-for="tr in data" :key="tr.tx.signature">
+						<td><code>{{tr.tx.sql}}</code></td>
+						<td><catena-hash :hash="tr.tx.invoker"></catena-hash> ({{tr.tx.counter}})</td>
+					</tr>
+				</table>
+				{{seed}}
+			</div>
+		</template>
+
+		<template id="catena-chain">
+			<div class="catena-chain">
+				<transition-group name="list" tag="ul">
+					<catena-block 
+						v-for="block in blocks" 
+						:key="block.hash"
+						:block="block"
+						@select="select(block.hash)" 
+						:selectedHash="selectedHash"
+						:connection="connection"
+						:class="selectedHash == block.hash ? 'selected' : ''"
+					>
+					</catena-block>
+				</transition-group>
+			</div>
+		</template>
+
+		<template id="catena-timestamp">
+			<span>{{friendly}}</span>
+		</template>
+
+		<template id="catena-tabs">
+			<div class="catena-tabs">
+				<ul>
+					<li 
+						v-for="(tab, index) in tabs"
+						@click="select(index)"
+						:class="{'selected': currentTab == index}">
+						{{tab.name}}
+					</li>
+				</ul>
+
+				<div>
+					<slot></slot>
+				</div>
+			</div>
+		</template>
+
+		<template id="catena-tab">
+			<div :class="{'catena-tab':true, 'selected': selected}">
+				<slot></slot>
+			</div>
+		</template>
+
+		<script type="text/javascript" src="lib/js/vue.js"></script>
+		<script type="text/javascript" src="lib/js/vue-resource.js"></script>
+		<script type="text/javascript" src="catena.js"></script>
+	</body>
+</html>
