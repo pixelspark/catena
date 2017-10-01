@@ -64,7 +64,7 @@ public class Node<LedgerType: Ledger> {
 					return nil
 
 				case .queried:
-					if let ls = peer.lastSeen, Date().timeIntervalSince(ls) > LedgerType.ParametersType.peerMaximumAgeForAdvertisement {
+					if let ls = peer.lastSeen, Date().timeIntervalSince(ls) < LedgerType.ParametersType.peerMaximumAgeForAdvertisement {
 						return peer.url
 					}
 					return nil
