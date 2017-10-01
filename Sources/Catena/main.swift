@@ -87,6 +87,10 @@ do {
 		try nodeDatabase.open(nodeDatabaseFile)
 		peerTable = try SQLPeerDatabase(database: nodeDatabase, table: SQLTable(name: "peers"))
 		configurationTable = try SQLKeyValueTable(database: nodeDatabase, table: SQLTable(name: "config"))
+        
+        if initializeOption.wasSet {
+            try peerTable!.forgetAllPeers()
+        }
 	}
 
 	// Initialize database if we have to

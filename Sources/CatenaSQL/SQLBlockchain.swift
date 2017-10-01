@@ -564,6 +564,11 @@ public class SQLPeerDatabase: PeerDatabase {
 		]]))
 		try _ = self.database.perform(insert.sql(dialect: self.database.dialect))
 	}
+    
+    public func forgetAllPeers() throws {
+        let delete = SQLStatement.delete(from: self.table, where: nil)
+        try _ = self.database.perform(delete.sql(dialect: self.database.dialect))
+    }
 
 	public func forgetPeer(uuid: UUID) throws {
 		let delete = SQLStatement.delete(from: self.table, where: SQLExpression.binary(
