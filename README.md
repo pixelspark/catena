@@ -33,7 +33,7 @@ swift package generate-xcodeproj
 Building on Linux is experimental. Due to the fact that there is no cross-platform WebSocket client implementation in Swift
 (the current implementation uses Starscream), outgoing peer connections are not supported for the Linux client. Incoming peer connections are possible and can be used by the client to 'talk back', so the client is functional regardless.
 
-To try and compile, first ensure Swift 3.1 is installed. Then ensure clang and required libraries are present:
+To try and compile, first ensure Swift 4 is installed and is in the PATH. Then ensure clang and required libraries are present:
 
 ````
 apt install clang build-essential libicu-dev libcurl4-openssl-dev openssl libssl-dev
@@ -42,7 +42,7 @@ cd catena
 swift build
 ````
 
-The above was tested on Ubuntu 16.04 with Swift 3.1.
+The above was tested on Ubuntu 16.04 as well as Debian Stretch with Swift 4.
 
 ### Building a Docker image
 
