@@ -16,32 +16,34 @@ public class SQLAgent {
 	/** Submit a transaction, after issue'ing a consecutive counter value to it and signing it with the private key
 	provided. */
 	public func submit(transaction: SQLTransaction, signWith key: PrivateKey) throws -> Bool {
-		try self.mutex.locked {
-			if let previous = self.counters[transaction.invoker] {
-				Log.debug("[SQLAgent] last counter for \(transaction.invoker) was \(previous)")
-				transaction.counter = previous + SQLTransaction.CounterType(1)
-			}
-			else {
-				// Look up the counter value
-				try self.node.ledger.longest.withUnverifiedTransactions { chain in
-					if let previous = try chain.meta.users.counter(for: transaction.invoker) {
-						Log.debug("[SQLAgent] last counter for \(transaction.invoker) was \(previous) according to ledger")
-						transaction.counter = previous + SQLTransaction.CounterType(1)
-					}
-					else {
-						Log.debug("[SQLAgent] no previous counter for \(transaction.invoker)")
-						transaction.counter = SQLTransaction.CounterType(0)
-					}
-				}
-			}
+        return try autoreleasepool { () -> Bool in
+            try self.mutex.locked {
+                if let previous = self.counters[transaction.invoker] {
+                    Log.debug("[SQLAgent] last counter for \(transaction.invoker) was \(previous)")
+                    transaction.counter = previous + SQLTransaction.CounterType(1)
+                }
+                else {
+                    // Look up the counter value
+                    try self.node.ledger.longest.withUnverifiedTransactions { chain in
+                        if let previous = try chain.meta.users.counter(for: transaction.invoker) {
+                            Log.debug("[SQLAgent] last counter for \(transaction.invoker) was \(previous) according to ledger")
+                            transaction.counter = previous + SQLTransaction.CounterType(1)
+                        }
+                        else {
+                            Log.debug("[SQLAgent] no previous counter for \(transaction.invoker)")
+                            transaction.counter = SQLTransaction.CounterType(0)
+                        }
+                    }
+                }
 
-			Log.debug("[SQLAgent] using counter \(transaction.counter) for \(transaction.invoker)")
-			self.counters[transaction.invoker] = transaction.counter
-		}
+                Log.debug("[SQLAgent] using counter \(transaction.counter) for \(transaction.invoker)")
+                self.counters[transaction.invoker] = transaction.counter
+            }
 
-		// Submit
-		try transaction.sign(with: key)
-		return try self.node.receive(transaction: transaction, from: nil)
+            // Submit
+            try transaction.sign(with: key)
+            return try self.node.receive(transaction: transaction, from: nil)
+        }
 	}
 }
 
@@ -311,3 +313,9 @@ public class SQLAPIEndpoint {
 		next()
 	}
 }
+
+#if os(Linux)
+    @discardableResult internal func autoreleasepool<T>(_ block: () throws -> (T)) rethrows -> T {
+        return try block()
+    }
+#endif
