@@ -1,4 +1,3 @@
-
 function generateUUID() {
     var dt = new Date().getTime();
     var uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -10,31 +9,31 @@ function generateUUID() {
 }
 
 Vue.component('catena-payload', {
-	  template: '#catena-payload',
-	  props: {
-		 payload: {type: String}
-	  },
+	template: '#catena-payload',
+	props: {
+		payload: {type: String}
+	},
 
-	  computed: {
-		  seed: function() {
+	computed: {
+		seed: function() {
+		try {
+			let e = JSON.parse(atob(this.payload));
+			return null;
+			}
+			catch(e) {
+				return atob(this.payload);
+			}
+		},
+
+		data: function() {
 			try {
-				let e = JSON.parse(atob(this.payload));
-				return null;
-			  }
-			  catch(e) {
-				  return atob(this.payload);
-			  }
-		  },
-
-		  data: function() {
-			  try {
-				return JSON.parse(atob(this.payload));
-			  }
-			  catch(e) {
-				  return [];
-			  }
-		  }
-	  }
+			return JSON.parse(atob(this.payload));
+			}
+			catch(e) {
+				return [];
+			}
+		}
+	}
 });
 
 Vue.component('catena-chain', {
