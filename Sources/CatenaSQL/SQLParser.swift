@@ -175,8 +175,12 @@ public enum SQLStatement {
 	public init(_ sql: String) throws {
 		let parser = SQLParser()
 		if !parser.parse(sql) {
+            parser.captures.removeAll()
+            parser.rule_definitions.removeAll()
 			throw SQLStatementError.syntaxError(query: sql)
 		}
+        parser.captures.removeAll()
+        parser.rule_definitions.removeAll()
 
 		// Top-level item must be a statement
 		guard let root = parser.root, case .statement(let statement) = root else {
@@ -513,26 +517,26 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		// Literals
 		let firstCharacter: ParserRule = (("a"-"z")|("A"-"Z"))
 		let followingCharacter: ParserRule = (firstCharacter | ("0"-"9") | literal("_"))
-		add_named_rule("lit-int", rule: (Parser.matchLiteral("-")/~ ~ ("0"-"9")+) => {
+		add_named_rule("lit-int", rule: (Parser.matchLiteral("-")/~ ~ ("0"-"9")+) => { [unowned self] in
 			if let n = Int(self.text) {
 				self.stack.append(.expression(.literalInteger(n)))
 			}
 		})
 
-		add_named_rule("lit-null", rule: Parser.matchLiteralInsensitive("NULL") => {
+		add_named_rule("lit-null", rule: Parser.matchLiteralInsensitive("NULL") => { [unowned self] in
 			self.stack.append(.expression(.null))
 		})
 
-		add_named_rule("lit-variable", rule: Parser.matchLiteral("$") ~ ((firstCharacter ~ (followingCharacter*)/~) => {
+		add_named_rule("lit-variable", rule: Parser.matchLiteral("$") ~ ((firstCharacter ~ (followingCharacter*)/~) => { [unowned self] in
 			self.stack.append(.expression(.variable(self.text)))
 		}))
 
 		add_named_rule("lit-parameter", rule:
 			Parser.matchLiteral("?")
-			~ ((firstCharacter ~ (followingCharacter*)/~) => {
+			~ ((firstCharacter ~ (followingCharacter*)/~) => { [unowned self] in
 				self.stack.append(.expression(.unboundParameter(name: self.text)))
 			})
-			~ ((Parser.matchLiteral(":") ~ ^"lit-constant") => {
+			~ ((Parser.matchLiteral(":") ~ ^"lit-constant") => { [unowned self] in
 				guard case .expression(let right) = self.stack.popLast()! else { fatalError() }
 				guard case .expression(let p) = self.stack.popLast()! else { fatalError() }
 				guard case .unboundParameter(name: let name) = p else { fatalError() }
@@ -541,7 +545,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			})/~
 		)
 
-		add_named_rule("lit-column-naked", rule: (firstCharacter ~ (followingCharacter*)/~) => {
+		add_named_rule("lit-column-naked", rule: (firstCharacter ~ (followingCharacter*)/~) => { [unowned self] in
 			self.stack.append(.columnIdentifier(SQLColumn(name: self.text)))
 		})
 
@@ -550,12 +554,12 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		add_named_rule("lit-column", rule: ^"lit-column-wrapped" | ^"lit-column-naked")
 
 		add_named_rule("lit-call", rule:
-			Parser.matchLiteral("(") => {
+			Parser.matchLiteral("(") => { [unowned self] in
 				// Turn the column reference into a function call
 				guard case .columnIdentifier(let col) = self.stack.popLast()! else { fatalError() }
 				self.stack.append(.expression(SQLExpression.call(SQLFunction(name: col.name), parameters: [])))
 			}
-			~ (Parser.matchList(^"ex" => {
+			~ (Parser.matchList(^"ex" => { [unowned self] in
 				guard case .expression(let parameter) = self.stack.popLast()! else { fatalError() }
 				guard case .expression(let e) = self.stack.popLast()! else { fatalError() }
 				guard case .call(let fn, parameters: var ps) = e else { fatalError() }
@@ -570,14 +574,14 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			| (^"lit-column-naked" ~ (^"lit-call")/~)
 		)
 
-		add_named_rule("lit-all-columns", rule: Parser.matchLiteral("*") => {
+		add_named_rule("lit-all-columns", rule: Parser.matchLiteral("*") => { [unowned self] in
 			self.stack.append(.expression(.allColumns))
 		})
 
-		add_named_rule("lit-blob", rule: Parser.matchLiteral("X'") ~ Parser.matchAnyCharacterExcept([Character("'")])* => pushLiteralBlob ~ Parser.matchLiteral("'"))
+		add_named_rule("lit-blob", rule: Parser.matchLiteral("X'") ~ Parser.matchAnyCharacterExcept([Character("'")])* => { [unowned self] in self.pushLiteralBlob() } ~ Parser.matchLiteral("'"))
 
 		add_named_rule("lit-string", rule: Parser.matchLiteral("'")
-			~ (Parser.matchAnyCharacterExcept([Character("'")]) | Parser.matchLiteral("''"))* => pushLiteralString
+            ~ (Parser.matchAnyCharacterExcept([Character("'")]) | Parser.matchLiteral("''"))* => { [unowned self] in self.pushLiteralString() }
 			~ Parser.matchLiteral("'"))
 
 		add_named_rule("lit-constant", rule:
@@ -591,7 +595,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
             ^"lit-blob"
 			| ^"lit-parameter"
 			| ^"lit-all-columns"
-			| (^"lit-column-or-call" => {
+			| (^"lit-column-or-call" => { [unowned self] in
 				switch self.stack.popLast()! {
 				case .columnIdentifier(let c):
 					self.stack.append(.expression(.column(c)))
@@ -608,7 +612,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		// Expressions
 		add_named_rule("ex-sub", rule: Parser.matchLiteral("(") ~~ ^"ex" ~~ Parser.matchLiteral(")"))
 
-		add_named_rule("ex-unary-postfix", rule: Parser.matchLiteralInsensitive("IS NULL") => {
+		add_named_rule("ex-unary-postfix", rule: Parser.matchLiteralInsensitive("IS NULL") => { [unowned self] in
 			guard case .expression(let right) = self.stack.popLast()! else { fatalError() }
 			self.stack.append(.expression(SQLExpression.unary(.isNull, right)))
 		})
@@ -617,7 +621,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 
 		add_named_rule("ex-value", rule: ^"ex-unary" | ^"ex-sub")
 
-		add_named_rule("ex-equality-operator", rule: Parser.matchAnyFrom(["=", "<>", "<=", ">=", "<", ">"].map { Parser.matchLiteral($0) }) => {
+		add_named_rule("ex-equality-operator", rule: Parser.matchAnyFrom(["=", "<>", "<=", ">=", "<", ">"].map { Parser.matchLiteral($0) }) => { [unowned self] in
 			switch self.text {
 			case "=": self.stack.append(.binaryOperator(.equals))
 			case "<>": self.stack.append(.binaryOperator(.notEquals))
@@ -629,14 +633,14 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			}
 		})
 
-		add_named_rule("ex-prefix-operator", rule: Parser.matchAnyFrom(["-"].map { Parser.matchLiteral($0) }) => {
+		add_named_rule("ex-prefix-operator", rule: Parser.matchAnyFrom(["-"].map { Parser.matchLiteral($0) }) => { [unowned self] in
 			switch self.text {
 			case "-": self.stack.append(.unaryOperator(.negate))
 			default: fatalError()
 			}
 		})
 
-		add_named_rule("ex-prefix-call", rule: Parser.matchAnyFrom(["NOT", "ABS"].map { Parser.matchLiteral($0) }) => {
+		add_named_rule("ex-prefix-call", rule: Parser.matchAnyFrom(["NOT", "ABS"].map { Parser.matchLiteral($0) }) => { [unowned self] in
 			switch self.text {
 			case "NOT": self.stack.append(.unaryOperator(.not))
 			case "ABS": self.stack.append(.unaryOperator(.abs))
@@ -644,7 +648,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			}
 		})
 
-		add_named_rule("ex-math-addition-operator", rule: Parser.matchAnyFrom(["+", "-", "||"].map { Parser.matchLiteral($0) }) => {
+		add_named_rule("ex-math-addition-operator", rule: Parser.matchAnyFrom(["+", "-", "||"].map { Parser.matchLiteral($0) }) => { [unowned self] in
 			switch self.text {
 			case "+": self.stack.append(.binaryOperator(.add))
 			case "-": self.stack.append(.binaryOperator(.subtract))
@@ -653,7 +657,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			}
 		})
 
-		add_named_rule("ex-math-multiplication-operator", rule: Parser.matchAnyFrom(["*", "/"].map { Parser.matchLiteral($0) }) => {
+		add_named_rule("ex-math-multiplication-operator", rule: Parser.matchAnyFrom(["*", "/"].map { Parser.matchLiteral($0) }) => { [unowned self] in
 			switch self.text {
 			case "*": self.stack.append(.binaryOperator(.multiply))
 			case "/": self.stack.append(.binaryOperator(.divide))
@@ -662,33 +666,33 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		})
 
 		add_named_rule("ex-unary-prefix", rule: (
-			((^"ex-prefix-operator" ~~ ^"ex-value") => {
+			((^"ex-prefix-operator" ~~ ^"ex-value") => { [unowned self] in
 				guard case .expression(let expr) = self.stack.popLast()! else { fatalError() }
 				guard case .unaryOperator(let op) = self.stack.popLast()! else { fatalError() }
 				self.stack.append(.expression(.unary(op, expr)))
 			})
-			| ((^"ex-prefix-call" ~~ ^"ex-sub") => {
+			| ((^"ex-prefix-call" ~~ ^"ex-sub") => { [unowned self] in
 				guard case .expression(let expr) = self.stack.popLast()! else { fatalError() }
 				guard case .unaryOperator(let op) = self.stack.popLast()! else { fatalError() }
 				self.stack.append(.expression(.unary(op, expr)))
 			})
 			| ^"ex-value"))
 
-		add_named_rule("ex-math-multiplication", rule: ^"ex-unary-prefix" ~~ ((^"ex-math-multiplication-operator" ~~ ^"ex-unary-prefix") => {
+		add_named_rule("ex-math-multiplication", rule: ^"ex-unary-prefix" ~~ ((^"ex-math-multiplication-operator" ~~ ^"ex-unary-prefix") => { [unowned self] in
 			guard case .expression(let right) = self.stack.popLast()! else { fatalError() }
 			guard case .binaryOperator(let op) = self.stack.popLast()! else { fatalError() }
 			guard case .expression(let left) = self.stack.popLast()! else { fatalError() }
 			self.stack.append(.expression(.binary(left, op, right)))
 		})*)
 
-		add_named_rule("ex-math-addition", rule: ^"ex-math-multiplication" ~~ ((^"ex-math-addition-operator" ~~ ^"ex-math-multiplication") => {
+		add_named_rule("ex-math-addition", rule: ^"ex-math-multiplication" ~~ ((^"ex-math-addition-operator" ~~ ^"ex-math-multiplication") => { [unowned self] in
 			guard case .expression(let right) = self.stack.popLast()! else { fatalError() }
 			guard case .binaryOperator(let op) = self.stack.popLast()! else { fatalError() }
 			guard case .expression(let left) = self.stack.popLast()! else { fatalError() }
 			self.stack.append(.expression(.binary(left, op, right)))
 			})*)
 
-		add_named_rule("ex-equality", rule: ^"ex-math-addition" ~~ ((^"ex-equality-operator" ~~ ^"ex-math-addition") => {
+		add_named_rule("ex-equality", rule: ^"ex-math-addition" ~~ ((^"ex-equality-operator" ~~ ^"ex-math-addition") => { [unowned self] in
 			guard case .expression(let right) = self.stack.popLast()! else { fatalError() }
 			guard case .binaryOperator(let op) = self.stack.popLast()! else { fatalError() }
 			guard case .expression(let left) = self.stack.popLast()! else { fatalError() }
@@ -696,10 +700,10 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		})/~)
 
 		add_named_rule("ex-case-when", rule:
-			Parser.matchLiteralInsensitive("CASE") => {
+			Parser.matchLiteralInsensitive("CASE") => { [unowned self] in
 				self.stack.append(.expression(SQLExpression.when([], else: nil)))
 			}
-			~~ ((Parser.matchLiteralInsensitive("WHEN") ~~ ^"ex-equality" ~~ Parser.matchLiteralInsensitive("THEN") ~~ ^"ex-equality") => {
+			~~ ((Parser.matchLiteralInsensitive("WHEN") ~~ ^"ex-equality" ~~ Parser.matchLiteralInsensitive("THEN") ~~ ^"ex-equality") => { [unowned self] in
 				guard case .expression(let then) = self.stack.popLast()! else { fatalError() }
 				guard case .expression(let when) = self.stack.popLast()! else { fatalError() }
 				guard case .expression(let caseExpression) = self.stack.popLast()! else { fatalError() }
@@ -707,7 +711,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 				whens.append(SQLWhen(when: when, then: then))
 				self.stack.append(.expression(SQLExpression.when(whens, else: nil)))
 			})+
-			~~ (((Parser.matchLiteralInsensitive("ELSE") ~~ ^"ex-equality") => {
+			~~ (((Parser.matchLiteralInsensitive("ELSE") ~~ ^"ex-equality") => { [unowned self] in
 				guard case .expression(let then) = self.stack.popLast()! else { fatalError() }
 				guard case .expression(let caseExpression) = self.stack.popLast()! else { fatalError() }
 				guard case .when(let whens, else: _) = caseExpression else { fatalError() }
@@ -718,12 +722,12 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		add_named_rule("ex", rule: ^"ex-case-when" | ^"ex-equality")
 
 		add_named_rule("order-direction", rule:
-			(Parser.matchLiteralInsensitive("ASC") => {
+			(Parser.matchLiteralInsensitive("ASC") => { [unowned self] in
 				guard case .order(var order) = self.stack.popLast()! else { fatalError() }
 				order.direction = .ascending
 				self.stack.append(.order(order))
 			})
-			| (Parser.matchLiteralInsensitive("DESC") => {
+			| (Parser.matchLiteralInsensitive("DESC") => { [unowned self] in
 				guard case .order(var order) = self.stack.popLast()! else { fatalError() }
 				order.direction = .descending
 				self.stack.append(.order(order))
@@ -731,11 +735,11 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 
 		// Order specifications
 		add_named_rule("orders", rule:
-			Parser.matchList(((^"ex" => {
+			Parser.matchList(((^"ex" => { [unowned self] in
 				guard case .expression(let ex) = self.stack.popLast()! else { fatalError() }
 				self.stack.append(.order(SQLOrder(expression: ex, direction: .ascending)))
 			}
-			~~ (^"order-direction")/~)) => {
+			~~ (^"order-direction")/~)) => { [unowned self] in
 				guard case .order(let order) = self.stack.popLast()! else { fatalError() }
 				guard case .orders(var orders) = self.stack.popLast()! else { fatalError() }
 				orders.append(order)
@@ -743,18 +747,18 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			}, separator: Parser.matchLiteral(",")))
 
 		// Types
-		add_named_rule("type-text", rule: Parser.matchLiteralInsensitive("TEXT") => { self.stack.append(.type(SQLType.text)) })
-		add_named_rule("type-int", rule: Parser.matchLiteralInsensitive("INT") => { self.stack.append(.type(SQLType.int)) })
-		add_named_rule("type-blob", rule: Parser.matchLiteralInsensitive("BLOB") => { self.stack.append(.type(SQLType.blob)) })
+		add_named_rule("type-text", rule: Parser.matchLiteralInsensitive("TEXT") => { [unowned self] in self.stack.append(.type(SQLType.text)) })
+		add_named_rule("type-int", rule: Parser.matchLiteralInsensitive("INT") => { [unowned self] in self.stack.append(.type(SQLType.int)) })
+		add_named_rule("type-blob", rule: Parser.matchLiteralInsensitive("BLOB") => { [unowned self] in self.stack.append(.type(SQLType.blob)) })
 		add_named_rule("type", rule: ^"type-text" | ^"type-int" | ^"type-blob")
 
 		// Column definition
-		add_named_rule("column-definition", rule: ((^"lit-column" ~~ ^"type") => {
+		add_named_rule("column-definition", rule: ((^"lit-column" ~~ ^"type") => { [unowned self] in
 				guard case .type(let t) = self.stack.popLast()! else { fatalError() }
 				guard case .columnIdentifier(let c) = self.stack.popLast()! else { fatalError() }
 				self.stack.append(.columnDefinition(column: c, type: t, primary: false))
 			})
-			~~ (Parser.matchLiteralInsensitive("PRIMARY KEY") => {
+			~~ (Parser.matchLiteralInsensitive("PRIMARY KEY") => { [unowned self] in
 				guard case .columnDefinition(column: let c, type: let t, primary: let p) = self.stack.popLast()! else { fatalError() }
 				self.stack.append(.columnDefinition(column: c, type: t, primary: p))
 			})/~)
@@ -763,7 +767,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		add_named_rule("id-table", rule: firstCharacter ~ followingCharacter*)
 
 		// SELECT
-		add_named_rule("tuple", rule: Parser.matchList(^"ex" => {
+		add_named_rule("tuple", rule: Parser.matchList(^"ex" => { [unowned self] in
 			if case .expression(let ne) = self.stack.popLast()! {
 				if let last = self.stack.last, case .tuple(let exprs) = last {
 					_ = self.stack.popLast()
@@ -776,7 +780,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		}, separator: Parser.matchLiteral(",")))
 
 		// INSERT
-		add_named_rule("column-list", rule: Parser.matchList(^"lit-column" => {
+		add_named_rule("column-list", rule: Parser.matchList(^"lit-column" => { [unowned self] in
 			if case .columnIdentifier(let colName) = self.stack.popLast()! {
 				if let last = self.stack.popLast(), case .columnList(let exprs) = last {
 					self.stack.append(.columnList(exprs + [colName]))
@@ -794,16 +798,16 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 
 		// Statement types
 		add_named_rule("select-dql-statement", rule:
-			Parser.matchLiteralInsensitive("SELECT") => {
+			Parser.matchLiteralInsensitive("SELECT") => { [unowned self] in
 				self.stack.append(.statement(.select(SQLSelect())))
 			}
-			~~ ((Parser.matchLiteralInsensitive("DISTINCT") => {
+			~~ ((Parser.matchLiteralInsensitive("DISTINCT") => { [unowned self] in
 				guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 				guard case .select(var select) = st else { fatalError() }
 				select.distinct = true
 				self.stack.append(.statement(.select(select)))
 			})/~)
-			~~ (^"tuple" => {
+			~~ (^"tuple" => { [unowned self] in
 				guard case .tuple(let exprs) = self.stack.popLast()! else { fatalError() }
 				guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 				guard case .select(var select) = st else { fatalError() }
@@ -811,34 +815,34 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 				self.stack.append(.statement(.select(select)))
 			})
 			~~ (
-					Parser.matchLiteralInsensitive("FROM") ~~ ^"id-table" => {
+					Parser.matchLiteralInsensitive("FROM") ~~ ^"id-table" => { [unowned self] in
 						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 						guard case .select(var select) = st else { fatalError() }
 						select.from = SQLTable(name: self.text)
 						self.stack.append(.statement(.select(select)))
 					}
-					~~ ((Parser.matchLiteralInsensitive("LEFT JOIN") => {
+					~~ ((Parser.matchLiteralInsensitive("LEFT JOIN") => { [unowned self] in
 							self.stack.append(.join(.left(table: SQLTable(name: ""), on: SQLExpression.null)))
 						}
-						~~ ^"id-table" => {
+						~~ ^"id-table" => { [unowned self] in
 							guard case .join(let join) = self.stack.popLast()! else { fatalError() }
 							guard case .left(table: _, on: _) = join else { fatalError() }
 							self.stack.append(.join(.left(table: SQLTable(name: self.text), on: SQLExpression.null)))
 						}
 						~~ Parser.matchLiteralInsensitive("ON")
-						~~ ^"ex" => {
+						~~ ^"ex" => { [unowned self] in
 							guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
 							guard case .join(let join) = self.stack.popLast()! else { fatalError() }
 							guard case .left(table: let table, on: _) = join else { fatalError() }
 							self.stack.append(.join(.left(table: table, on: expression)))
-						}) => {
+						}) => { [unowned self] in
 							guard case .join(let join) = self.stack.popLast()! else { fatalError() }
 							guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 							guard case .select(var select) = st else { fatalError() }
 							select.joins.append(join)
 							self.stack.append(.statement(.select(select)))
 						})*
-					~~ (Parser.matchLiteralInsensitive("WHERE") ~~ ^"ex" => {
+					~~ (Parser.matchLiteralInsensitive("WHERE") ~~ ^"ex" => { [unowned self] in
 						guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
 						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 						guard case .select(var select) = st else { fatalError() }
@@ -846,10 +850,10 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 						self.stack.append(.statement(.select(select)))
 					})/~
 						~~ (
-							(Parser.matchLiteralInsensitive("ORDER BY") => {
+							(Parser.matchLiteralInsensitive("ORDER BY") => { [unowned self] in
 								self.stack.append(.orders([]))
 							})
-							~~ ^"orders" => {
+							~~ ^"orders" => { [unowned self] in
 								guard case .orders(let orders) = self.stack.popLast()! else { fatalError() }
 								guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 								guard case .select(var select) = st else { fatalError() }
@@ -861,11 +865,11 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		)
 
 		add_named_rule("create-ddl-statement", rule: Parser.matchLiteralInsensitive("CREATE TABLE")
-			~~ (^"id-table" => {
+			~~ (^"id-table" => { [unowned self] in
 					self.stack.append(.statement(.create(table: SQLTable(name: self.text), schema: SQLSchema())))
 				})
 			~~ Parser.matchLiteral("(")
-			~~ Parser.matchList(^"column-definition" => {
+			~~ Parser.matchList(^"column-definition" => { [unowned self] in
 				guard case .columnDefinition(column: let column, type: let type, primary: let primary) = self.stack.popLast()! else { fatalError() }
 				guard case .statement(let s) = self.stack.popLast()! else { fatalError() }
 				guard case .create(table: let t, schema: let oldSchema) = s else { fatalError() }
@@ -880,20 +884,20 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		)
 
 		add_named_rule("drop-ddl-statement", rule: Parser.matchLiteralInsensitive("DROP TABLE")
-			~~ (^"id-table" => {
+			~~ (^"id-table" => { [unowned self] in
 				self.stack.append(.statement(.drop(table: SQLTable(name: self.text))))
 			})
 		)
 
 		add_named_rule("update-dml-statement", rule: Parser.matchLiteralInsensitive("UPDATE")
-			~~ (^"id-table" => {
+			~~ (^"id-table" => { [unowned self] in
 				let update = SQLUpdate(table: SQLTable(name: self.text))
 				self.stack.append(.statement(.update(update)))
 			})
 			~~ Parser.matchLiteralInsensitive("SET")
 			~~ Parser.matchList(^"lit-column"
 				~~ Parser.matchLiteral("=")
-				~~ ^"ex" => {
+				~~ ^"ex" => { [unowned self] in
 					guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
 					guard case .columnIdentifier(let col) = self.stack.popLast()! else { fatalError() }
 					guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
@@ -905,7 +909,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 					update.set[col] = expression
 					self.stack.append(.statement(.update(update)))
 				}, separator: Parser.matchLiteral(","))
-			~~ (Parser.matchLiteralInsensitive("WHERE") ~~ (^"ex" => {
+			~~ (Parser.matchLiteralInsensitive("WHERE") ~~ (^"ex" => { [unowned self] in
 				guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
 				guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 				guard case .update(var update) = st else { fatalError() }
@@ -914,10 +918,10 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			}))/~)
 
 		add_named_rule("delete-dml-statement", rule: Parser.matchLiteralInsensitive("DELETE FROM")
-			~~ (^"id-table" => {
+			~~ (^"id-table" => { [unowned self] in
 				self.stack.append(.statement(.delete(from: SQLTable(name: self.text), where: nil)))
 			})
-			~~ (Parser.matchLiteralInsensitive("WHERE") ~~ ^"ex" => {
+			~~ (Parser.matchLiteralInsensitive("WHERE") ~~ ^"ex" => { [unowned self] in
 				guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
 				guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 				guard case .delete(from: let table, where: _) = st else { fatalError() }
@@ -926,20 +930,25 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		)
 
 		add_named_rule("insert-dml-statement", rule: (
-				Parser.matchLiteralInsensitive("INSERT") => {
+				Parser.matchLiteralInsensitive("INSERT") => { [unowned self] in
 					self.stack.append(.statement(.insert(SQLInsert(orReplace: false, into: SQLTable(name: ""), columns: [], values: []))))
 				}
-				~~ ((Parser.matchLiteralInsensitive("OR REPLACE") => {
+				~~ ((Parser.matchLiteralInsensitive("OR REPLACE") => { [unowned self] in
 					guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
 					guard case .insert(var insert) = statement else { fatalError() }
 					insert.orReplace = true
 					self.stack.append(.statement(.insert(insert)))
 				})/~)
 				~~ Parser.matchLiteralInsensitive("INTO")
-				~~ (^"id-table" => { self.stack.append(.tableIdentifier(SQLTable(name: self.text))) })
-				~~ ((Parser.matchLiteral("(") => { self.stack.append(.columnList([])) }) ~~ ^"column-list" ~~ Parser.matchLiteral(")"))
+				~~ (^"id-table" => { [unowned self] in
+                    self.stack.append(.tableIdentifier(SQLTable(name: self.text)))
+                })
+				~~ ((Parser.matchLiteral("(") => { [unowned self] in
+                    self.stack.append(.columnList([]))
+                })
+                ~~ ^"column-list" ~~ Parser.matchLiteral(")"))
 				~~ Parser.matchLiteralInsensitive("VALUES")
-					=> {
+					=> { [unowned self] in
 						guard case .columnList(let cs) = self.stack.popLast()! else { fatalError() }
 						guard case .tableIdentifier(let tn) = self.stack.popLast()! else { fatalError() }
 						guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
@@ -949,8 +958,10 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 						insert.values = []
 						self.stack.append(.statement(.insert(insert)))
 					}
-				~~ Parser.matchList(((Parser.matchLiteral("(") => { self.stack.append(.tuple([])) }) ~~ ^"tuple" ~~ Parser.matchLiteral(")"))
-					=> {
+				~~ Parser.matchList(((Parser.matchLiteral("(") => { [unowned self] in
+                    self.stack.append(.tuple([]))
+                }) ~~ ^"tuple" ~~ Parser.matchLiteral(")"))
+					=> { [unowned self] in
 						guard case .tuple(let rs) = self.stack.popLast()! else { fatalError() }
 						guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
 						guard case .insert(var insert) = statement else { fatalError() }
@@ -960,7 +971,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			))
 
 		add_named_rule("show-statement", rule: Parser.matchLiteralInsensitive("SHOW") ~~ (
-			Parser.matchLiteralInsensitive("TABLES") => {
+			Parser.matchLiteralInsensitive("TABLES") => { [unowned self] in
 				self.stack.append(.statement(.show(.tables)))
 			}
 		))
