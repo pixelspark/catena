@@ -112,14 +112,16 @@ public struct SQLSelect {
 	public var `where`: SQLExpression? = nil
 	public var distinct: Bool = false
 	public var orders: [SQLOrder] = []
+    public var limit: Int? = nil
 
-	public init(these: [SQLExpression] = [], from: SQLTable? = nil, joins: [SQLJoin] = [], `where`: SQLExpression? = nil, distinct: Bool = false, orders: [SQLOrder] = []) {
+    public init(these: [SQLExpression] = [], from: SQLTable? = nil, joins: [SQLJoin] = [], `where`: SQLExpression? = nil, distinct: Bool = false, orders: [SQLOrder] = [], limit: Int? = nil) {
 		self.these = these
 		self.from = from
 		self.joins = joins
 		self.`where` = `where`
 		self.distinct = distinct
 		self.orders = orders
+        self.limit = limit
 	}
 }
 
@@ -280,8 +282,17 @@ public enum SQLStatement {
 				else {
 					orderSQL = ""
 				}
+                
+                // limiting
+                let limitSQL: String
+                if let i = select.limit {
+                    limitSQL = " LIMIT \(i)"
+                }
+                else {
+                    limitSQL = ""
+                }
 
-				return "SELECT\(distinctSQL) \(selectList) FROM \(t.sql(dialect: dialect))\(joinSQL)\(whereSQL)\(orderSQL);"
+				return "SELECT\(distinctSQL) \(selectList) FROM \(t.sql(dialect: dialect))\(joinSQL)\(whereSQL)\(orderSQL)\(limitSQL);"
 			}
 			else {
 				return "SELECT\(distinctSQL) \(selectList);"
@@ -517,6 +528,12 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 		// Literals
 		let firstCharacter: ParserRule = (("a"-"z")|("A"-"Z"))
 		let followingCharacter: ParserRule = (firstCharacter | ("0"-"9") | literal("_"))
+        add_named_rule("lit-positive-int", rule: (("0"-"9")+) => { [unowned self] in
+            if let n = Int(self.text) {
+                self.stack.append(.expression(.literalInteger(n)))
+            }
+        })
+        
 		add_named_rule("lit-int", rule: (Parser.matchLiteral("-")/~ ~ ("0"-"9")+) => { [unowned self] in
 			if let n = Int(self.text) {
 				self.stack.append(.expression(.literalInteger(n)))
@@ -849,18 +866,29 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 						select.where = expression
 						self.stack.append(.statement(.select(select)))
 					})/~
-						~~ (
-							(Parser.matchLiteralInsensitive("ORDER BY") => { [unowned self] in
-								self.stack.append(.orders([]))
-							})
-							~~ ^"orders" => { [unowned self] in
-								guard case .orders(let orders) = self.stack.popLast()! else { fatalError() }
-								guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
-								guard case .select(var select) = st else { fatalError() }
-								select.orders = orders
-								self.stack.append(.statement(.select(select)))
-							}
-						)/~
+                    ~~ (
+                        (Parser.matchLiteralInsensitive("ORDER BY") => { [unowned self] in
+                            self.stack.append(.orders([]))
+                        })
+                        ~~ ^"orders" => { [unowned self] in
+                            guard case .orders(let orders) = self.stack.popLast()! else { fatalError() }
+                            guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+                            guard case .select(var select) = st else { fatalError() }
+                            select.orders = orders
+                            self.stack.append(.statement(.select(select)))
+                        }
+                    )/~
+                    ~~ (
+                        Parser.matchLiteralInsensitive("LIMIT")
+                        ~~ ^"lit-positive-int" => { [unowned self] in
+                            guard case .expression(let ex) = self.stack.popLast()! else { fatalError() }
+                            guard case .literalInteger(let i) = ex else { fatalError() }
+                            guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+                            guard case .select(var select) = st else { fatalError() }
+                            select.limit = i
+                            self.stack.append(.statement(.select(select)))
+                        }
+                    )/~
 				)/~
 		)
 

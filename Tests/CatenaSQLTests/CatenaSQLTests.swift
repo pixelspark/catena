@@ -126,6 +126,7 @@ class CatenaSQLTests: XCTestCase {
 			"SELECT a FROM b WHERE c=d;",
 			"SELECT a FROM b WHERE c=d ORDER BY z ASC;",
 			"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC;",
+            "SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT 10;",
 			"DELETE FROM a WHERE x=y;",
 			"UPDATE a SET z=y WHERE a=b;",
 			"INSERT INTO x (a,b,c) VALUES (1,2,3),(4,5,6);",
@@ -149,6 +150,10 @@ class CatenaSQLTests: XCTestCase {
 			"SELECT ?empty:?other:1;", // Parameter value may not be another parameter
 			"SELECT ?empty:column;", // Parameter value may not be another column (non-constant)
 			"SELECT ?empty:*;", // Parameter value may not be all columns (non-constant)
+            "SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT x;", // limit has non-int
+            "SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT 1.5;", // limit has non-int
+            "SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT -5;", // limit has non-positive int
+            "SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT x+1;", // limit has non-int
 		]
 
 		for v in valid {
