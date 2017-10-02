@@ -175,7 +175,8 @@ public class Node<LedgerType: Ledger> {
 		let transactionGossip = Gossip<LedgerType>.transaction(transaction.json)
 		self.peers.forEach { (url, otherPeer) in
 			if peer == nil || otherPeer.url != peer!.url {
-				switch otherPeer.state {
+                let otherState = otherPeer.mutex.locked { return otherPeer.state }
+				switch otherState {
 				case .queried, .passive:
 					if let otherConnection = otherPeer.connection {
 						do {
