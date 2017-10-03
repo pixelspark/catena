@@ -522,6 +522,20 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 	fileprivate(set) var connection: PeerConnection<LedgerType>? = nil
 	weak var node: Node<LedgerType>?
 	public let mutex = Mutex()
+	
+	private struct Request: CustomStringConvertible {
+		let connection: PeerConnection<LedgerType>
+		let gossip: Gossip<LedgerType>
+		let counter: Int
+		
+		var description: String {
+			return "#\(self.counter):\(gossip)"
+		}
+	}
+	
+	private lazy var queue = ThrottlingQueue<Request>(interval: LedgerType.ParametersType.maximumPeerRequestRate, maxQueuedRequests: LedgerType.ParametersType.maximumPeerRequestQueueSize) { [weak self] (request: Request) throws -> () in
+		try self?.process(request: request)
+	}
 
 	init(url: URL, state: PeerState, connection: PeerConnection<LedgerType>?, delegate: Node<LedgerType>) {
 		assert(Peer<LedgerType>.isValidPeerURL(url: url), "Peer URL must be valid")
@@ -669,67 +683,68 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 			}
 		}
 	}
+	
+	private func process(request: Request) throws {
+		Log.debug("[Peer] process request \(request.counter) for peer \(self)")
+		
+		switch request.gossip {
+		case .forget:
+			try self.node?.forget(peer: self)
+			self.state = .ignored(reason: "peer requested to be forgotten")
+			
+		case .transaction(let trData):
+			let tr = try TransactionType(json: trData)
+			_ = try self.node?.receive(transaction: tr, from: self)
+			
+		case .block(let blockData):
+			do {
+				let b = try BlockType.read(json: blockData)
+				try self.node?.receive(block: b, from: self, wasRequested: false)
+			}
+			catch {
+				self.fail(error: "Received invalid unsolicited block")
+			}
+			
+		case .fetch(let h):
+			try self.node?.ledger.mutex.locked {
+				if let block = try self.node?.ledger.longest.get(block: h) {
+					assert(block.isSignatureValid, "returning invalid blocks, that can't be good")
+					assert(try! BlockType.read(json: block.json).isSignatureValid, "JSON goes wild")
+					
+					try request.connection.reply(counter: request.counter, gossip: .block(block.json))
+				}
+				else {
+					try request.connection.reply(counter: request.counter, gossip: .error("not found"))
+				}
+			}
+			
+		case .query:
+			// We received a query from the other end
+			if let n = self.node {
+				let idx = n.ledger.mutex.locked {
+					return Index<BlockchainType.BlockType>(
+						genesis: n.ledger.longest.genesis.signature!,
+						peers: Array(n.validPeers),
+						highest: n.ledger.longest.highest.signature!,
+						height: n.ledger.longest.highest.index,
+						timestamp: BlockchainType.BlockType.TimestampType(Date().timeIntervalSince1970)
+					)
+				}
+				try request.connection.reply(counter: request.counter, gossip: .index(idx))
+			}
+			break
+			
+		default:
+			// These are not requests we handle. Ignore clients that don't play by the rules
+			self.state = .ignored(reason: "peer sent invalid request \(request.gossip)")
+			break
+		}
+	}
 
 	public func peer(connection: PeerConnection<LedgerType>, requests gossip: Gossip<LedgerType>, counter: Int) {
-		do {
-			self.lastSeen = Date()
-			Log.debug("[Peer] receive request \(counter)")
-			switch gossip {
-			case .forget:
-				try self.node?.forget(peer: self)
-				self.state = .ignored(reason: "peer requested to be forgotten")
-
-			case .transaction(let trData):
-				let tr = try TransactionType(json: trData)
-				_ = try self.node?.receive(transaction: tr, from: self)
-
-			case .block(let blockData):
-				do {
-					let b = try BlockType.read(json: blockData)
-					try self.node?.receive(block: b, from: self, wasRequested: false)
-				}
-				catch {
-					self.fail(error: "Received invalid unsolicited block")
-				}
-
-			case .fetch(let h):
-				try self.node?.ledger.mutex.locked {
-					if let block = try self.node?.ledger.longest.get(block: h) {
-						assert(block.isSignatureValid, "returning invalid blocks, that can't be good")
-						assert(try! BlockType.read(json: block.json).isSignatureValid, "JSON goes wild")
-
-						try connection.reply(counter: counter, gossip: .block(block.json))
-					}
-					else {
-						try connection.reply(counter: counter, gossip: .error("not found"))
-					}
-				}
-
-			case .query:
-				// We received a query from the other end
-				if let n = self.node {
-					let idx = n.ledger.mutex.locked {
-						return Index<BlockchainType.BlockType>(
-							genesis: n.ledger.longest.genesis.signature!,
-							peers: Array(n.validPeers),
-							highest: n.ledger.longest.highest.signature!,
-							height: n.ledger.longest.highest.index,
-							timestamp: BlockchainType.BlockType.TimestampType(Date().timeIntervalSince1970)
-						)
-					}
-					try connection.reply(counter: counter, gossip: .index(idx))
-				}
-				break
-
-			default:
-				// These are not requests we handle. Ignore clients that don't play by the rules
-				self.state = .ignored(reason: "peer sent invalid request \(gossip)")
-				break
-			}
-		}
-		catch {
-			Log.error("[Peer] handle Gossip request failed: \(error.localizedDescription)")
-		}
+		self.lastSeen = Date()
+		Log.debug("[Peer] receive request \(counter)")
+		self.queue.enqueue(request: Request(connection: connection, gossip: gossip, counter: counter))
 	}
 
 	public func peer(connected _: PeerConnection<LedgerType>) {

@@ -1,5 +1,7 @@
 import Foundation
 import Cryptor
+import LoggerAPI
+import Dispatch
 
 /** A mutually-exclusive lock that can be used to regulate access to resources in a multithreaded environment. */
 public class Mutex {
@@ -232,5 +234,106 @@ extension Data {
 			return UnsafeRawPointer(ptr)
 		}
 		self.append(ptr.assumingMemoryBound(to: UInt8.self), count: MemoryLayout<T>.size)
+	}
+}
+
+/** A queue that processes requests at a certain predefined maximum rate of 1/throttleInterval requests
+per second. The start of a new request will never be earlier than `throttleInterval` seconds after the
+start of the processing of the previous request, nor will two requests be processed at the same time.
+Optionally, the maximum number of queued requests can be specified - whenever a request is queued and
+the queue is full, the request is dropped. */
+internal class ThrottlingQueue<RequestType> {
+	typealias ProcessorType = ((RequestType) throws -> ())
+	
+	private var queue: [RequestType] = []
+	private var processing = false
+	private var lastStarted: Date? = nil
+	private let mutex = Mutex()
+	private let processor: ProcessorType
+	
+	/** The maximum size of the request queue (nil if the size is unlimited) */
+	let maxQueuedRequests: Int?
+	
+	/** The time between the start of processing of each successive request. */
+	let throttleInterval: TimeInterval
+	
+	/** Iniitalize the queue. Please also set a processor (and remember to think about reference loops) */
+	init(interval: TimeInterval, maxQueuedRequests: Int? = nil, processor: @escaping ProcessorType) {
+		self.throttleInterval = interval
+		self.maxQueuedRequests = maxQueuedRequests
+		self.processor = processor
+	}
+	
+	/** Add a request to the request queue for processing, and start processing the queue if it is
+	not currently being processed. */
+	func enqueue(request: RequestType) {
+		self.mutex.locked {
+			if self.maxQueuedRequests == nil || self.queue.count < self.maxQueuedRequests! {
+				self.queue.append(request)
+				self.processRequestQueue()
+			}
+			else {
+				Log.info("[Throttling] Dropping request \(request): exceeded max number of queued requests (\(maxQueuedRequests!))")
+			}
+		}
+	}
+	
+	/** Start processing the queue when it is not yet being processed. */
+	private func startProcessingRequestQueue() {
+		self.mutex.locked {
+			if !self.processing {
+				self.processing = true
+				self.processRequestQueue()
+			}
+			else {
+				// Request queue is already being processed
+			}
+		}
+	}
+	
+	private func processRequestQueue() {
+		self.mutex.locked {
+			// Remove the longest waiting request from the queue
+			if let next = self.queue.first {
+				self.queue.removeFirst()
+				
+				// Check when the next time is that we should process this request
+				let delay: TimeInterval
+				if let previous = self.lastStarted {
+					delay = max(0, previous.timeIntervalSinceNow + throttleInterval)
+				}
+				else {
+					delay = 0
+				}
+				
+				if delay > 0 {
+					Log.debug("[Throttling] Delaying request \(next) for \(delay)s because throttling requests to 1/\(throttleInterval)s")
+				}
+				
+				// Schedule the request for processing
+				DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + delay) { [weak self] in
+					if let s = self {
+						// Write down the time at which we started processing this request
+						s.mutex.locked {
+							s.lastStarted = Date()
+						}
+						
+						// Process the request
+						do {
+							try s.processor(next)
+						}
+						catch {
+							Log.error("[Throttling] handle Gossip request failed: \(error.localizedDescription)")
+						}
+						
+						// Continue with the next request from the queue
+						s.processRequestQueue()
+					}
+				}
+			}
+			else {
+				self.processing = false
+			}
+		}
 	}
 }

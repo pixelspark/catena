@@ -187,6 +187,12 @@ public protocol Parameters {
 
 	/** The time after which a failed peer is tried again (reset to state new) */
 	static var peerRetryAfterFailureInterval: TimeInterval { get }
+	
+	/** The minimum time between the start of the processing of an incoming peer request observed. */
+	static var maximumPeerRequestRate: TimeInterval { get }
+	
+	/** The maximum number of queued requests per peer (additional requests will be silently dropped). */
+	static var maximumPeerRequestQueueSize: Int { get }
 }
 
 /** Default values for ledger parameters. Override as you see fit. */
@@ -201,6 +207,8 @@ public extension Parameters {
 	public static var serviceType: String { return "_\(self.protocolVersion)._tcp." }
 	public static var spliceLimit: UInt { return 1 }
 	public static var peerRetryAfterFailureInterval: TimeInterval { return 3600.0 }
+	public static var maximumPeerRequestRate: TimeInterval { return 0.25 /* four requests per second */ }
+	public static var maximumPeerRequestQueueSize: Int { return 25 }
 }
 
 extension Blockchain {
