@@ -451,7 +451,6 @@ public class PeerOutgoingConnection<LedgerType: Ledger>: PeerConnection<LedgerTy
 	}
 
 	public func connect() {
-		self.connection.timeout = 10
 		self.connection.delegate = self
 		self.connection.callbackQueue = DispatchQueue.global(qos: .background)
 
@@ -473,12 +472,11 @@ public class PeerOutgoingConnection<LedgerType: Ledger>: PeerConnection<LedgerTy
 		}
 	}
 
-	public func websocketDidConnect(socket: Starscream.WebSocket) {
-		Log.debug("[Gossip] Connected outgoing to \(socket.currentURL)")
+	public func websocketDidConnect(socket: Starscream.WebSocketClient) {
 		self.delegate?.peer(connected: self)
 	}
 
-	public func websocketDidReceiveData(socket: Starscream.WebSocket, data: Data) {
+	public func websocketDidReceiveData(socket: Starscream.WebSocketClient, data: Data) {
 		do {
 			if let obj = try JSONSerialization.jsonObject(with: data, options: []) as? [Any] {
 				self.receive(data: obj)
@@ -492,14 +490,13 @@ public class PeerOutgoingConnection<LedgerType: Ledger>: PeerConnection<LedgerTy
 		}
 	}
 
-	public func websocketDidDisconnect(socket: Starscream.WebSocket, error: NSError?) {
-		Log.debug("[Gossip] Disconnected outgoing to \(socket.currentURL) \(error?.localizedDescription ?? "unknown error")")
+	public func websocketDidDisconnect(socket: Starscream.WebSocketClient, error: Error?) {
 		self.delegate?.peer(disconnected: self)
 		self.delegate = nil
 		connection.delegate = nil
 	}
 
-	public func websocketDidReceiveMessage(socket: Starscream.WebSocket, text: String) {
+	public func websocketDidReceiveMessage(socket: Starscream.WebSocketClient, text: String) {
 		self.websocketDidReceiveData(socket: socket, data: text.data(using: .utf8)!)
 	}
 }
