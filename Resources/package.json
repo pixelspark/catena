@@ -1,0 +1,24 @@
+{
+  "name": "catena",
+  "version": "1.0.0",
+  "description": "",
+  "main": "catena.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Tommy van der Vorst",
+  "license": "MIT",
+  "devDependencies": {
+    "browserify": "^14.4.0",
+    "gulp": "^3.9.1",
+    "gulp-browserify": "^0.5.1",
+    "gulp-minify": "^1.0.0",
+    "gulp-util": "^3.0.8",
+    "vueify": "^9.4.1"
+  },
+  "dependencies": {
+    "vue": "^2.4.4",
+    "vue-resource": "^1.3.4",
+    "vue-template-compiler": "^2.4.4"
+  }
+}
