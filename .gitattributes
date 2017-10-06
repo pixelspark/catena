@@ -1,2 +1,2 @@
 Resources/vendor/* linguist-vendored
-Resources/build/* linguist-vendored
+Resources/build/* linguist-generated=true
