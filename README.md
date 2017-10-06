@@ -52,6 +52,19 @@ cd ./catena
 docker build -t pixelspark/catena .
 ````
 
+### Building the web client
+
+Catena includes a web client, resources from the `Resources/` folder. A built version of the web client is
+included. To build from scratch, first install the required build tools, then use gulp to compile and bundle files:
+
+````
+cd Resources/
+npm install
+gulp
+````
+
+Use `gulp watch` to have gulp recompile files on change.
+
 ## Running
 
 ### Natively
