@@ -159,14 +159,30 @@ class CatenaTests: XCTestCase {
 		XCTAssert(SHA256Hash(of: "Catena".data(using: .utf8)!).hash.base64EncodedString() == "E6uApbqVIWEp6p2ZaTe07Vf690c+gSiNmWidpNXx1IM=")
 		XCTAssert(String(data: SHA256Hash(of: "Catena".data(using: .utf8)!).hash.base64EncodedData(), encoding: .utf8)! == "E6uApbqVIWEp6p2ZaTe07Vf690c+gSiNmWidpNXx1IM=")
 
-		let ident = try Identity()
-		let pk = ident.publicKey.stringValue
+		let identityA = try Identity()
+		let pk = identityA.publicKey.stringValue
 		let rpk = PublicKey(string: pk)
-		XCTAssert(ident.publicKey == rpk)
+		XCTAssert(identityA.publicKey == rpk)
+
+		let identityB = try Identity()
 
 		let d = "Hello".data(using: .utf8)!
-		let signed = try ident.publicKey.sign(data: d, with: ident.privateKey)
-		XCTAssert(try ident.publicKey.verify(message: d, signature: signed))
+		let signedA = try identityA.publicKey.sign(data: d, with: identityA.privateKey)
+		let signedB = try identityB.publicKey.sign(data: d, with: identityB.privateKey)
+
+		let other = "hello".data(using: .utf8)!
+		let otherSignedA = try identityA.publicKey.sign(data: other, with: identityA.privateKey)
+		let otherSignedB = try identityB.publicKey.sign(data: other, with: identityB.privateKey)
+
+		XCTAssert(try identityA.publicKey.verify(message: d, signature: signedA))
+		XCTAssert(!(try identityA.publicKey.verify(message: d, signature: otherSignedA)))
+		XCTAssert(!(try identityA.publicKey.verify(message: d, signature: signedB)))
+		XCTAssert(!(try identityA.publicKey.verify(message: d, signature: otherSignedB)))
+
+		XCTAssert(try identityA.publicKey.verify(message: other, signature: otherSignedA))
+		XCTAssert(!(try identityA.publicKey.verify(message: other, signature: signedA)))
+		XCTAssert(!(try identityA.publicKey.verify(message: other, signature: signedB)))
+		XCTAssert(!(try identityA.publicKey.verify(message: other, signature: otherSignedB)))
 	}
 
 	func testSerialization() throws {
