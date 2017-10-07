@@ -20,21 +20,28 @@ body {
 }
 
 main button {
+	margin: 2px;
 	padding: 6px;
 	border-radius: 6px;
 	background-color: white;
+	background: linear-gradient(to bottom,rgb(255,255,255)  80%, rgb(240,240,240) 100%);
 	border: solid 1px #A0A0A0;
 	cursor: pointer;
-}
-
-main button:hover {
-	background-color: #EFEFEF;
+	box-shadow: 1px 2px 0px rgba(0,0,0,0.05);
 }
 
 main button:focus {
 	border: solid 1px #4d4d4d;
+	background: linear-gradient(to bottom,rgb(240,240,240)  70%, rgb(220,220,220) 100%);
 	outline: none;
 }
+
+main button:active {
+	border: solid 1px #4d4d4d;
+	background: linear-gradient(to bottom,rgb(230,230,230)  70%, rgb(250,250,250) 100%);
+	outline: none;
+}
+
 
 [v-cloak] {
 	display: none;
@@ -235,7 +242,9 @@ dl dt {
 	padding: 5px;
 	padding-left: 0px;
 	vertical-align: top;
+	line-height: 1.2em;
 	margin: 0px;
+	text-align: right;
 }
 
 dl dd {
@@ -348,6 +357,7 @@ th code, th a {
 	box-shadow: 3px 3px 3px rgba(0,0,0,0.05);
 	border-radius: 6px;
 	padding: 5px;
+	margin: 5px;
 	width: auto;
 }
 
