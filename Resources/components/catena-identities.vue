@@ -10,7 +10,7 @@
 			</ul>
 
 			<button style="float: right; margin: 5px;" @click="generate"><i class="fa fa-plus"></i> Generate new identity</button>
-			<button style="float: right; margin: 5px;" @click="load" v-if="identity !== null"><i class="fa fa-plus"></i> Import</button>
+			<button style="float: right; margin: 5px;" @click="load"><i class="fa fa-download"></i> Import identity</button>
 		</aside>
 		<article style="overflow-y: auto;">
 			<div v-if="identity === null">

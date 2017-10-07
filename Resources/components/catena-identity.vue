@@ -1,40 +1,34 @@
 <template>
 	<div v-if="identity !== null">
-	<h1><i class="fa fa-user"></i> {{identity.publicHash}}</h1>
-	<table>
-		<tr>
-			<th colspan="2">
-				Details
-			</th>
-		</tr>
+	<h1><i class="fa fa-user"></i> Identity {{identity.publicHash}}</h1>
+	<dl>
+		<template v-if="identity !== null">
+			<dt>Public key</dt>
+			<dd><code>{{identity.publicBase58}}</code></dd>
+		</template>
 
-		<tr v-if="identity !== null">
-			<td>Public key</td>
-			<td><code>{{identity.publicBase58}}</code></td>
-		</tr>
+		<template v-if="identity !== null">
+			<dt>Public hash (hex)</dt>
+			<dd><code>X'{{identity.publicHashHex}}'</code></dd>
+		</template>
 
-		<tr v-if="identity !== null">
-			<td>Public hash (hex)</td>
-			<td><code>X'{{identity.publicHashHex}}'</code></td>
-		</tr>
+		<template v-if="identity !== null">
+			<dt>Counter</dt>
+			<dd>{{counter}} <button @click="updateCounter">Refresh</button></dd>
+		</template>
 
-		<tr v-if="identity !== null">
-			<td>Counter</td>
-			<td>{{counter}} <a href="javascript:void(0);" @click="updateCounter">Refresh</a></td>
-		</tr>
-
-		<tr v-if="identity !== null">
-			<td>Private key</td>
-			<td>
+		<template v-if="identity !== null">
+			<dt>Private key</dt>
+			<dd>
 				<code v-if="privateKeyVisible">{{identity.privateBase58}}</code>
 				<template v-else><i class="fa fa-key" v-if="identity !== null"></i></template>
 				<button @click="togglePrivateKey">
 					<template v-if="privateKeyVisible">Hide</template>
 					<template v-else>Show</template>
 				</button>
-			</td>
-		</tr>
-	</table>
+			</dd>
+		</template>
+	</dl>
 
 	<h2>Grants</h2>
 	<catena-query v-if="agent !== null" :sql="grantsSQL" :agent="agent"></catena-query>

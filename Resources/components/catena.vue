@@ -41,18 +41,6 @@
 					</aside>
 
 					<article>
-						<template v-if="connection != null">
-							<input 
-								:value="selectedBlock ? selectedBlock.hash : ''" 
-								placeholder="Go to block hash..." 
-								type="text" 
-								v-on:keyup.enter="goToBlock" 
-								style="width: 80%; clear: both;"/>
-
-							<a href="javascript:void(0);" @click="selectHash(index.genesis)">Genesis</a>
-							<br/>
-					</template>
-
 						<template v-if="selectedBlock !== null">
 							<catena-block-details 
 								:block="selectedBlock"
@@ -61,16 +49,6 @@
 							</catena-block-details>
 						</template>
 					</article>
-				</catena-tab>
-
-				<catena-tab name="Peers" v-if="connection !== null">
-					<article>
-						<h1>Peers</h1>
-						<ul v-if="index !== null">
-							<li v-for="(peer, key) in index.peers" :key="key">{{peer}}</li>
-						</ul>
-					</article>
-					
 				</catena-tab>
 			</catena-tabs>
 		</main>

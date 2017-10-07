@@ -56,10 +56,11 @@ li {
 }
 
 h1 {
-	font-size: 13pt;
+	font-size: 17pt;
 	padding: 10px;
 	padding-left: 0px;
 	display: inline-block;
+	font-weight: lighter;
 }
 
 h2 {
@@ -242,26 +243,28 @@ dl {
 }
 
 dl dt {
-	display: inline-block;
-	width: 20%;
+	display: block;
+	width: 100%;
 	padding: 5px;
 	padding-left: 0px;
-	vertical-align: top;
 	line-height: 1.2em;
 	margin: 0px;
-	text-align: right;
+	text-align: left;
+	font-weight: bold;
+	color: #4d4d4d;
 }
 
 dl dd {
-	display: inline-block;
-	width: 79%;
+	display: block;
+	width: 100%;
 	clear: right;
 	padding: 5px;
 	margin: 0px;
+	padding-left: 15px;
 }
 
 dl dt i {
-	color: rgba(0,0,0,0.5);
+	color: #4d4d4d;
 }
 
  .list-enter-active, .list-leave-active {
@@ -375,7 +378,7 @@ button:disabled {
 	opacity: 0.5;
 }
 
-h3 {
+article h3 {
 	color: rgba(0,0,0,0.5);
 	margin-left: 10px;
 	text-shadow: 1px 1px 0px rgba(255,255,255,0.8);
