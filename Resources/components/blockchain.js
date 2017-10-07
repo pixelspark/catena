@@ -33,6 +33,57 @@ class Identity {
 		return id;
 	}
 
+	get jsonObject() {
+		return {publicKey: this.publicBase58, secretKey: this.privateBase58};
+	}
+
+	static fromJSON(js) {
+		return Identity.loadBase58(js.publicKey, js.secretKey);
+	}	
+
+	persist(b) {
+		let ids = {};
+		if("catenaIdentities" in window.localStorage) {
+			try {
+				ids = JSON.parse(window.localStorage["catenaIdentities"]);
+			}
+			catch(e) {}
+		}
+
+		if(b) {
+			ids[this.publicHash] = this.jsonObject;
+		}
+		else {
+			delete ids[this.publicHash];
+		}
+		window.localStorage["catenaIdentities"] = JSON.stringify(ids);
+	}
+
+	get isPersisted() {
+		if("catenaIdentities" in window.localStorage) {
+			let ids = JSON.parse(window.localStorage["catenaIdentities"]);
+			return this.publicHash in ids;
+		}
+		return false;
+	}
+
+	static persisted() {
+		if("catenaIdentities" in window.localStorage) {
+			try {
+				let ids = JSON.parse(window.localStorage["catenaIdentities"]);
+				var keys = [];
+
+				for(var k in ids) {
+					keys.push(Identity.fromJSON(ids[k]));
+				}
+
+				return keys;
+			}
+			catch(e) { console.log(e); }
+		}
+		return [];
+	}
+
 	sign(msg) {
 		return ed25519.sign(msg, this.publicKey, this.privateKey);
 	}

@@ -44,7 +44,7 @@ module.exports = {
 	data: function() {
 		return {
 			identity: null,
-			identities: [],
+			identities: Identity.persisted(),
 			newPrivate: "",
 			newPublic: ""
 		};
@@ -78,6 +78,8 @@ module.exports = {
 		},
 
 		remove: function(idx) {
+			this.identity.persist(false);
+			
 			if(this.identity !== null && (this.identities[idx].publicHash == this.identity.publicHash)) {
 				this.identity = null;
 			}
