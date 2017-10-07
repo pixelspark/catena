@@ -19,8 +19,21 @@ body {
 	overflow: hidden;
 }
 
-button {
-	padding: 3px;
+main button {
+	padding: 6px;
+	border-radius: 6px;
+	background-color: white;
+	border: solid 1px #A0A0A0;
+	cursor: pointer;
+}
+
+main button:hover {
+	background-color: #EFEFEF;
+}
+
+main button:focus {
+	border: solid 1px #4d4d4d;
+	outline: none;
 }
 
 [v-cloak] {
@@ -165,7 +178,7 @@ nav h1, nav span, nav input, nav {
 	color: rgba(255,255,255,0.6);;
 }
 
-nav button, nav input {
+nav button, nav input, th button {
 	background-color: transparent;
 	border: solid 1px rgba(255,255,255,0.6);
 	color: rgba(255,255,255,0.6);
@@ -175,6 +188,10 @@ nav button, nav input {
 	padding-right: 5px;
 	margin-left: 10px;
 	margin-right: 10px;
+}
+
+nav button {
+	cursor: pointer;
 }
 
 nav input {
@@ -309,4 +326,12 @@ dl dt i {
 	color: #A0A0A0;
 	font-size: 0.8em;
 	vertical-align: middle;
+}
+
+th i.fa {
+	color: white;
+}
+
+th code, th a {
+	color: white;
 }

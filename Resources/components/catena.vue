@@ -21,11 +21,15 @@
 
 		<main>
 			<catena-tabs>
-				<catena-tab name="Data">
-					<catena-data :url="dataURL"></catena-data>
+				<catena-tab name="Identities" v-if="agent !== null">
+					<catena-identities :agent="agent"></catena-identities>
 				</catena-tab>
 
-				<catena-tab name="Blocks">
+				<catena-tab name="Data" v-if="agent !== null">
+					<catena-data :agent="agent"></catena-data>
+				</catena-tab>
+
+				<catena-tab name="Blocks" v-if="connection !== null">
 					<aside>
 						<template v-if="index != null">
 							<catena-chain 
@@ -59,11 +63,11 @@
 					</article>
 				</catena-tab>
 
-				<catena-tab name="Peers">
+				<catena-tab name="Peers" v-if="connection !== null">
 					<article>
 						<h1>Peers</h1>
 						<ul v-if="index !== null">
-							<li v-for="peer in index.peers">{{peer}}</li>
+							<li v-for="(peer, key) in index.peers" :key="key">{{peer}}</li>
 						</ul>
 					</article>
 					
@@ -74,106 +78,9 @@
 </template>
 
 <script>
-function generateUUID() {
-    var dt = new Date().getTime();
-    var uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        var r = (dt + Math.random()*16)%16 | 0;
-        dt = Math.floor(dt/16);
-        return (c=='x' ? r :(r&0x3|0x8)).toString(16);
-    });
-    return uuid;
-}
-
-class Connection {
-	constructor(url, onConnect) {
-		var self = this;
-		this.counter = 0;
-		this.callbacks = {};
-		this.onReceiveBlock = null;
-		this.blocks = {};
-
-		this.socket = new WebSocket(url, "catena-v1");
-		this.socket.onopen = onConnect;
-		this.socket.onmessage = function(x) { self.onReceive(x); };
-	}
-
-	disconnect() {
-		this.socket.close();
-	}
-
-	fetch(blockHash, callback) {
-		var self = this;
-
-		if(blockHash in this.blocks) {
-			return callback(this.blocks[blockHash]);
-		}
-		else {
-			this.request({t:"fetch", hash: blockHash}, function(response) {
-				self.blocks[blockHash] = response.block;
-				return callback(response.block);
-			});
-		}
-	}
-	
-	onReceive(r) {
-		try {
-			var data = JSON.parse(r.data);
-			if(!Array.isArray(data)) { console.log("Receive invalid: ", data); return; }
-			
-			if(data[0] in this.callbacks) {
-				// Solicited
-				this.callbacks[data[0]](data[1]);
-				delete this.callbacks[data[0]];
-			}
-			else {
-				// Unsolicited
-				var self = this;
-				
-				var replyFunction = function(response) {
-					self.connection.send(JSON.stringify([data[0], response]));
-				};
-				
-				this.onReceiveUnsolicited(data[1], replyFunction);
-			}
-			
-		}
-		catch(e) {
-			console.log("PARSE ERROR: ", r.data, e);
-		}
-	}
-	
-	onReceiveUnsolicited(d, reply) {
-		switch(d.t) {
-			case "query":
-				// Indicate we are a passive peer
-				reply({t: "passive"});
-				
-		
-			case "block":
-				if(this.onReceiveBlock) {
-					this.blocks[d.block.hash] = d.block;
-					this.onReceiveBlock(d.block);	
-				}
-				break;
-				
-			case "tx":
-				break;
-
-			case "forget":
-				console.log("Peer requests to be forgotton. Its UUID does not match!", d);
-				
-			default:
-				console.log("Unknown unsolicited gossip: ", d);
-			
-		}
-	}
-	
-	request(req, callback) {
-		this.counter += 2;
-		this.callbacks[this.counter] = callback;
-		this.socket.send(JSON.stringify([this.counter, req]));
-	}
-};
+const Connection = require("./blockchain").Connection;
+const generateUUID = require("./blockchain").generateUUID;
+const Agent = require("./blockchain").Agent;
 
 module.exports = {
 	data: function() {
@@ -182,6 +89,7 @@ module.exports = {
 			uuid: generateUUID(),
 			index: null,
 			connection: null,
+			agent: null,
 			transactions: [],
 			selectedBlock: null
 		};
@@ -204,12 +112,6 @@ module.exports = {
 		this.connect();
 	},
 
-	computed: {
-		dataURL: function() {
-			return "http://" + this.url;
-		}
-	},
-
 	methods: {
 		select: function(block) {
 			this.selectedBlock = block;
@@ -227,6 +129,8 @@ module.exports = {
 				this.connection = new Connection(url, function() {
 					self.update();
 				});
+
+				this.agent = new Agent("http://" + this.url);
 
 				this.connection.onReceiveBlock = function(x) {
 					self.onReceiveBlock(x);

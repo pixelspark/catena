@@ -6,6 +6,8 @@ var util = require('gulp-util');
  
 // Basic usage 
 gulp.task('default', function() {
+	process.env.NODE_ENV = 'production';
+	
 	gulp.src('catena.js')
 	.pipe(browserify({
 		insertGlobals : true,
@@ -23,5 +25,6 @@ gulp.task('default', function() {
 
 gulp.task('watch', function() {
 	gulp.watch('./*.js', ['default']);
+	gulp.watch('./components/*.js', ['default']);
 	gulp.watch('./components/*.vue', ['default']);
 });

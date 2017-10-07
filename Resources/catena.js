@@ -7,6 +7,8 @@ Vue.component('catena-block-details', require('./components/catena-block-details
 Vue.component('catena-chain', require('./components/catena-chain.vue'));
 Vue.component('catena-data', require('./components/catena-data.vue'));
 Vue.component('catena-hash', require('./components/catena-hash.vue'));
+Vue.component('catena-identity', require('./components/catena-identity.vue'));
+Vue.component('catena-identities', require('./components/catena-identities.vue'));
 Vue.component('catena-payload', require('./components/catena-payload.vue'));
 Vue.component('catena-query', require('./components/catena-query.vue'));
 Vue.component('catena-tabs', require('./components/catena-tabs.vue'));

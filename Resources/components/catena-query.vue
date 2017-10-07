@@ -6,13 +6,15 @@
 			<table>
 				<thead>
 					<tr>
-						<th v-for="col in result.columns">{{col}}</th>
+						<th v-for="col in result.columns" :key="col">{{col}}</th>
 					</tr>
 				</thead>
 
 				<tbody>
-					<tr v-for="row in result.rows">
-						<td v-for="cell in row">
+					<tr v-if="!result.rows || result.rows.length == 0" ><td>(No data)</td></tr>
+
+					<tr v-for="(row, idx) in result.rows" :key="idx">
+						<td v-for="(cell, idx) in row" :key="idx">
 							<span v-if="cell === null" class="null">NULL</span>
 							<span v-else>
 								{{cell}}
@@ -26,10 +28,12 @@
 </template>
 
 <script>
+const Agent = require("./blockchain").Agent;
+
 module.exports = {
 	props: {
 		sql: String,
-		url: String
+		agent: Agent
 	},
 
 	data: function() {
@@ -52,7 +56,7 @@ module.exports = {
 			self.error = null;
 			self.result = null;
 			var data = {sql: this.sql};
-			this.$http.post(this.url + "/api/query", data).then(function(r) {
+			this.$http.post(this.agent.url + "/api/query", data).then(function(r) {
 				if(r.ok && r.status == 200) {
 					self.result = r.body;
 				}
