@@ -80,19 +80,22 @@ public class SQLAPIEndpoint {
      disallow any requests from other domains, or set to '*' to allow from any domain. */
     public init(agent: SQLAgent, router: Router, allowCorsOrigin: String?) {
 		self.agent = agent
-        
-        let mw = SQLAPIEndpointCORS(allowOrigin: allowCorsOrigin)
-        router.options("/api/*", middleware: mw)
-        router.get("/api/*", middleware: mw)
-        router.post("/api/*", middleware: mw)
-    
+
+		// API used by the web client
+		let mw = SQLAPIEndpointCORS(allowOrigin: allowCorsOrigin)
+		router.options("/api/*", middleware: mw)
+		router.get("/api/*", middleware: mw)
+		router.post("/api/*", middleware: mw)
 		router.get("/api", handler: self.handleIndex)
-		router.get("/api/block/:hash", handler: self.handleGetBlock)
-		router.get("/api/head", handler: self.handleGetLast)
-		router.get("/api/journal", handler: self.handleGetJournal)
-		router.get("/api/pool", handler: self.handleGetPool)
-		router.get("/api/users", handler: self.handleGetUsers)
+		router.get("/api/counter/:hash", handler: self.handleGetCounter)
         router.post("/api/query", handler: self.handleQuery)
+
+		// Debug APIs
+		router.get("/debug/block/:hash", handler: self.handleGetBlock)
+		router.get("/debug/head", handler: self.handleGetLast)
+		router.get("/debug/journal", handler: self.handleGetJournal)
+		router.get("/debug/pool", handler: self.handleGetPool)
+		router.get("/debug/users", handler: self.handleGetUsers)
         
         router.all("/", middleware: StaticFileServer(path: "./Resources"))
 	}
@@ -107,15 +110,19 @@ public class SQLAPIEndpoint {
             if let q = query as? [String: Any], let sql = q["sql"] as? String {
                 let statement = try SQLStatement(sql)
                 
-                // Mutating statements are queued
+                // Mutating statements are not executed - client needs to sign and submit a transaction for those
                 if statement.isMutating {
-                    _ = response.status(.internalServerError)
-                    response.send(json: ["message": "Performing mutating queries through this API is not supported at this time."])
+                    _ = response.status(.notAcceptable)
+
+					/* We do send back the SQL query as we would write it using the standard SQL dialect
+					(transactions need to contain SQL that is formatted exactly following the dialect;
+					sending back the SQL in that dialect saves the clients from implementing their own
+					SQL parser/formatter). */
+                    response.send(json: [
+						"message": "Performing mutating queries through this API is not supported at this time.",
+						"sql": statement.sql(dialect: SQLStandardDialect())
+					])
                     try response.end()
-                    
-                    /* TODO: implement mutating queries. Needs identity information from the client (and/or a signed transaction)
-                     let transaction = try SQLTransaction(statement: statement, invoker: identity.publicKey, counter: SQLTransaction.CounterType(0))
-                     let result = try self.agent.submit(transaction: transaction, signWith: identity.privateKey) */
                 }
                 else {
                     try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
@@ -241,7 +248,6 @@ public class SQLAPIEndpoint {
 		let pool = self.agent.node.miner.block?.payload.transactions.map { return $0.json } ?? []
 
 		response.send(json: [
-			"status": "ok",
 			"pool": pool
 		])
 		next()
@@ -258,10 +264,29 @@ public class SQLAPIEndpoint {
 		}
 
 		response.send(json: [
-			"status": "ok",
 			"users": users
 		])
 		next()
+	}
+
+	private func handleGetCounter(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+		if let hashString = request.parameters["hash"], let hash = PublicKey(string: hashString) {
+			let data = try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
+				return try chain.meta.users.counter(for: hash)
+			}
+
+			if let ctr = data {
+				response.send(json: [
+					"counter": ctr
+				])
+			}
+			else {
+				response.send(json: [
+				"counter": NSNull()
+				])
+			}
+			next()
+		}
 	}
 
 	private func handleGetLast(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
@@ -282,7 +307,6 @@ public class SQLAPIEndpoint {
 		}
 
 		response.send(json: [
-			"status": "ok",
 			"blocks": data
 		])
 		next()
