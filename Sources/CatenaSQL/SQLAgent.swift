@@ -277,7 +277,8 @@ public class SQLAPIEndpoint {
 
 			if let ctr = data {
 				response.send(json: [
-					"counter": ctr
+					// FIXME: 32-bit integer while a counter is 64-bit
+					"counter": Int(ctr)
 				])
 			}
 			else {
