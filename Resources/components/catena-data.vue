@@ -9,7 +9,7 @@
 			</ul>
 		</aside>
 		<article style="overflow-y: auto;">
-			<textarea @keyup="setQuery" :value="typedQuery"></textarea>
+			<textarea @keyup="setQuery" :value="typedQuery" @keyup.enter="enterUp"></textarea>
 			<button @click="perform">Query</button>
 
 			<catena-query :sql="query" v-if="query != '' " :agent="agent"></catena-query>
@@ -48,6 +48,13 @@ module.exports = {
 				this.query = "";
 			}
 			this.queries.splice(idx, 1);
+		},
+
+		enterUp: function(e) {
+			this.typedQuery = e.target.value;
+			if(e.ctrlKey) {
+				this.perform();
+			}
 		},
 
 		perform: function() {
