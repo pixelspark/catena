@@ -21,12 +21,12 @@
 
 		<main>
 			<catena-tabs>
-				<catena-tab name="Identities" v-if="agent !== null">
-					<catena-identities :agent="agent"></catena-identities>
-				</catena-tab>
-
 				<catena-tab name="Data" v-if="agent !== null">
 					<catena-data :agent="agent"></catena-data>
+				</catena-tab>
+
+				<catena-tab name="Identities" v-if="agent !== null">
+					<catena-identities :agent="agent"></catena-identities>
 				</catena-tab>
 
 				<catena-tab name="Blocks" v-if="connection !== null">
@@ -130,7 +130,7 @@ module.exports = {
 					self.update();
 				});
 
-				this.agent = new Agent("http://" + this.url);
+				this.agent = new Agent("http://" + this.url, this.connection);
 
 				this.connection.onReceiveBlock = function(x) {
 					self.onReceiveBlock(x);

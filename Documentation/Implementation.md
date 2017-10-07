@@ -23,6 +23,17 @@ Internally, Catena stores metadata in the following tables that are *not* visibl
 Catena uses Ed25519 key pairs for authentication. A transaction contains an 'invoker' field which holds the public key of the
 invoker of the query. The transactions signature needs to validate for the public key of the invoker.
 
+### Keys
+
+The following key types are distinguished:
+
+* *Private key*, formatted using base58check (version=11)
+* *Public key*, formatted using base58check (version=88)
+* *Public hash*, which s a hash (SHA-256) of the public key, encoded using  Base64.
+
+The public hash is used when rights are granted to a key - using a hash makes it possible to do this without
+(yet) revealing the public key itself.
+
 ### Privileges
 
 Before a transaction is executed, the query parser determines the privileges required for the query. Currently, the followjng
@@ -91,7 +102,28 @@ In Catena, two blocks are 'special':
 * The genesis block (block #0) in Catena is 'special' in the sense that instead of transactions, it contains a special 'seed string'. The block is deterministically mined (starting from nonce=0) so that a given seed string and difficulty will lead to a specific genesis block and signature.
 * The configuration block (block #1) is special because unlike the other blocks, it does not check grants before executing transactions. This block is actually required to contain the transactions that set up the grants table.
 
-## Transaction playback
+## Transactions
+
+### Canonical form
+
+Transactions contain an invoker public key, a counter and an SQL statement and a signature. The signature
+is based on the public key, counter and SQL statement, serialized in a particular way. Transactions can be
+stored and transmitted in many different formats (usually JSON). In order to validate a transaction's signature,
+the 'data to be signed' is reconstructed from the data, after which the signature is verified against that data.
+
+Every statement that is accepted as valid by the Catena parser maps to exactly one equivalent valid
+statement (the 'canonical form'). Transactions are required to contain only these canonical SQL statements.
+The exact formatting rules can be found in the `SQLStandardDialect` class. Among others, the canonical
+form follows the following rules:
+
+* SQL keywords are capitalized (`SELECT` instead of `select`)
+* Extraneous whitespace is removed (e.g. `SELECT a, b` instead of `SELECT a,  b`)
+* There is always whitespace in specific locations, such as between an operator and its operands (e.g. `1 + 1` instead of `1+1`)
+* Field names are always quoted (`CREATE TABLE foo ("x" INT);` instead of `x INT`)
+* Table names are always unquoted
+* There are parenthesis around specific parts of an expression (sometimes more than would be required)
+
+### Playback
 
 When a node receives a valid block, it appends it to a queue. When the queue grows beyond a preset size, the oldest block
 in the queue is persisted on disk. When the chain needs to be spliced and the splice happens inside the queue, the client can

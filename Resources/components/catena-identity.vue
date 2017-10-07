@@ -19,6 +19,11 @@
 		</tr>
 
 		<tr v-if="identity !== null">
+			<td>Counter</td>
+			<td>{{counter}} <a href="javascript:void(0);" @click="updateCounter">Refresh</a></td>
+		</tr>
+
+		<tr v-if="identity !== null">
 			<td>Private key</td>
 			<td>
 				<code v-if="privateKeyVisible">{{identity.privateBase58}}</code>
@@ -45,6 +50,7 @@
 <script>
 const Identity = require("./blockchain").Identity;
 const Agent = require("./blockchain").Agent;
+const Transaction = require("./blockchain").Transaction;
 
 module.exports = {
 	props: {
@@ -53,16 +59,39 @@ module.exports = {
 	},
 
 	data: function() {
-		return { privateKeyVisible: false, isPersisted: this.identity ? this.identity.isPersisted : false };
+		return { 
+			privateKeyVisible: false, 
+			isPersisted: this.identity ? this.identity.isPersisted : false,
+			counter: null
+		};
+	},
+
+	watch: {
+		identity: function(nv) {
+			this.updateCounter();
+		}
+	},
+
+	created: function() {
+		this.updateCounter();
 	},
 
 	computed: {
 		grantsSQL: function() {
-			return "SELECT * FROM grants WHERE user=X'"+this.identity.publicHashHex+"';";
+			return "SELECT table, kind FROM grants WHERE user=X'"+this.identity.publicHashHex+"' ORDER BY table ASC;";
 		}
 	},
 
 	methods: {
+		updateCounter: function() {
+			var self = this;
+			this.counter = null;
+
+			this.agent.counter(this.identity.publicBase58, function(err, ctr) {
+				self.counter = ctr || 0;
+			});
+		},
+
 		persist: function() {
 			this.identity.persist(true);
 			this.isPersisted = this.identity.isPersisted;

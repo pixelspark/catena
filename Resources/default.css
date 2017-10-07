@@ -341,3 +341,16 @@ th i.fa {
 th code, th a {
 	color: white;
 }
+
+.catena-transaction {
+	background-color: rgb(187, 224, 227);
+	border: solid 1px #A0A0A0;
+	box-shadow: 3px 3px 3px rgba(0,0,0,0.05);
+	border-radius: 6px;
+	padding: 5px;
+	width: auto;
+}
+
+button:disabled {
+	opacity: 0.5;
+}

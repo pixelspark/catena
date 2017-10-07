@@ -7,12 +7,12 @@ var util = require('gulp-util');
 // Basic usage 
 gulp.task('default', function() {
 	process.env.NODE_ENV = 'production';
-	
+
 	gulp.src('catena.js')
 	.pipe(browserify({
 		insertGlobals : true,
 		debug : !util.env.production,
-		transform: [[{_flags: {debug: true}}, vueify]]
+		transform: [[{_flags: {debug: !util.env.production}}, vueify]]
 	}))
 	.pipe(minify({
 		ext:{

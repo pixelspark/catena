@@ -2,7 +2,7 @@
 	<div class="catena-identities">
 		<aside>
 			<ul>
-				<li v-for="(q, idx) in identities" @click="select(q)" :class="{'selected': identity == q}" :key="idx">
+				<li v-for="(q, idx) in agent.identities" @click="select(q)" :class="{'selected': identity == q}" :key="idx">
 					<a href="javascript:void(0);" style="float:right;" @click="remove(idx)"><i class="fa fa-times"></i></a>
 					<i class="fa fa-user"></i>
 					<catena-hash :hash="q.publicHash"></catena-hash>
@@ -44,7 +44,6 @@ module.exports = {
 	data: function() {
 		return {
 			identity: null,
-			identities: Identity.persisted(),
 			newPrivate: "",
 			newPublic: ""
 		};
@@ -70,7 +69,7 @@ module.exports = {
 		loadKey: function() {
 			try {
 				this.identity = Identity.loadBase58(this.newPublic, this.newPrivate);
-				this.identities.push(this.identity);
+				this.agent.identities.push(this.identity);
 			}
 			catch(e) {
 				alert(e);
@@ -81,16 +80,16 @@ module.exports = {
 			let id = this.identities[idx];
 			id.persist(false);
 
-			if(this.identity !== null && (this.identities[idx].publicHash == this.identity.publicHash)) {
+			if(this.identity !== null && (this.agent.identities[idx].publicHash == this.identity.publicHash)) {
 				this.identity = null;
 			}
-			this.identities.splice(idx, 1);
+			this.agent.identities.splice(idx, 1);
 
 		},
 
 		generate: function() {
 			let id = Identity.generate();
-			this.identities.push(id);
+			this.agent.identities.push(id);
 			this.identity = id;
 			
 		}

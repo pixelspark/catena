@@ -1,9 +1,15 @@
 <template>
 	<div class="catena-query">
 		<span v-if="error !== null">Error: {{error}}</span>
-		<span v-else-if="result == null">Loading...</span>
+		<span v-else-if="result == null && !isMutating">Loading...</span>
 		<div v-else>
-			<table>
+			<template v-if="isMutating">
+				<h2>Mutating query</h2>
+				<p>The query you have submitted is a mutating query. Do you want to submit a transaction to execute the query?</p>
+				<catena-transaction :sql="formattedSQL" :agent="agent"></catena-transaction>
+			</template>
+
+			<table v-if="!isMutating">
 				<thead>
 					<tr>
 						<th v-for="col in result.columns" :key="col">{{col}}</th>
@@ -37,7 +43,7 @@ module.exports = {
 	},
 
 	data: function() {
-		return {result: null, error: null};
+		return { result: null, error: null, isMutating: false, formattedSQL: null };
 	},
 
 	watch: {
@@ -57,14 +63,15 @@ module.exports = {
 			self.result = null;
 			var data = {sql: this.sql};
 			this.$http.post(this.agent.url + "/api/query", data).then(function(r) {
-				if(r.ok && r.status == 200) {
-					self.result = r.body;
-				}
-				else {
-					self.error = r.bodyText;
-				}
+				self.isMutating = false;
+				self.result = r.body;
 			}, function(r) {
-				if("message" in r.body) {
+				if(r.status == 406) {
+					// Mutating query
+					self.isMutating = true;
+					self.formattedSQL = r.body.sql;
+				}
+				else if("message" in r.body) {
 					self.error = r.body.message;
 				}
 				else {

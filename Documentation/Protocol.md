@@ -6,6 +6,7 @@ Nodes use a Gossip protocol to perform the following tasks:
 * Return information about their current view on the chain ("index")
 * Notify other nodes of the successful mining of a new block ("block")
 * Fetch blocks from other nodes by hash ("fetch" and "block")
+* Submit newly discovered transactions and blocks to another node ("block" and "tx")
 
 ## Peer states
 
@@ -59,8 +60,8 @@ Hashes are encoded as hexadecimal strings.
 | passive           |                        | Indicate that the peer is passive in response to a query request |
 | fetch                | block or error | Request a specific block from the recipient's chain |
 | block               |                       | Send a block to the recipient, either in response to a fetch request, or unsolicited (newly mined blocks) |
-| transaction      |                       | Send a transaction to the recipient for addition to its memory pool |
-| error           |                        | Indicate an error (in reply to a request) |
+| tx                    |                       | Send a transaction to the recipient for addition to its memory pool |
+| error               |                        | Indicate an error (in reply to a request) |
 
 ### query
 
@@ -133,7 +134,7 @@ A `block` message is sent in reply to a `fetch` message, or sent as request (`un
 
 Sent in reply to a `query` request to let the other side know that this peer is only passively participating (e.g. does not maintain a tree or transaction cache, just wants to be able to query the peer and be notified of new blocks/transactions).
 
-### transaction
+### tx
 
 ````
 {"t": "tx", "tx": {
@@ -147,6 +148,8 @@ Sent in reply to a `query` request to let the other side know that this peer is 
 ````
 
 A transaction request is sent for each new transaction that sender wants to add to the memory pool of recipient.
+
+The transaction signature is transmitted using Base64 encoding. The invoker key is encoded using base58check.
 
 ## Local peer discovery
 

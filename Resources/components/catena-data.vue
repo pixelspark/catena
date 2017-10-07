@@ -27,7 +27,7 @@ module.exports = {
 	
 	data: function() {
 		return {
-			queries: ["SHOW TABLES;", "SELECT * FROM grants;"], 
+			queries: ["SHOW TABLES;", "SELECT * FROM grants;", "CREATE TABLE foo(x INT);"], 
 			query: "SHOW TABLES;", 
 			typedQuery: "SHOW TABLES;"
 		};

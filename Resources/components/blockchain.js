@@ -3,6 +3,10 @@ const base58check = require('base58check');
 const bs58check = require('bs58check');
 const sha256 = require('fast-sha256');
 const toBuffer = require('typedarray-to-buffer');
+const base64 = require('base64-js');
+const Vue = require('vue');
+Vue.use(require('vue-resource'));
+const http = Vue.http;
 
 class Identity {
 	constructor(publicKey, privateKey) {
@@ -85,7 +89,10 @@ class Identity {
 	}
 
 	sign(msg) {
-		return ed25519.sign(msg, this.publicKey, this.privateKey);
+		if(!Buffer.isBuffer(msg)) throw new Error("msg is not a buffer");
+		
+		let signature = ed25519.sign(msg, this.publicKey, this.privateKey);
+		return signature;
 	}
 
 	verify(msg, sig) {
@@ -147,6 +154,69 @@ function hexEncode(str) {
     }
 
     return result;
+}
+
+class Transaction {
+	constructor(invoker, counter, sql) {
+		this.counter = counter;
+		this.invoker = invoker;
+		this.sql = sql;
+		this.signature = null;
+	}
+
+	sign() {
+		var data = this.dataForSigning;
+		this.signature = this.invoker.sign(data);
+	}
+
+	verify() {
+		let data = this.dataForSigning;
+		return this.invoker.verify(data, this.signature);
+	}
+
+	get dataForSigning() {
+		let text = new TextEncoder().encode(this.sql);
+		var buffer = new ArrayBuffer(this.invoker.publicKey.length + 8 + text.length);
+		var uints = new Uint8Array(buffer);
+		
+		var idx = 0;
+		for(var a=0; a<this.invoker.publicKey.length; a++) {
+			uints[idx] = this.invoker.publicKey[a];
+			idx++;
+		}
+
+		// FIXME: we only support 32 bit counter values now.
+		new DataView(buffer).setUint32(idx, this.counter, true /* littleEndian */);
+		new DataView(buffer).setUint32(idx + 4, 0, true /* littleEndian */);
+		idx += 8;
+		
+		for(var a=0; a<text.length; a++) {
+			uints[idx] = text[a];
+			idx++;
+		}
+		
+		var realBuffer = new Buffer(idx);
+		for(var a=0; a<idx; a++) {
+			realBuffer[a] = uints[a];
+		}
+		return realBuffer;
+	}
+
+	get jsonObject() {
+		var d = {
+			tx: {
+				sql: this.sql,
+				counter: this.counter,
+				invoker: this.invoker.publicBase58
+			}
+		};
+
+		if(this.signature !== null) {
+			d.signature = base64.fromByteArray(this.signature);
+		}
+
+		return d;
+	}
 }
 
 /** Gossip connection client. */
@@ -242,8 +312,23 @@ class Connection {
 };
 
 class Agent {
-	constructor(url) {
+	constructor(url, ws) {
 		this.url = url;
+		this.connection = ws;
+		this.identities = Identity.persisted();
+	}
+
+	counter(publicBase58, callback) {
+		http.get(this.url + "/api/counter/" + escape(publicBase58)).then(function(r) {
+			if(r.ok && r.status == 200) {
+				callback(null, r.body.counter);
+			}
+			else {
+				callback(null);
+			}
+		}, function(r) {
+			callback(null);
+		});
 	}
 }
 
@@ -251,5 +336,6 @@ module.exports = {
 	Identity: Identity,
 	Connection: Connection,
 	Agent: Agent,
-	generateUUID: generateUUID
+	generateUUID: generateUUID,
+	Transaction: Transaction
 };
