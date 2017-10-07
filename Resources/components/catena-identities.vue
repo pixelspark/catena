@@ -77,7 +77,7 @@ module.exports = {
 		},
 
 		remove: function(idx) {
-			let id = this.identities[idx];
+			let id = this.agent.identities[idx];
 			id.persist(false);
 
 			if(this.identity !== null && (this.agent.identities[idx].publicHash == this.identity.publicHash)) {
