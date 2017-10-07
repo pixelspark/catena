@@ -84,8 +84,14 @@ const Agent = require("./blockchain").Agent;
 
 module.exports = {
 	data: function() {
+		let scheme = window.location.scheme;
+		if(!scheme || scheme == "file") {
+			scheme = "http";
+		}
+
 		var initial = {
 			url: window.location.host,
+			scheme: scheme,
 			uuid: generateUUID(),
 			index: null,
 			connection: null,
@@ -112,6 +118,12 @@ module.exports = {
 		this.connect();
 	},
 
+	computed: {
+		wsScheme: function() {
+			return this.scheme == "https" ? "wss" : "ws";
+		}
+	},
+
 	methods: {
 		select: function(block) {
 			this.selectedBlock = block;
@@ -125,12 +137,12 @@ module.exports = {
 			try {
 				var self = this;
 
-				var url = "ws://" + this.url + "?uuid=" + this.uuid;
+				var url = this.wsScheme + "://" + this.url + "?uuid=" + this.uuid;
 				this.connection = new Connection(url, function() {
 					self.update();
 				});
 
-				this.agent = new Agent("http://" + this.url, this.connection);
+				this.agent = new Agent(this.scheme + "://" + this.url, this.connection);
 
 				this.connection.onReceiveBlock = function(x) {
 					self.onReceiveBlock(x);
