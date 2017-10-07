@@ -1,5 +1,5 @@
 <template>
-	<div class="catena-tabs">
+	<div :class="{'catena-tabs':true, 'first-tab-selected': currentTab == 0}">
 		<ul>
 			<li 
 				v-for="(tab, index) in tabs"

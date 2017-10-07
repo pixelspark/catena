@@ -1,5 +1,6 @@
 <template>
 	<div class="catena-transaction">
+		<h3>New transaction</h3>
 		<table>
 			<dl>
 				<dt>Query</dt>

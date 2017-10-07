@@ -8,8 +8,11 @@
 	line-height: 1.2em;
 }
 
-html {
-	background-color: #FEFEFE;
+html {	
+	background: linear-gradient(to bottom,rgba(0,0,0,0.5) 0%, rgba(0,55,100, 1.0) 100%);
+	background-color :rgb(0,55,100);
+	background-repeat: repeat-x;
+	background-size: 100% 100px;
 }
 
 body {
@@ -77,7 +80,7 @@ aside {
 	position: absolute;
 	left: 0px;
 	top: 0px;
-	height: calc(100% - 70px);
+	height: calc(100% - 20px);
 	margin: 10px;
 	overflow: hidden;
 	background-color: #EFEFEF;
@@ -176,15 +179,17 @@ details {
 }
 
 nav {
-	background-color :rgb(0,55,100);
 	padding: 5px;
 	padding-left: 10px;
 	margin-bottom: 10px;
 	height: 50px;
+	overflow: hidden;
 }
 
 nav h1, nav span, nav input, nav {
-	color: rgba(255,255,255,0.6);;
+	color: rgba(255,255,255,0.6);
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 nav button, nav input, th button {
@@ -279,8 +284,9 @@ dl dt i {
 
 .catena-tabs {
 	display: block;
-	width: 100%;
-	height: 100%;
+	width: calc(100% - 10px);
+	height: calc(100% - 45px);
+	margin: 5px;
 }
 
 .catena-tabs > div {
@@ -291,8 +297,6 @@ dl dt i {
 
 .catena-tabs > ul {
 	display: block;
-	background-color: rgb(0,55,100);
-	border-bottom: solid 2px white;
 	margin: 0px;
 }
 
@@ -303,7 +307,7 @@ dl dt i {
 	padding: 10px;
 	text-align: center;
 	font-weight: bold;
-	color: white;
+	color: rgba(255,255,255,0.7);
 	cursor: pointer;
 	border-top-left-radius: 3px;
 	border-top-right-radius: 3px;
@@ -317,6 +321,12 @@ dl dt i {
 .catena-tabs .catena-tab {
 	display: none;
 	position: relative;
+	background-color: white;
+	border-radius: 6px;
+}
+
+.catena-tabs.first-tab-selected .catena-tab {
+	border-top-left-radius: 0px;
 }
 
 .catena-tabs .catena-tab.selected {
@@ -352,7 +362,7 @@ th code, th a {
 }
 
 .catena-transaction {
-	background-color: rgb(187, 224, 227);
+	background: linear-gradient(to bottom,rgba(255,255,255,0.5) 10%, rgba(187,224,227,0.5) 30%, rgba(0,55,100, 0.2) 100%);
 	border: solid 1px #A0A0A0;
 	box-shadow: 3px 3px 3px rgba(0,0,0,0.05);
 	border-radius: 6px;
@@ -363,4 +373,10 @@ th code, th a {
 
 button:disabled {
 	opacity: 0.5;
+}
+
+h3 {
+	color: rgba(0,0,0,0.5);
+	margin-left: 10px;
+	text-shadow: 1px 1px 0px rgba(255,255,255,0.8);
 }
