@@ -605,13 +605,13 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			^"lit-int"
 			| ^"lit-variable"
 			| ^"lit-string"
-			| ^"lit-null"
 		)
 
 		add_named_rule("lit", rule:
             ^"lit-blob"
 			| ^"lit-parameter"
 			| ^"lit-all-columns"
+			| ^"lit-null"
 			| (^"lit-column-or-call" => { [unowned self] in
 				switch self.stack.popLast()! {
 				case .columnIdentifier(let c):

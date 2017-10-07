@@ -163,6 +163,22 @@ class CatenaSQLTests: XCTestCase {
 		for v in invalid {
 			XCTAssert(!p.parse(v), "Parsed, but shouldn't have: \(v)")
 		}
+
+		// Test canonicalization
+		let canon = [
+			"select null;": "SELECT NULL;",
+			"select foo;": "SELECT \"foo\";"
+		];
+
+		for (before, after) in canon {
+			XCTAssert(p.parse(before),"Must parse")
+			if case .statement(let s) = p.root! {
+				XCTAssert(after == s.sql(dialect: SQLStandardDialect()), "canonical form mismatch for '\(before)': '\(after)' != '\(s.sql(dialect: SQLStandardDialect()))'")
+			}
+			else {
+				XCTFail()
+			}
+		}
 	}
 
 	func testSQLBackend() throws {
