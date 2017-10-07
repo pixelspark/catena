@@ -78,8 +78,9 @@ module.exports = {
 		},
 
 		remove: function(idx) {
-			this.identity.persist(false);
-			
+			let id = this.identities[idx];
+			id.persist(false);
+
 			if(this.identity !== null && (this.identities[idx].publicHash == this.identity.publicHash)) {
 				this.identity = null;
 			}
