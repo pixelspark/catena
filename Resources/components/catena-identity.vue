@@ -20,12 +20,9 @@
 		<template v-if="identity !== null">
 			<dt>Private key</dt>
 			<dd>
-				<code v-if="privateKeyVisible">{{identity.privateBase58}}</code>
-				<template v-else><i class="fa fa-key" v-if="identity !== null"></i></template>
-				<button @click="togglePrivateKey">
-					<template v-if="privateKeyVisible">Hide</template>
-					<template v-else>Show</template>
-				</button>
+				<catena-expander title="Show..." icon="key">
+					<code>{{identity.privateBase58}}</code>
+				</catena-expander>
 			</dd>
 		</template>
 	</dl>
@@ -33,9 +30,9 @@
 	<h2>Grants</h2>
 	<catena-query v-if="agent !== null" :sql="grantsSQL" :agent="agent"></catena-query>
 
-	<button v-if="!granting" @click="grant(true)">Add...</button><br/>
-	<button v-if="granting" @click="grant(false)">Cancel</button><br/>
-	<catena-granter v-if="granting" :agent="agent" :user="identity"></catena-granter>
+	<catena-expander title="Add..." icon="plus">
+		<catena-granter :agent="agent" :user="identity"></catena-granter>
+	</catena-expander>
 
 	<h2>Storage</h2>
 	<p v-if="!isPersisted">Save this identity in this browser's local storage.</p>
@@ -58,10 +55,8 @@ module.exports = {
 
 	data: function() {
 		return { 
-			privateKeyVisible: false, 
 			isPersisted: this.identity ? this.identity.isPersisted : false,
-			counter: null,
-			granting: false
+			counter: null
 		};
 	},
 
@@ -91,10 +86,6 @@ module.exports = {
 			});
 		},
 
-		grant: function(g) {
-			this.granting = g;
-		},
-
 		persist: function() {
 			this.identity.persist(true);
 			this.isPersisted = this.identity.isPersisted;
@@ -103,10 +94,6 @@ module.exports = {
 		forget: function() {
 			this.identity.persist(false);
 			this.isPersisted = this.identity.isPersisted;
-		},
-
-		togglePrivateKey: function() {
-			this.privateKeyVisible = !this.privateKeyVisible;
 		}
 	}
 };

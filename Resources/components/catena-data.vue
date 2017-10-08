@@ -10,8 +10,8 @@
 		</aside>
 		<article style="overflow-y: auto;">
 			<textarea @keyup="setQuery" :value="typedQuery" @keyup.enter="enterUp"></textarea>
-			<button @click="perform">Query</button>
-
+			<button @click="perform"><i class="fa fa-play"></i> Query</button>
+			<p></p>
 			<catena-query :sql="query" v-if="query != '' " :agent="agent"></catena-query>
 		</article>
 	</div>

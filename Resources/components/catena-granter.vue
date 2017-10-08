@@ -1,5 +1,5 @@
 <template>
-	<div class="catena-transaction">
+	<div>
 		<dl>
 			<dt>Kind</dt>
 			<dd>

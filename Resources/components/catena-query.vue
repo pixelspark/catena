@@ -6,7 +6,9 @@
 			<template v-if="isMutating">
 				<h2>Mutating query</h2>
 				<p>The query you have submitted is a mutating query. Do you want to submit a transaction to execute the query?</p>
-				<catena-transaction :sql="formattedSQL" :agent="agent"></catena-transaction>
+				<catena-expander title="Create transaction..." icon="plus">
+					<catena-transaction :sql="formattedSQL" :agent="agent"></catena-transaction>
+				</catena-expander>
 			</template>
 
 			<table v-if="!isMutating">

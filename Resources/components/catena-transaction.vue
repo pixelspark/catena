@@ -1,49 +1,46 @@
 <template>
 	<div class="catena-transaction">
-		<h3>New transaction</h3>
-		<table>
-			<dl>
-				<dt>Query</dt>
-				<dd><code>{{sql}}</code></dd>
-			
-				<dt>Invoker</dt>
-				<dd>
-					<select @change="updateInvoker" :value="invoker" :disabled="submitting || submitted">
-						<option :value="null">Select...</option>
-						<option v-for="(identity, idx) in agent.identities" :value="idx">{{identity.publicHash}}</option>
-					</select>
-				</dd>
-			
-			<template v-if="counter !== null">
-				<dt>Counter</dt>
-				<dd>
-					{{counter}}
-				</dd>
-			</template>
+		<dl>
+			<dt>Query</dt>
+			<dd><code>{{sql}}</code></dd>
+		
+			<dt>Invoker</dt>
+			<dd>
+				<select @change="updateInvoker" :value="invoker" :disabled="submitting || submitted">
+					<option :value="null">Select...</option>
+					<option v-for="(identity, idx) in agent.identities" :value="idx">{{identity.publicHash}}</option>
+				</select>
+			</dd>
+		
+		<template v-if="counter !== null">
+			<dt>Counter</dt>
+			<dd>
+				{{counter}}
+			</dd>
+		</template>
 
-			<template v-if="counter !== null && !submitted">
-				<dt></dt>
-				<dd>
-					<button @click="submit" :disabled="submitting || submitted"><i class="fa fa-check"></i> Sign and submit</button>
-					<button @click="sign" :disabled="submitting || submitted || transaction !== null"><i class="fa fa-check"></i> Sign</button>
-				</dd>
-			</template>
+		<template v-if="counter !== null && !submitted">
+			<dt></dt>
+			<dd>
+				<button @click="submit" :disabled="submitting || submitted"><i class="fa fa-check"></i> Sign and submit</button>
+				<button @click="sign" :disabled="submitting || submitted || transaction !== null"><i class="fa fa-check"></i> Sign</button>
+			</dd>
+		</template>
 
-			<template v-if="submitted">
-				<dt></dt>
-				<dd>
-					<strong>Submitted!</strong>
-					<button @click="reset"><i class="fa fa-restart"></i> Restart</button>
-				</dd>
-			</template>
+		<template v-if="submitted">
+			<dt></dt>
+			<dd>
+				<strong>Submitted!</strong>
+				<button @click="reset"><i class="fa fa-restart"></i> Restart</button>
+			</dd>
+		</template>
 
-			<template v-if="transaction !== null">
-				<dt></dt>
-				<dd>
-					<textarea readonly>{{transaction.jsonObject}}</textarea>
-				</dd>
-			</template>
-		</table>
+		<template v-if="transaction !== null">
+			<dt></dt>
+			<dd>
+				<textarea readonly>{{transaction.jsonObject}}</textarea>
+			</dd>
+		</template>
 	</div>
 </template>
 
