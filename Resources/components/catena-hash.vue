@@ -7,24 +7,33 @@
 
 <script>
 module.exports = {
-	  props: {
-		  hash: {type: String}
-	  },
+	props: {
+		hash: {
+			type: String
+		},
 
-	  data: function() {
-		  return {expanded: false};
-	  },
+		expandable: {
+			type: Boolean, 
+			default: true 
+		}
+	},
 
-	  methods: {
-		  expand: function(e) {
-			  this.expanded = e;
-		  }
-	  },
+	data: function() {
+		return {expanded: false};
+	},
 
-	  computed: {
-		  shortHash: function() {
-			  return this.hash.substr(0,5) + "…"+this.hash.substr(-5);
-		  }
-	  }
+	methods: {
+		expand: function(e) {
+			if(this.expandable) {
+				this.expanded = e;
+			}
+		}
+	},
+
+	computed: {
+		shortHash: function() {
+			return this.hash.substr(0,5) + "…"+this.hash.substr(-5);
+		}
+	}
 };
 </script>

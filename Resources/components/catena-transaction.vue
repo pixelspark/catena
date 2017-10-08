@@ -92,6 +92,7 @@ module.exports = {
 		reset: function() {
 			this.submitted = false;
 			this.submitting = false;
+			this.transaction = null;
 			this.refresh();
 		},
 

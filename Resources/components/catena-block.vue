@@ -10,7 +10,7 @@
 			<template v-if="isGenesis">
 				(Genesis)
 			</template>
-			<catena-hash :hash="block.hash"></catena-hash><br/>
+			<catena-hash :hash="block.hash" :expandable="false"></catena-hash><br/>
 		</h3>
 
 		<i class="fa fa-clock-o" aria-hidden="true"></i> <catena-timestamp :timestamp="block.timestamp"></catena-timestamp>

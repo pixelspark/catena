@@ -33,6 +33,10 @@
 	<h2>Grants</h2>
 	<catena-query v-if="agent !== null" :sql="grantsSQL" :agent="agent"></catena-query>
 
+	<button v-if="!granting" @click="grant(true)">Add...</button><br/>
+	<button v-if="granting" @click="grant(false)">Cancel</button><br/>
+	<catena-granter v-if="granting" :agent="agent" :user="identity"></catena-granter>
+
 	<h2>Storage</h2>
 	<p v-if="!isPersisted">Save this identity in this browser's local storage.</p>
 	<p v-if="isPersisted">This identity is saved in the local storage of this browser.</p>
@@ -56,7 +60,8 @@ module.exports = {
 		return { 
 			privateKeyVisible: false, 
 			isPersisted: this.identity ? this.identity.isPersisted : false,
-			counter: null
+			counter: null,
+			granting: false
 		};
 	},
 
@@ -84,6 +89,10 @@ module.exports = {
 			this.agent.counter(this.identity.publicBase58, function(err, ctr) {
 				self.counter = ctr || 0;
 			});
+		},
+
+		grant: function(g) {
+			this.granting = g;
 		},
 
 		persist: function() {

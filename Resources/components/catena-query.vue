@@ -61,21 +61,23 @@ module.exports = {
 			var self = this;
 			self.error = null;
 			self.result = null;
-			var data = {sql: this.sql};
-			this.$http.post(this.agent.url + "/api/query", data).then(function(r) {
-				self.isMutating = false;
-				self.result = r.body;
-			}, function(r) {
-				if(r.status == 406) {
+
+			this.agent.query(this.sql, function(code, res) {
+				if(code == 200) {
+					self.isMutating = false;
+					self.error = null;
+					self.result = res;
+				}
+				else if(code == 406) {
 					// Mutating query
 					self.isMutating = true;
-					self.formattedSQL = r.body.sql;
+					self.formattedSQL = res.sql;
 				}
-				else if("message" in r.body) {
-					self.error = r.body.message;
+				else if(res && ("message" in res)) {
+					self.error = res.message;
 				}
 				else {
-					self.err = r.statusText;
+					self.err = res.statusText;
 				}
 			});
 		}

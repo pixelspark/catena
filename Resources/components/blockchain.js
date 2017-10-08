@@ -330,6 +330,34 @@ class Agent {
 			callback(null);
 		});
 	}
+
+	// Callback = function(code, res)
+	query(sql, callback) {
+		var data = {sql: sql};
+
+		http.post(this.url + "/api/query", data).then(function(r) {
+			return callback(200, r.body);
+		}, 
+		function(r) {
+			return callback(r.status, r.body);
+		});
+	}
+
+	// Callback = function(err, tables)
+	tables(callback) {
+		this.query("SHOW TABLES;", function(code, res) {
+			if(code == 200) {
+				var tables = [];
+				for(var a=0; a<res.rows.length; a++) {
+					tables.push(res.rows[a][0]);
+				}
+				return callback(null, tables);
+			}
+			else {
+				return callback(code, []);
+			}
+		});
+	}
 }
 
 module.exports = {
