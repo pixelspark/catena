@@ -1,13 +1,13 @@
 <template>
 	<div class="catena-identities">
 		<aside>
-			<ul>
+			<transition-group name="list" tag="ul">
 				<li v-for="(q, idx) in agent.identities" @click="select(q)" :class="{'selected': identity == q}" :key="idx">
 					<a href="javascript:void(0);" style="float:right;" @click="remove(idx)"><i class="fa fa-times"></i></a>
 					<i class="fa fa-user"></i>
 					<catena-hash :hash="q.publicHash" :expandable="false"></catena-hash>
 				</li>
-			</ul>
+			</transition-group>
 
 			<button style="float: right; margin: 5px;" @click="generate"><i class="fa fa-plus"></i> Generate new identity</button>
 			<button style="float: right; margin: 5px;" @click="load"><i class="fa fa-download"></i> Import identity</button>

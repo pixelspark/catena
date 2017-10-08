@@ -3,6 +3,7 @@ Vue.use(require('vue-resource'));
 
 const App = require('./components/catena.vue');
 Vue.component('catena-block', require('./components/catena-block.vue'));
+Vue.component('catena-blocks', require('./components/catena-blocks.vue'));
 Vue.component('catena-block-details', require('./components/catena-block-details.vue'));
 Vue.component('catena-chain', require('./components/catena-chain.vue'));
 Vue.component('catena-data', require('./components/catena-data.vue'));

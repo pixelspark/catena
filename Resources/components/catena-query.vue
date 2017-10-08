@@ -41,7 +41,8 @@ const Agent = require("./blockchain").Agent;
 module.exports = {
 	props: {
 		sql: String,
-		agent: Agent
+		agent: Agent,
+		head: {type: String, default: null}
 	},
 
 	data: function() {
@@ -50,6 +51,10 @@ module.exports = {
 
 	watch: {
 		sql: function(nv) {
+			this.update();
+		},
+
+		head: function() {
 			this.update();
 		}
 	},

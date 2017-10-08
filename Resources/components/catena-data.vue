@@ -1,7 +1,7 @@
 <template>
 	<div class="catena-data">
 		<aside>
-			<ul>
+			<transition-group name="list" tag="ul">
 				<li v-for="(t, idx) in tables" @click="selectTable(t)" :class="{'selected': table === t}" :key="t">
 					<i class="fa fa-table"></i> {{t}}
 				</li>
@@ -10,13 +10,13 @@
 					<a href="javascript:void(0);" style="float:right;" @click="remove(idx)"><i class="fa fa-times"></i></a>
 					<code>{{q}}</code>
 				</li>
-			</ul>
+			</transition-group>
 		</aside>
 		<article style="overflow-y: auto;">
 			<textarea @keyup="setQuery" :value="typedQuery" @keyup.enter="enterUp"></textarea>
 			<button @click="perform"><i class="fa fa-play"></i> Query</button>
 			<p></p>
-			<catena-query :sql="query" v-if="query != '' " :agent="agent"></catena-query>
+			<catena-query :sql="query" v-if="query != '' " :agent="agent" :head="head"></catena-query>
 		</article>
 	</div>
 </template>
@@ -26,7 +26,8 @@ const Agent = require("./blockchain").Agent;
 
 module.exports = {
 	props: {
-		agent: Agent
+		agent: Agent,
+		head: String
 	},
 	
 	data: function() {
@@ -37,6 +38,12 @@ module.exports = {
 			table: null,
 			typedQuery: "SHOW TABLES;"
 		};
+	},
+
+	watch: {
+		head: function(nv) {
+			this.refresh();
+		}
 	},
 
 	created: function() {

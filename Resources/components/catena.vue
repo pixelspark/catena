@@ -19,36 +19,18 @@
 			</template>
 		</nav>
 
-		<main>
+		<main v-if="agent !== null && index !== null" >
 			<catena-tabs>
-				<catena-tab name="Data" v-if="agent !== null">
-					<catena-data :agent="agent"></catena-data>
+				<catena-tab name="Data">
+					<catena-data :agent="agent" :head="index.highest"></catena-data>
 				</catena-tab>
 
-				<catena-tab name="Identities" v-if="agent !== null">
+				<catena-tab name="Identities">
 					<catena-identities :agent="agent"></catena-identities>
 				</catena-tab>
 
-				<catena-tab name="Blocks" v-if="connection !== null">
-					<aside>
-						<template v-if="index != null">
-							<catena-chain 
-								:hash="index.highest" 
-								@select="select" 
-								:connection="connection"
-								:selected-hash="selectedBlock ? selectedBlock.hash: null"/>
-						</template>
-					</aside>
-
-					<article>
-						<template v-if="selectedBlock !== null">
-							<catena-block-details 
-								:block="selectedBlock"
-								@select="selectHash"
-							>
-							</catena-block-details>
-						</template>
-					</article>
+				<catena-tab name="Blocks">
+					<catena-blocks :agent="agent" :index="index"></catena-blocks>
 				</catena-tab>
 			</catena-tabs>
 		</main>
@@ -75,7 +57,6 @@ module.exports = {
 			connection: null,
 			agent: null,
 			transactions: [],
-			selectedBlock: null
 		};
 
 		try {
@@ -103,14 +84,6 @@ module.exports = {
 	},
 
 	methods: {
-		select: function(block) {
-			this.selectedBlock = block;
-		},
-
-		goToBlock: function(evt) {
-			this.selectHash(evt.target.value);
-		},
-
 		connect: function() {
 			try {
 				var self = this;
@@ -145,15 +118,6 @@ module.exports = {
 				if(response.t == "index") {
 					self.index = response.index;
 				}
-			});
-		},
-
-		selectHash: function(hash) {
-			var self = this;
-			self.selectedBlock = null;
-
-			self.connection.fetch(hash, function(b) {
-				self.selectedBlock = b;
 			});
 		},
 
