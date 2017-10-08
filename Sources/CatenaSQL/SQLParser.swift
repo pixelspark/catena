@@ -228,7 +228,7 @@ public enum SQLStatement {
 		case .insert(let insert):
 			let colSQL = insert.columns.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
 			let tupleSQL = insert.values.map { tuple in
-				let ts = tuple.map { $0.sql(dialect: dialect) }.joined(separator: ",")
+				let ts = tuple.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
 				return "(\(ts))"
 				}.joined(separator: ", ")
 
