@@ -59,7 +59,7 @@ module.exports = {
 
 		selectTable: function(t) {
 			this.table = t;
-			this.typedQuery = "SELECT * FROM "+t+";";
+			this.typedQuery = "SELECT * FROM "+t+" LIMIT 50;";
 			this.query = this.typedQuery;
 		},
 
