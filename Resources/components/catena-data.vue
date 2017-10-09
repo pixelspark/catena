@@ -15,8 +15,7 @@
 		<article style="overflow-y: auto;">
 			<textarea @keyup="setQuery" :value="typedQuery" @keyup.enter="enterUp"></textarea>
 			<button @click="perform"><i class="fa fa-play"></i> Query</button>
-			<p></p>
-			<catena-query :sql="query" v-if="query != '' " :agent="agent" :head="head"></catena-query>
+			<catena-query :sql="query" v-if="query != '' && query !== null " :agent="agent" :head="head"></catena-query>
 		</article>
 	</div>
 </template>
@@ -65,6 +64,7 @@ module.exports = {
 
 		setQuery: function(e) {
 			this.typedQuery = e.target.value;
+			this.query = null;
 			this.table = null;
 		},
 
