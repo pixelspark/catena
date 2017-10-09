@@ -34,6 +34,7 @@ module.exports = {
 		kinds: {default: function() { return {
 			"insert": "Insert",
 			"delete": "Delete",
+			"update": "Update",
 			"drop": "Drop",
 			"create": "Create"
 		}; } }
