@@ -223,17 +223,59 @@ class Transaction {
 class Connection {
 	constructor(url, onConnect) {
 		var self = this;
-		this.counter = 0;
 		this.callbacks = {};
 		this.onReceiveBlock = null;
 		this.blocks = {};
+		this.socket = null;
+		this.offline = false;
+		this.url = url;
+		this.connect(onConnect);
+	}
 
-		this.socket = new WebSocket(url, "catena-v1");
-		this.socket.onopen = onConnect;
-		this.socket.onmessage = function(x) { self.onReceive(x); };
+	connect(callback) {
+		if(this.socket === null || (this.socket.readyState != WebSocket.CONNECTING && this.socket.readyState != WebSocket.OPEN)) {
+			var self = this;
+			this.offline = false;
+			this.counter = 0;
+			this.socket = new WebSocket(this.url, "catena-v1");
+			this.socket.onopen = function() { 
+				if(callback) {
+					callback();
+				}
+			};
+
+			this.socket.onclose = function() { self.onClose(); };
+			this.socket.onmessage = function(x) { self.onReceive(x); };
+		}
+	}
+
+	onClose() {
+		var self = this;
+
+		if(!this.offline) {
+			setTimeout(function() {
+				self.connect();
+			}, 3000);
+		}
+	}
+
+	request(req, callback) {
+		if(this.socket === null || this.socket.readyState != WebSocket.OPEN) {
+			// We are not connected, first try to connect
+			this.connect(function() {
+				// Retry
+				self.request(req, callback);
+			});
+		}
+		else {
+			this.counter += 2;
+			this.callbacks[this.counter] = callback;
+			this.socket.send(JSON.stringify([this.counter, req]));
+		}
 	}
 
 	disconnect() {
+		this.offline = true;
 		this.socket.close();
 	}
 
@@ -302,12 +344,6 @@ class Connection {
 				console.log("Unknown unsolicited gossip: ", d);
 			
 		}
-	}
-	
-	request(req, callback) {
-		this.counter += 2;
-		this.callbacks[this.counter] = callback;
-		this.socket.send(JSON.stringify([this.counter, req]));
 	}
 };
 
