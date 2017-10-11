@@ -195,7 +195,7 @@ class CatenaTests: XCTestCase {
 		highest.mine(difficulty: 2)
 		let index = Index<TestBlock>(genesis: gen, peers: [peer], highest: highest.signature!, height: height, timestamp: UInt64(Date().timeIntervalSince1970))
 
-		let deserialized = Index<TestBlock>(json: index.json)!
+		let deserialized = try Index<TestBlock>(json: index.json)
 		print("o=\(index.json), s=\(deserialized.json)")
 		XCTAssert(index.height == deserialized.height)
 		XCTAssert(index.highest == deserialized.highest)
@@ -206,7 +206,7 @@ class CatenaTests: XCTestCase {
 
 		let jsonData = try JSONSerialization.data(withJSONObject: index.json, options: [])
 		let deserializedJSON = try JSONSerialization.jsonObject(with: jsonData, options: [])
-		let deserializedFromJSON = Index<TestBlock>(json: deserializedJSON as! [String: Any])!
+		let deserializedFromJSON = try Index<TestBlock>(json: deserializedJSON as! [String: Any])
 		XCTAssert(deserializedFromJSON == index, "deserialized index from JSON must match original index")
 	}
 
