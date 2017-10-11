@@ -412,21 +412,25 @@ public class Node<LedgerType: Ledger> {
 				let blockGossip = Gossip<LedgerType>.block(block.json)
 
 				self.peers.forEach { (url, otherPeer) in
-					if otherPeer.url != p.url {
-						if case .connected = otherPeer.state, let otherConnection = otherPeer.connection {
+					if otherPeer.url != p.url, let otherConnection = otherPeer.connection {
+						switch otherPeer.state {
+						case .connected, .queried, .querying(since: _), .passive:
 							do {
 								try otherConnection.request(gossip: blockGossip)
 							}
 							catch {
 								// Not a problem if this fails
 							}
+
+						case .ignored(reason: _), .failed(error: _, at: _), .new, .connecting(since: _):
+							break
 						}
 					}
 				}
 			}
 		}
 		else {
-			Log.info("[Node] received invalid block #\(block.index) from \(peer?.url.absoluteString ?? "self")")
+			Log.info("[Node] received invalid block #\(block.index) from \(peer?.url.absoluteString ?? "self") signature valid=\(block.isSignatureValid) payload valid=\(block.isPayloadValid())")
 		}
 	}
 
