@@ -58,8 +58,9 @@ Hashes are encoded as hexadecimal strings.
 |------------------|----------------|---------------|
 | query               | index or passive or error | Request peer status (index) |
 | passive           |                        | Indicate that the peer is passive in response to a query request |
-| fetch                | block or error | Request a specific block from the recipient's chain |
-| block               |                       | Send a block to the recipient, either in response to a fetch request, or unsolicited (newly mined blocks) |
+| fetch                | result or error | Request a specific block from the recipient's chain |
+| result               |                       | Send blocks to the recipient in response to a fetch request |
+| block               |                       | Send a block to the recipient unsolicited (newly mined blocks) |
 | tx                    |                       | Send a transaction to the recipient for addition to its memory pool |
 | error               |                        | Indicate an error (in reply to a request) |
 
@@ -78,6 +79,8 @@ Requests status information from the other peer. Generally this is the first req
 ````
 
 Requests the other peer to return it the block with the indicated hash. The receiving peer responds with a `block` message, or an `error` message in case it does not have the block with the requested hash.
+
+The message may optionally contain a key named `extra`, which indicates the number of predecessor blocks the peer may also return to speed up block fetching. The peer may choose to return less blocks. The peer may ignore the request (and send an error response) when the number of requested blocks exceeds a limit.
 
 ### error
 
@@ -125,6 +128,31 @@ A `block` message is sent in reply to a `fetch` message, or sent as request (`un
 * hash: the hash signature of this block (hash as String)
 * nonce: the nonce value for this block (little-endian UInt64 represented as a Base64 encoded string)
 * payload: the payload of this block (as Base-64 encoded String). The format of the payload is application-specific; for Catena SQL blocks, it is a JSON array of transactions for all blocks except the genesis block. The transaction JSON format is described below.
+
+
+### result
+
+A `result` response is sent in response to a `fetch` request. It is similar to the `block` reponse:
+
+````
+{
+	"t":"block",
+	"block": {
+		"previous": previousHash,
+		"hash": blockHash,
+		"nonce": blockNonce,
+		"index": blockHeight,
+		"payload": blockPayload
+	},
+	"extra": {
+		"blockHash1": {...block...},
+		"blockHash2": {...block...}
+	}
+}
+````
+
+If the `extra` parameter was set in the fetch request, the response will contain up to `extra` additional
+blocks in the `extra` dictionary (keyed by their hashes). These blocks are the `extra` predecessors to the requested block.
 
 ### passive
 
