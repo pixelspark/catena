@@ -136,11 +136,11 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	func isPayloadValid() -> Bool
 }
 
-enum HashError: LocalizedError {
+public enum HashError: LocalizedError {
 	case invalidHashLength
 	case invalidEncoding
 
-	var errorDescription: String? {
+	public var errorDescription: String? {
 		switch self {
 		case .invalidHashLength: return "invalid hash length"
 		case .invalidEncoding: return "invalid hash encoding"
@@ -216,19 +216,46 @@ public protocol Parameters {
 
 /** Default values for ledger parameters. Override as you see fit. */
 public extension Parameters {
+	/** The default action key is 't' */
 	public static var actionKey: String { return "t" }
+
+	/** The default uuid request key is 'uuid' */
 	public static var uuidRequestKey: String { return "uuid" }
+
+	/** The default port request key is 'port' */
 	public static var portRequestKey: String { return "port" }
+
+	/** The default service domain is 'local.' */
 	public static var serviceDomain: String { return "local." }
+
+	/** The default peer replace interval is 1 minute. */
 	public static var peerReplaceInterval: TimeInterval { return 60.0 }
+
+	/** The default maximum peer age for advertisement is one hour. */
 	public static var peerMaximumAgeForAdvertisement: TimeInterval { return 3600.0 }
+
+	/** The default future block threshold is two hours */
 	public static var futureBlockThreshold: TimeInterval { return 2 * 3600.0 }
+
+	/** The default service type is _`protocolVersion`._tcp. */
 	public static var serviceType: String { return "_\(self.protocolVersion)._tcp." }
+
+	/** The default splice limit is 1. */
 	public static var spliceLimit: UInt { return 1 }
+
+	/** By default, peers are retried after one hour. */
 	public static var peerRetryAfterFailureInterval: TimeInterval { return 3600.0 }
-	public static var maximumPeerRequestRate: TimeInterval { return 0.25 /* four requests per second */ }
+
+	/** By default, peers may perform four requests per second. */
+	public static var maximumPeerRequestRate: TimeInterval { return 0.25 }
+
+	/** The maximum number of outstanding requests per peer at any time is 25, by default. */
 	public static var maximumPeerRequestQueueSize: Int { return 25 }
+
+	/** A peer may send up to 10 extra blocks in reply to a fetch block if requested, by default. */
 	public static var maximumExtraBlocks: Int { return 10 }
+
+	/** A maximum of 1024 transactions may be kept in the aside buffer before the oldest will be pruned. */
 	public static var maximumAsideTransactions: Int { return 1024 }
 }
 
