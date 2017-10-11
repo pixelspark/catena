@@ -57,14 +57,12 @@ module.exports = {
 				if(pathComponents[pathComponents.length-1].toLowerCase() == "index.html") {
 					pathComponents.pop();
 				}
-
-				// First item is often empty (first slash), strip it off
-				if(pathComponents[0] == '') {
-					pathComponents.splice(0,1);
-				}
+				
+				// Prevent double slashes
+				pathComponents = pathComponents.filter(function(p) { return p != ''; });
 
 				if(pathComponents.length>0) {
-					path = "/" + pathComponents.join("/");
+					path = "/" + pathComponents.join("/") + "/";
 				}
 			}
 		}
