@@ -63,6 +63,12 @@ public class Miner<LedgerType: Ledger> {
 		return isNew
 	}
 
+	public var transactionsSetAside: Set<BlockType.TransactionType> {
+		return self.mutex.locked {
+			return Set(self.aside)
+		}
+	}
+
 	/** Add a transaction to the 'aside' table, which means it will be considered for the next mining block (use this for
 	transactions that are not currently acceptable but may become acceptable in the future). Returns true if the
 	transaction is not yet in the aside list, and false if it already is. */
@@ -71,6 +77,11 @@ public class Miner<LedgerType: Ledger> {
 			if self.aside.contains(member: transaction) {
 				return false
 			}
+
+			while self.aside.count > LedgerType.ParametersType.maximumAsideTransactions {
+				_ = self.aside.remove(at: 0)
+			}
+
 			self.aside.append(transaction)
 			return true
 		}
