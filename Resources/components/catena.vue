@@ -44,7 +44,7 @@ const Agent = require("./blockchain").Agent;
 
 module.exports = {
 	data: function() {
-		let scheme = window.location.scheme;
+		let scheme = window.location.protocol.substr(0,window.location.protocol.length-1);
 		if(!scheme || scheme == "file") {
 			scheme = "http";
 		}
