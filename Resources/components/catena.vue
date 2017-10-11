@@ -45,12 +45,43 @@ const Agent = require("./blockchain").Agent;
 module.exports = {
 	data: function() {
 		let scheme = window.location.protocol.substr(0,window.location.protocol.length-1);
+		
+		// Find the path at which the server is listening.
+		var path = "/";
+		var host = window.location.host;
+		if(scheme !== "file") {
+			var pathComponents = window.location.pathname.split(/\//);
+
+			if(pathComponents.length>0) {
+				// Strip off the web client itself from the path name (if it's there)
+				if(pathComponents[pathComponents.length-1].toLowerCase() == "index.html") {
+					pathComponents.pop();
+				}
+
+				// First item is often empty (first slash), strip it off
+				if(pathComponents[0] == '') {
+					pathComponents.splice(0,1);
+				}
+
+				if(pathComponents.length>0) {
+					path = "/" + pathComponents.join("/");
+				}
+			}
+		}
+
+		// When served from file, use localhost as server
+		if(scheme == "file") {
+			host = "localhost:8338";	
+		}
+
+		/* If the web client is served from file or from an unknown location, 
+		assume the server can be found over HTTP. */
 		if(!scheme || scheme == "file") {
 			scheme = "http";
 		}
 
 		var initial = {
-			url: window.location.host,
+			url: host + path,
 			scheme: scheme,
 			uuid: generateUUID(),
 			index: null,

@@ -349,13 +349,14 @@ class Connection {
 
 class Agent {
 	constructor(url, ws) {
+		// URL must end in slash
 		this.url = url;
 		this.connection = ws;
 		this.identities = Identity.persisted();
 	}
 
 	counter(publicBase58, callback) {
-		http.get(this.url + "/api/counter/" + escape(publicBase58)).then(function(r) {
+		http.get(this.url + "api/counter/" + escape(publicBase58)).then(function(r) {
 			if(r.ok && r.status == 200) {
 				callback(null, r.body.counter);
 			}
@@ -371,7 +372,7 @@ class Agent {
 	query(sql, callback) {
 		var data = {sql: sql};
 
-		http.post(this.url + "/api/query", data).then(function(r) {
+		http.post(this.url + "api/query", data).then(function(r) {
 			return callback(200, r.body);
 		}, 
 		function(r) {
