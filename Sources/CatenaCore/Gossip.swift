@@ -13,12 +13,14 @@ public enum GossipError: LocalizedError {
 	case missingActionKey
 	case unknownAction(String)
 	case deserializationFailed
+	case limitExceeded
 
 	public var localizedDescription: String {
 		switch self {
 		case .missingActionKey: return "action key is missing"
 		case .unknownAction(let a): return "unknown action '\(a)'"
 		case .deserializationFailed: return "deserialization of payload failed"
+		case .limitExceeded: return "a limit was exceeded"
 		}
 	}
 }
@@ -33,11 +35,15 @@ public enum Gossip<LedgerType: Ledger> {
 	/** Reply message that contains the peer's index. */
 	case index(Index<BlockType>)
 
-	/** Reply message that contains a block, either at the request of the peer, or unsolicited, when it is new */
+	/** Unsolicited new blocks. */
 	case block([String: Any]) // no reply
 
-	/** Request a specific block from the peer. The reply is of type 'block' */
-	case fetch(BlockType.HashType) // -> block
+	/** Response to a fetch request. `extra` contains a few predecessor blocks to improve fetch speeds (may be empty). */
+	case result(block: [String: Any], extra: [BlockType.HashType: [String: Any]])
+
+	/** Request a specific block from the peer. The reply is of type 'result'. The 'extra' parameter
+	specifies how many predecessor blocks may be included in the result (as 'extra' blocks). */
+	case fetch(hash: BlockType.HashType, extra: Int) // -> block
 
 	/** An error has occurred. Only sent in reply to a request by the peer. */
 	case error(String)
@@ -64,17 +70,36 @@ public enum Gossip<LedgerType: Ledger> {
 					throw GossipError.deserializationFailed
 				}
 			}
+			else if q == "result" {
+				if let blockData = json["block"] as? [String: Any] {
+					var extraBlocks: [BlockType.HashType: [String: Any]] = [:]
+					if let extra = json["extra"] as? [String: [String: Any]] {
+						if extra.count > LedgerType.ParametersType.maximumExtraBlocks {
+							throw GossipError.limitExceeded
+						}
+
+						for (hash, extraBlockData) in extra {
+							extraBlocks[try BlockType.HashType(hash: hash)] = extraBlockData
+						}
+					}
+					self = .result(block: blockData, extra: extraBlocks)
+				}
+				else {
+					throw GossipError.deserializationFailed
+				}
+			}
 			else if q == "fetch" {
-				if let hash = json["hash"] as? String, let hashValue = BlockType.HashType(hash: hash) {
-					self = .fetch(hashValue)
+				if let hash = json["hash"] as? String {
+					let extra = (json["extra"] as? Int) ?? 0
+					self = .fetch(hash: try BlockType.HashType(hash: hash), extra: extra)
 				}
 				else {
 					throw GossipError.deserializationFailed
 				}
 			}
 			else if q == "index" {
-				if let idx = json["index"] as? [String: Any], let index = Index<BlockType>(json: idx) {
-					self = .index(index)
+				if let idx = json["index"] as? [String: Any] {
+					self = .index(try Index<BlockType>(json: idx))
 				}
 				else {
 					throw GossipError.deserializationFailed
@@ -116,14 +141,21 @@ public enum Gossip<LedgerType: Ledger> {
 		case .query:
 			return [LedgerType.ParametersType.actionKey: "query"]
 
+		case .result(block: let b, extra: let extra):
+			var extraData: [String: [String: Any]] = [:]
+			for (hash, extraBlock) in extra {
+				extraData[hash.stringValue] = extraBlock
+			}
+			return [LedgerType.ParametersType.actionKey: "result", "block": b, "extra": extraData]
+
 		case .block(let b):
 			return [LedgerType.ParametersType.actionKey: "block", "block": b]
 
 		case .index(let i):
 			return [LedgerType.ParametersType.actionKey: "index", "index": i.json]
 
-		case .fetch(let h):
-			return [LedgerType.ParametersType.actionKey: "fetch", "hash": h.stringValue]
+		case .fetch(hash: let h, extra: let e):
+			return [LedgerType.ParametersType.actionKey: "fetch", "hash": h.stringValue, "extra": e]
 
 		case .transaction(let tx):
 			return [LedgerType.ParametersType.actionKey: "tx", "tx": tx]
@@ -240,14 +272,14 @@ public struct Index<BlockType: Block>: Equatable {
 		self.timestamp = timestamp
 	}
 
-	init?(json: [String: Any]) {
-		if
-			let genesisHash = json["genesis"] as? String,
+	init(json: [String: Any]) throws {
+		if 	let genesisHash = json["genesis"] as? String,
 			let highestHash = json["highest"] as? String,
-			let genesis = BlockType.HashType(hash: genesisHash),
-			let highest = BlockType.HashType(hash: highestHash),
-			let peers = json["peers"] as? [String]
-		{
+			let peers = json["peers"] as? [String] {
+
+			let genesis = try BlockType.HashType(hash: genesisHash)
+			let highest = try BlockType.HashType(hash: highestHash)
+
 			self.genesis = genesis
 			self.highest = highest
 			self.peers = peers.flatMap { return URL(string: $0) }
@@ -263,12 +295,11 @@ public struct Index<BlockType: Block>: Equatable {
 				self.timestamp = BlockType.TimestampType(timestamp)
 			}
 			else {
-				return nil
+				throw GossipError.deserializationFailed
 			}
-
 		}
 		else {
-			return nil
+			throw GossipError.deserializationFailed
 		}
 	}
 
@@ -502,7 +533,7 @@ public class PeerOutgoingConnection<LedgerType: Ledger>: PeerConnection<LedgerTy
 }
 #endif
 
-public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
+public class Peer<LedgerType: Ledger>: PeerConnectionDelegate, CustomDebugStringConvertible {
 	typealias BlockchainType = LedgerType.BlockchainType
 	typealias BlockType = BlockchainType.BlockType
 	typealias TransactionType = BlockType.TransactionType
@@ -513,6 +544,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 	public internal(set) var lastSeen: Date? = nil
 
 	/** The time difference observed during the last index request */
+	public internal(set) var lastIndexRequestLatency: TimeInterval? = nil
 	public internal(set) var timeDifference: TimeInterval? = nil
 
 	public internal(set) var state: PeerState
@@ -528,6 +560,10 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 		var description: String {
 			return "#\(self.counter):\(gossip)"
 		}
+	}
+
+	public var debugDescription: String {
+		return "<\(self.url.absoluteString)>"
 	}
 	
 	private lazy var queue = ThrottlingQueue<Request>(interval: LedgerType.ParametersType.maximumPeerRequestRate, maxQueuedRequests: LedgerType.ParametersType.maximumPeerRequestQueueSize) { [weak self] (request: Request) throws -> () in
@@ -642,16 +678,19 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 			let requestTime = Date()
 
 			try c.request(gossip: .query) { reply in
+				// Update last seen
 				self.mutex.locked {
 					self.lastSeen = Date()
 
-					if case .index(let index) = reply {
-						Log.debug("[Peer] Receive index reply: \(index)")
+					// Update observed time difference
+					let requestEndTime = Date()
+					self.lastIndexRequestLatency = requestEndTime.timeIntervalSince(requestTime) / 2.0
+				}
 
-						// Update observed time difference
-						let requestEndTime = Date()
-						self.timeDifference = requestEndTime.timeIntervalSince(requestTime) / 2.0
+				if case .index(let index) = reply {
+					Log.debug("[Peer] Receive index reply: \(index)")
 
+					self.mutex.locked {
 						// Update peer status
 						if index.genesis != n.ledger.longest.genesis.signature! {
 							// Peer believes in another genesis, ignore him
@@ -662,20 +701,27 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 							self.state = .queried
 						}
 
-						// New peers?
-						for p in index.peers {
-							n.add(peer: p)
-						}
-
-						// Request the best block from this peer
-						n.receive(best: Candidate(hash: index.highest, height: index.height, peer: self.uuid))
+						// Calculate time difference
+						// TODO: perhaps add (requestEndTime - requestTime) to make this more precise
+						let peerTime = Date(timeIntervalSince1970: TimeInterval(index.timestamp))
+						self.timeDifference = peerTime.timeIntervalSinceNow
 					}
-					else if case .passive = reply {
+
+					// New peers?
+					for p in index.peers {
+						n.add(peer: p)
+					}
+
+					// Request the best block from this peer
+					n.receive(best: Candidate(hash: index.highest, height: index.height, peer: self.uuid))
+				}
+				else if case .passive = reply {
+					self.mutex.locked {
 						self.state = .passive
 					}
-					else {
-						self.fail(error: "Invalid reply received to query request")
-					}
+				}
+				else {
+					self.fail(error: "Invalid reply received to query request")
 				}
 			}
 		}
@@ -702,16 +748,38 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate {
 				self.fail(error: "Received invalid unsolicited block")
 			}
 			
-		case .fetch(let h):
-			try self.node?.ledger.mutex.locked {
-				if let block = try self.node?.ledger.longest.get(block: h) {
-					assert(block.isSignatureValid, "returning invalid blocks, that can't be good")
-					assert(try! BlockType.read(json: block.json).isSignatureValid, "JSON goes wild")
-					
-					try request.connection.reply(counter: request.counter, gossip: .block(block.json))
-				}
-				else {
-					try request.connection.reply(counter: request.counter, gossip: .error("not found"))
+		case .fetch(hash: let h, extra: let extraBlocksRequested):
+			if extraBlocksRequested > LedgerType.ParametersType.maximumExtraBlocks {
+				self.fail(error: "limit exceeded")
+			}
+			else {
+				try self.node?.ledger.mutex.locked {
+					if let n = node, let block = try n.ledger.longest.get(block: h) {
+						assert(block.isSignatureValid, "returning invalid blocks, that can't be good")
+						assert(try! BlockType.read(json: block.json).isSignatureValid, "JSON goes wild")
+
+						// Fetch predecessors
+						var extra: [BlockType.HashType: [String: Any]] = [:]
+						var last = block
+						for _ in 0..<extraBlocksRequested {
+							if last.index <= 0 {
+								break
+							}
+							if let block = try n.ledger.longest.get(block: last.previous) {
+								assert(block.signature! == last.previous)
+								extra[block.signature!] = block.json
+								last = block
+							}
+							else {
+								break
+							}
+						}
+
+						try request.connection.reply(counter: request.counter, gossip: .result(block: block.json, extra: extra))
+					}
+					else {
+						try request.connection.reply(counter: request.counter, gossip: .error("not found"))
+					}
 				}
 			}
 			

@@ -224,7 +224,9 @@ public class SQLAPIEndpoint {
 	}
 
 	private func handleGetBlock(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		if let hashString = request.parameters["hash"], let hash = SQLBlock.HashType(hash: hashString) {
+		if let hashString = request.parameters["hash"] {
+			let hash = try SQLBlock.HashType(hash: hashString)
+			
 			let block = try self.agent.node.ledger.mutex.locked {
 				return try self.agent.node.ledger.longest.get(block: hash)
 			}

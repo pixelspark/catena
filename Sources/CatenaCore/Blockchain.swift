@@ -136,6 +136,18 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	func isPayloadValid() -> Bool
 }
 
+enum HashError: LocalizedError {
+	case invalidHashLength
+	case invalidEncoding
+
+	var errorDescription: String? {
+		switch self {
+		case .invalidHashLength: return "invalid hash length"
+		case .invalidEncoding: return "invalid hash encoding"
+		}
+	}
+}
+
 /** Represents a cryptographically secure hash that can be applied to any data (usually block data). */
 public protocol Hash: Hashable, CustomDebugStringConvertible {
 	var hash: Data { get }
@@ -144,9 +156,9 @@ public protocol Hash: Hashable, CustomDebugStringConvertible {
 	/** Hash that is all zeroes. */
 	static var zeroHash: Self { get }
 
-	init(hash: Data)
+	init(hash: Data) throws
 	init(of: Data)
-	init?(hash: String)
+	init(hash: String) throws
 	var stringValue: String { get }
 }
 
@@ -193,6 +205,13 @@ public protocol Parameters {
 	
 	/** The maximum number of queued requests per peer (additional requests will be silently dropped). */
 	static var maximumPeerRequestQueueSize: Int { get }
+
+	/** The maximum number of extra blocks returned in response to a fetch request. */
+	static var maximumExtraBlocks: Int { get }
+
+	/** The maximum number of transactions that are kept aside by a peer (when they cannot be directly
+	accepted into a block, but perhaps in the future). */
+	static var maximumAsideTransactions: Int { get }
 }
 
 /** Default values for ledger parameters. Override as you see fit. */
@@ -209,6 +228,8 @@ public extension Parameters {
 	public static var peerRetryAfterFailureInterval: TimeInterval { return 3600.0 }
 	public static var maximumPeerRequestRate: TimeInterval { return 0.25 /* four requests per second */ }
 	public static var maximumPeerRequestQueueSize: Int { return 25 }
+	public static var maximumExtraBlocks: Int { return 10 }
+	public static var maximumAsideTransactions: Int { return 1024 }
 }
 
 extension Blockchain {
@@ -266,21 +287,22 @@ public struct SHA256Hash: Hash {
 	public let hash: Data
 
 	public static var zeroHash: SHA256Hash {
-		return SHA256Hash(hash: Data(bytes: [UInt8](repeating: 0,  count: Int(32))))
+		return try! SHA256Hash(hash: Data(bytes: [UInt8](repeating: 0,  count: Int(32))))
 	}
 
-	public init?(hash string: String) {
-		if let d = string.hexDecoded, d.count == Int(32) {
+	public init(hash string: String) throws {
+		if let d = string.hexDecoded {
+			guard d.count == Int(32) else { throw HashError.invalidHashLength }
 			self.hash = d
 			assert(self.hash.count == Int(32))
 		}
 		else {
-			return nil
+			throw HashError.invalidEncoding
 		}
 	}
 
-	public init(hash: Data) {
-		assert(hash.count == Int(32))
+	public init(hash: Data) throws {
+		guard hash.count == Int(32) else { throw HashError.invalidHashLength }
 		self.hash = hash
 	}
 
@@ -627,12 +649,13 @@ extension Block {
 			let previous = json["previous"] as? String,
 			let payloadBase64 = json["payload"] as? String,
 			let minerSHA256 = json["miner"] as? String,
-			let minerHash = IdentityType(hash: minerSHA256),
 			let payload = Data(base64Encoded: payloadBase64),
-			let previousHash = HashType(hash: previous),
-			let signatureHash = HashType(hash: signature),
 			let nonceBase64 = json["nonce"] as? String,
 			let nonceData = Data(base64Encoded: nonceBase64) {
+
+			let minerHash = try IdentityType(hash: minerSHA256)
+			let previousHash = try HashType(hash: previous)
+			let signatureHash = try HashType(hash: signature)
 
 			// Decode nonce from base64
 			var nonceValue: NonceType = 0

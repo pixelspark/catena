@@ -288,6 +288,11 @@ class Connection {
 		else {
 			this.request({t:"fetch", hash: blockHash}, function(response) {
 				self.blocks[blockHash] = response.block;
+				if("extra" in response) {
+					for(var hash in response.extra) {
+						self.blocks[hash] = response.extra[hash];
+					}
+				}
 				return callback(response.block);
 			});
 		}

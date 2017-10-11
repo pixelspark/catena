@@ -314,7 +314,7 @@ public class Node<LedgerType: Ledger> {
 						// Reject connection because we are already connected!
 						return
                         
-                    case .passive:
+                    case .passive, .failed(error: _, at: _):
                         // Always replace passive connections
                         break
 
@@ -346,7 +346,14 @@ public class Node<LedgerType: Ledger> {
 
 	/** Received a 'best block' offer from another peer (in reply to query) */
 	func receive(best: Candidate<BlockType>) {
-		self.fetcher.request(candidate: best)
+		self.ledger.mutex.locked {
+			let highest = self.ledger.longest.highest
+
+			// The other peer may have a better chain that we do!
+			if best.height > highest.index {
+				self.fetcher.request(candidate: best)
+			}
+		}
 	}
 
 	/** Peer can be nil when the block originated from ourselves (i.e. was mined). */
@@ -594,6 +601,9 @@ fileprivate class Fetcher<LedgerType: Ledger> {
 	private var running = false
 	private let mutex = Mutex()
 
+	private let extraBlocksLimit = 100
+	private var extraBlocks = OrderedDictionary<BlockType.HashType, (BlockType, UUID)>()
+
 	init(node: Node<LedgerType>) {
 		self.node = node
 	}
@@ -631,12 +641,30 @@ fileprivate class Fetcher<LedgerType: Ledger> {
 	}
 
 	private func fetch(candidate: Candidate<BlockType>, callback: @escaping () -> ()) {
+		// Do we have this block in the extra cache?
+		if let n = self.node, let (block, peerUUID) = self.mutex.locked(block: { return self.extraBlocks[candidate.hash] }) {
+			// Return requested block to node
+			Log.info("[Fetcher] satisfying request for block #\(candidate.height) from extracache")
+			do {
+				try n.mutex.locked {
+					let peer = n.peers[peerUUID]
+					try n.receive(block: block, from: peer, wasRequested: true)
+				}
+			}
+			catch {
+				Log.error("[Fetcher] error returning cached block: \(error.localizedDescription)")
+			}
+
+			callback()
+			return
+		}
+
 		self.workerQueue.async {
 			if let n = self.node, let p = n.peers[candidate.peer] {
 				if let c = p.mutex.locked(block: { return p.connection }) {
 					do {
-						try c.request(gossip: Gossip<LedgerType>.fetch(candidate.hash)) { reply in
-							if case .block(let blockData) = reply {
+						try c.request(gossip: Gossip<LedgerType>.fetch(hash: candidate.hash, extra: LedgerType.ParametersType.maximumExtraBlocks)) { reply in
+							if case .result(block: let blockData, extra: let extraBlockData) = reply {
 								do {
 									let block = try BlockType.read(json: blockData)
 
@@ -651,6 +679,23 @@ fileprivate class Fetcher<LedgerType: Ledger> {
 											return callback()
 										}
 
+										// Parse extra blocks (fail if any of them fails)
+										try self.mutex.locked {
+											if self.extraBlocksLimit > extraBlockData.count {
+												while (self.extraBlocks.count + extraBlockData.count) > self.extraBlocksLimit {
+													_ = self.extraBlocks.removeAtIndex(0)
+												}
+
+												for (hash, blockData) in extraBlockData {
+													if !self.extraBlocks.contains(hash) {
+														let extraBlock = try BlockType.read(json: blockData)
+														self.extraBlocks.append((extraBlock, candidate.peer), forKey: hash)
+													}
+												}
+											}
+										}
+
+										// Return requested block to node
 										try n.mutex.locked {
 											let peer = n.peers[candidate.peer]
 											try n.receive(block: block, from: peer, wasRequested: true)

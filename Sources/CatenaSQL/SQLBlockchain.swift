@@ -491,8 +491,8 @@ class SQLBlockArchive {
 			case .blob(let minerData) = res.values[7],
 			version.count == MemoryLayout<SQLBlock.VersionType>.size,
 			nonce.count == MemoryLayout<SQLBlock.NonceType>.size {
-			let previous = SQLBlock.HashType(hash: previousData)
-			let miner = SQLBlock.HashType(hash: minerData)
+			let previous = try SQLBlock.HashType(hash: previousData)
+			let miner = try SQLBlock.HashType(hash: minerData)
 			assert(index >= 0, "Index must be positive")
 
 			var nonceValue: SQLBlock.NonceType = 0
@@ -628,7 +628,7 @@ public struct SQLMetadata {
 	var headHash: SQLBlock.HashType? {
 		do {
 			if let h = try self.info.get(self.infoHeadHashKey) {
-				return SQLBlock.HashType(hash: h)
+				return try SQLBlock.HashType(hash: h)
 			}
 			return nil
 		}
