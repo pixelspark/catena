@@ -14,6 +14,7 @@ Vue.component('catena-identity', require('./components/catena-identity.vue'));
 Vue.component('catena-identities', require('./components/catena-identities.vue'));
 Vue.component('catena-payload', require('./components/catena-payload.vue'));
 Vue.component('catena-query', require('./components/catena-query.vue'));
+Vue.component('catena-spinner', require('./components/catena-spinner.vue'));
 Vue.component('catena-tabs', require('./components/catena-tabs.vue'));
 Vue.component('catena-tab', require('./components/catena-tab.vue'));
 Vue.component('catena-timestamp', require('./components/catena-timestamp.vue'));

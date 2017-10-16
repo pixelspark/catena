@@ -1,7 +1,7 @@
 <template>
 	<div class="catena-query">
 		<span v-if="error !== null">Error: {{error}}</span>
-		<span v-else-if="result == null && !isMutating">Loading...</span>
+		<catena-spinner v-else-if="result == null && !isMutating" fill="rgb(0,55,100)">Loading...</catena-spinner>
 		<div v-else>
 			<template v-if="isMutating">
 				<h2>Mutating query</h2>

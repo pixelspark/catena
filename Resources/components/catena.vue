@@ -19,7 +19,17 @@
 			</template>
 		</nav>
 
-		<main v-if="agent !== null && index !== null" >
+		<main v-if="error === null && connection !== null && (index === null || agent === null)">
+			<center>
+				<catena-spinner width="64" height="64"></catena-spinner>
+			</center>
+		</main>
+
+		<main v-if="error !== null">
+			<center><i class="fa fa-exclamation-triangle"></i> {{error}}</center>
+		</main>
+
+		<main v-if="agent !== null && index !== null && error === null" >
 			<catena-tabs>
 				<catena-tab name="Data">
 					<catena-data :agent="agent" :head="index.highest"></catena-data>
@@ -86,6 +96,7 @@ module.exports = {
 			connection: null,
 			agent: null,
 			transactions: [],
+			error: null
 		};
 
 		try {
@@ -116,10 +127,16 @@ module.exports = {
 		connect: function() {
 			try {
 				var self = this;
+				self.error = null;
 
 				var url = this.wsScheme + "://" + this.url + "?uuid=" + this.uuid;
-				this.connection = new Connection(url, function() {
-					self.update();
+				this.connection = new Connection(url, function(err) {
+					if(err!==null) {
+						self.error = "Unable to connect!";
+					}
+					else {
+						self.update();
+					}
 				});
 
 				this.agent = new Agent(this.scheme + "://" + this.url, this.connection);
@@ -129,7 +146,7 @@ module.exports = {
 				};
 			}
 			catch(e) {
-				alert("Error connecting: "+e);
+				self.error = e.getMessage();
 			}	
 		},
 
@@ -138,6 +155,7 @@ module.exports = {
 			this.connection = null;
 			this.index = null;
 			this.selectedBlock = null;
+			this.error = null;
 		},
 
 		update: function() {

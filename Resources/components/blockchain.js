@@ -240,9 +240,15 @@ class Connection {
 			this.socket = new WebSocket(this.url, "catena-v1");
 			this.socket.onopen = function() { 
 				if(callback) {
-					callback();
+					callback(null);
 				}
 			};
+
+			this.socket.onerror = function(e) {
+				if(callback) {
+					callback(e);
+				}
+			}
 
 			this.socket.onclose = function() { self.onClose(); };
 			this.socket.onmessage = function(x) { self.onReceive(x); };
