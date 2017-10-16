@@ -91,6 +91,20 @@ public class SQLBlockchain: Blockchain {
 	private let mutex = Mutex()
 	let replay: Bool
 
+	/** Number of blocks after which a difficulty retarget is performed. An interval of 10 will determine
+	the difficulty for block 11 on blocks 0...10. */
+	let difficultyRetargetInterval: BlockType.IndexType = 10
+
+	/** The desired average time between blocks in seconds. A retarget will occur on average every
+	`desiredTimeBetweenBlocks` * `difficultyRetargetInterval`. */
+	let desiredTimeBetweenBlocks: SQLBlock.TimestampType = 10
+
+	/** Lower bound for the amount of work that is ever required to be performed per block. */
+	let minimumAmountOfWorkPerBlock: SQLBlock.WorkType = 10
+
+	/** Upper bound for the amount of work that is ever required to be performed per block. */
+	let maximumAmountOfWorkPerBlock: SQLBlock.WorkType = 200
+
 	let databasePath: String
 
 	private init(genesis: SQLBlock, highest: SQLBlock, database: Database, meta: SQLMetadata, replay: Bool, databasePath: String) {
@@ -154,15 +168,76 @@ public class SQLBlockchain: Blockchain {
 		return nil
 	}
 
+	public func get(at index: BlockType.IndexType) throws -> SQLBlock? {
+		if let b =  try self.meta.archive.get(at: index) {
+			return b
+		}
+
+		// Search queue
+		for b in queue {
+			if b.index == index {
+				return b
+			}
+		}
+
+		return nil
+	}
+
+	private func totalWork(between: CountableClosedRange<SQLBlock.IndexType>) throws -> SQLBlock.WorkType {
+		var totalWork: SQLBlock.WorkType = try self.meta.archive.totalWork(between: between)
+
+		for b in queue {
+			if b.index >= between.lowerBound && b.index <= between.upperBound {
+				totalWork += b.work
+			}
+		}
+
+		return totalWork
+	}
+
 	func process(block: SQLBlock) throws {
 		try self.mutex.locked {
 			try block.apply(database: self.database, meta: self.meta, replay: self.replay)
 		}
 	}
 
-	public func difficulty(forBlockFollowing: SQLBlock) -> Int {
-		// TODO: this should be made dynamic. Can potentially store required difficulty in SQL (info table)?
-		return self.genesis.signature!.difficulty
+	/** Returns the set of block indices for the blocks that are included in the difficulty calculation
+	for a block *following* the indicated block. If the block has index 20 and interval is 5, then
+	the range will be 15...20. */
+	private func retargetingInterval(forBlockFollowing precedingBlock: SQLBlock) -> CountableClosedRange<SQLBlock.IndexType> {
+		assert(difficultyRetargetInterval > self.maxQueueSize)
+		let lastRetargetEnd = precedingBlock.index - (precedingBlock.index % difficultyRetargetInterval)
+
+		if lastRetargetEnd < difficultyRetargetInterval {
+			return 0...0
+		}
+
+		let lastRetargetStart = max(0, lastRetargetEnd - difficultyRetargetInterval)
+		return lastRetargetStart...lastRetargetEnd
+	}
+
+	public func difficulty(forBlockFollowing precedingBlock: SQLBlock) throws -> SQLBlock.WorkType {
+		return try self.mutex.locked {
+			let retargetRange = self.retargetingInterval(forBlockFollowing: precedingBlock)
+			let lowerBlock = try self.get(at: retargetRange.lowerBound)
+			let upperBlock = try self.get(at: retargetRange.upperBound)
+
+			let totalWork = try self.totalWork(between: retargetRange)
+			let totalTime = Int(upperBlock!.timestamp - lowerBlock!.timestamp)
+			if totalTime <= 0 {
+				return self.genesis.work
+			}
+
+			let desiredTotalTime = Int(desiredTimeBetweenBlocks) * Int(retargetRange.count)
+			let previousDifficulty = totalWork / SQLBlock.WorkType(retargetRange.count)
+
+			if totalTime > desiredTotalTime {
+				return min(maximumAmountOfWorkPerBlock, max(minimumAmountOfWorkPerBlock, previousDifficulty - 1))
+			}
+			else {
+				return min(maximumAmountOfWorkPerBlock, max(minimumAmountOfWorkPerBlock, previousDifficulty + 1))
+			}
+		}
 	}
 
 	public func append(block: SQLBlock) throws -> Bool {
@@ -438,6 +513,7 @@ class SQLBlockArchive {
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "timestamp"))
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "miner"))
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "payload"))
+				cols.append(SQLType.int, forKey: SQLColumn(name: "work"))
 
 				let createStatement = SQLStatement.create(table: table, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
 				_ = try self.database.perform(createStatement.sql(dialect: self.database.dialect))
@@ -453,7 +529,7 @@ class SQLBlockArchive {
 		let insertStatement = SQLStatement.insert(SQLInsert(
 			orReplace: false,
 			into: self.table,
-			columns: ["signature", "index", "timestamp", "nonce", "previous", "payload", "version", "miner"].map(SQLColumn.init),
+			columns: ["signature", "index", "timestamp", "nonce", "previous", "payload", "version", "miner", "work"].map(SQLColumn.init),
 			values: [[
 				.literalBlob(block.signature!.hash),
 				.literalInteger(Int(block.index)),
@@ -462,7 +538,8 @@ class SQLBlockArchive {
 				.literalBlob(block.previous.hash),
 				.literalBlob(block.payloadData),
 				.literalBlob(Data(bytes: &version, count: MemoryLayout<SQLBlock.VersionType>.size)),
-				.literalBlob(block.miner.hash)
+				.literalBlob(block.miner.hash),
+				.literalInteger(Int(block.signature!.difficulty))
 			]]))
 		_ = try database.perform(insertStatement.sql(dialect: database.dialect))
 	}
@@ -472,12 +549,44 @@ class SQLBlockArchive {
 		_ = try self.database.perform(stmt.sql(dialect: self.database.dialect))
 	}
 
+	func totalWork(between: CountableClosedRange<SQLBlock.IndexType>) throws -> SQLBlock.WorkType {
+		let stmt = SQLStatement.select(SQLSelect(
+			these: [SQLExpression.call(SQLFunction(name: "SUM"), parameters: [SQLExpression.column(SQLColumn(name: "work"))])],
+			from: self.table,
+			joins: [],
+			where: SQLExpression.binary(
+				SQLExpression.binary(SQLExpression.column(SQLColumn(name: "index")), .greaterThanOrEqual, .literalUnsigned(UInt(between.lowerBound))),
+				SQLBinary.and,
+				SQLExpression.binary(SQLExpression.column(SQLColumn(name: "index")), .lessThanOrEqual, .literalUnsigned(UInt(between.upperBound)))
+			),
+			distinct: false
+		))
+
+		let res = try self.database.perform(stmt.sql(dialect: self.database.dialect))
+		if res.hasRow, case .int(let work) = res.values[0] {
+			return SQLBlock.WorkType(work)
+		}
+		else {
+			throw SQLBlockError.metadataError
+		}
+	}
+
+	func get(at index: SQLBlock.IndexType) throws -> SQLBlock? {
+		return try get(having: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "index")), .equals, .literalUnsigned(UInt(index))))
+	}
+
 	func get(block hash: SQLBlock.HashType) throws -> SQLBlock? {
+		let b = try get(having: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)))
+		assert(b == nil || b!.signature == hash, "signature from archive doesn't match?!")
+		return b
+	}
+
+	private func get(having: SQLExpression) throws -> SQLBlock? {
 		let stmt = SQLStatement.select(SQLSelect(
 			these: ["signature", "index", "nonce", "previous", "payload", "timestamp", "version", "miner"].map { return SQLExpression.column(SQLColumn(name: $0)) },
 			from: self.table,
 			joins: [],
-			where: SQLExpression.binary(SQLExpression.column(SQLColumn(name: "signature")), .equals, .literalBlob(hash.hash)),
+			where: having,
 			distinct: false
 		))
 
@@ -489,8 +598,10 @@ class SQLBlockArchive {
 			case .blob(let timestamp) = res.values[5],
 			case .blob(let version) = res.values[6],
 			case .blob(let minerData) = res.values[7],
+			case .blob(let signatureData) = res.values[0],
 			version.count == MemoryLayout<SQLBlock.VersionType>.size,
 			nonce.count == MemoryLayout<SQLBlock.NonceType>.size {
+			let signature = try SQLBlock.HashType(hash: signatureData)
 			let previous = try SQLBlock.HashType(hash: previousData)
 			let miner = try SQLBlock.HashType(hash: minerData)
 			assert(index >= 0, "Index must be positive")
@@ -526,7 +637,7 @@ class SQLBlockArchive {
 			}
 
 			var block = try SQLBlock(version: versionValue, index: SQLBlock.IndexType(index), nonce: nonceValue, previous: previous, miner: miner, timestamp: tsValue, payload: payload)
-			block.signature = hash
+			block.signature = signature
 			assert(block.isSignatureValid, "persisted block signature is invalid! \(block)")
 			return block
 		}
@@ -608,7 +719,7 @@ public struct SQLMetadata {
 	public let grants: SQLGrants
 	public let users: SQLUsersTable
 	let database: Database
-	private let archive: SQLBlockArchive
+	internal let archive: SQLBlockArchive
 
 	private let infoHeadHashKey = "head"
 	private let infoHeadIndexKey = "index"

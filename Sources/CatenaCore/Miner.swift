@@ -28,6 +28,9 @@ public class Miner<LedgerType: Ledger> {
 	private(set) var isMining = false
 	private var aside = OrderedSet<BlockType.TransactionType>()
 
+	/** Number of hashes the miner will try before reconstructing the template block. */
+	private let uninterruptedTries = 4096
+
 	init(node: Node<LedgerType>, miner: BlockType.IdentityType) {
 		self.node = node
 		self.miner = miner
@@ -87,7 +90,7 @@ public class Miner<LedgerType: Ledger> {
 		}
 	}
 
-	private func start() {
+	public func start() {
 		let shouldStart = self.mutex.locked { () -> Bool in
 			if !self.isEnabled {
 				Log.info("[Miner] mining is not enabled")
@@ -126,7 +129,7 @@ public class Miner<LedgerType: Ledger> {
 			// Do we have transactions set aside for the next block?
 			if let n = node, !self.aside.isEmpty {
 				// Keep adding transactions until block is full or set is empty
-				while let next = self.aside.first {
+				self.aside = try self.aside.filter { next in
 					if self.block!.hasRoomFor(transaction: next) {
 						switch try n.ledger.canAccept(transaction: next, pool: self.block!) {
 						case .now:
@@ -134,20 +137,22 @@ public class Miner<LedgerType: Ledger> {
 								/* If a transaction fails, it stays in the 'aside' set. The transactions in the aside set
 								need to be pruned every now and then. */
 								_ = try self.append(transaction: next)
-								_ = self.aside.removeFirst()
+								return false
 							}
 							catch {
 								// For some reason this transaction fails to append, and it is not about the size. Just forget it
 								Log.error("[Miner] transaction \(next) failed to add from aside: \(error.localizedDescription)")
+								return false
 							}
 						case .future:
-							break
+							return true
+
 						case .never:
-							_ = self.aside.removeFirst()
+							return false
 						}
 					}
 					else {
-						break
+						return true
 					}
 				}
 
@@ -170,47 +175,72 @@ public class Miner<LedgerType: Ledger> {
 
 		while !stop {
 			autoreleasepool { () -> () in
+				var block: BlockType! = nil
+				var difficulty: BlockType.WorkType! = nil
+
+				// Obtain the mining parameters and template block
 				self.mutex.locked { () -> () in
 					stop = !self.isEnabled
 
 					if let n = node {
 						if let base = self.node?.ledger.longest.highest {
-							let difficulty = n.ledger.longest.difficulty(forBlockFollowing: base)
+							difficulty = try! n.ledger.longest.difficulty(forBlockFollowing: base)
+
 							// Set up the block
 							self.counter += BlockType.NonceType(1)
 							if var b = self.block {
 								b.index = base.index + 1
 								b.previous = base.signature!
 								b.nonce = self.counter
-
-								// See if this combination is good enough
-								let hash = HashType(of: b.dataForSigning)
-								if hash.difficulty >= difficulty {
-									// We found a block!
-									b.signature = hash
-									self.block = nil
-									stop = true
-									DispatchQueue.global(qos: .background).async {
-										Log.info("[Miner] mined block #\(b.index)")
-										do {
-											try n.mined(block: b)
-										}
-										catch {
-											Log.info("[Miner] mined block #\(b.index), but node fails: \(error.localizedDescription)")
-										}
-									}
-								}
+								block = b
 							}
-							else {
-								// No block to mine
-								stop = true
-							}
+						}
+						else {
+							stop = true
 						}
 					}
 					else {
-						// Node has been destroyed
 						stop = true
 					}
+				}
+
+				if stop {
+					return
+				}
+
+				// Try some hashes!
+				for _ in 0..<self.uninterruptedTries {
+					block.nonce += 1
+					// See if this combination is good enough
+					let hash = HashType(of: block.dataForSigning)
+					if hash.difficulty >= difficulty {
+						// We found a block!
+						block.signature = hash
+						stop = true
+
+						self.mutex.locked {
+							self.block = nil
+							self.counter = block.nonce
+
+							if let n = self.node {
+								DispatchQueue.global(qos: .background).async {
+									Log.info("[Miner] mined block #\(block.index) required difficulty=\(difficulty!) found \(block.signature!.difficulty)")
+									do {
+										try n.mined(block: block)
+									}
+									catch {
+										Log.info("[Miner] mined block #\(block.index), but node fails: \(error.localizedDescription)")
+									}
+								}
+							}
+						}
+
+						break
+					}
+				}
+
+				self.mutex.locked {
+					self.counter = block.nonce
 				}
 			}
 		}

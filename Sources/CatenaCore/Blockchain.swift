@@ -47,7 +47,7 @@ public protocol Blockchain {
 	var genesis: BlockType { get }
 
 	/** The number of zero bits a signature is required to have at the beginning to be considered a valid proof of work. */
-	func difficulty(forBlockFollowing: BlockType) -> Int
+	func difficulty(forBlockFollowing: BlockType) throws -> BlockType.WorkType
 
 	/** Returns the block with the given signature hash, if it is on this chain. Returns nil when there is no block on
 	this chain with the given hash. */
@@ -83,6 +83,7 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	typealias IndexType = UInt64
 	typealias VersionType = UInt64
 	typealias TimestampType = UInt64
+	typealias WorkType = UInt64
 	typealias IdentityType = SHA256Hash // Hash used for identities (hashes of public keys)
 
 	/** The type of the transactions that will be contained by this block. */
@@ -120,6 +121,9 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 
 	/** The payload data of this block actually used for signing. */
 	var payloadDataForSigning: Data { get }
+
+	/** The amount of work performed for this block. */
+	var work: WorkType { get }
 
 	/** Create a block with the given index, previous hash and payload data. */
 	init(version: VersionType, index: IndexType, nonce: NonceType, previous: HashType, miner: IdentityType, timestamp: TimestampType, payload: Data) throws
@@ -263,22 +267,24 @@ extension Blockchain {
 	/** The default implementation checks whether hashes and indexes are succeeding, and whether the block signature is
 	valid and conforms to the current difficulty level. */
 	public func canAppend(block: BlockType, to: BlockType) throws -> Bool {
-		if block.previous == to.signature!
-			&& block.index == (to.index + 1)
-			&& block.isSignatureValid
-			&& block.signature!.difficulty >= self.difficulty(forBlockFollowing: to) {
-
-			/* Check block timestamp against median timestamp of previous blocks. The last 11 blocks are looked at by
-			default. */
-			/* Note: a block timestamp should also not be too far in the future, but this is checked by Node when
-			receiving a block from someone else. */
-			if let ts = try self.medianHeadTimestamp(startingAt: to, maximumLength: 11) {
-				// Block timestamp must be above median timestamp of last x blocks
-				return block.date.timeIntervalSince(ts) >= 0.0
+		if block.previous == to.signature! && block.index == (to.index + 1) && block.isSignatureValid {
+			let diff = try self.difficulty(forBlockFollowing: to)
+			if block.signature!.difficulty >= diff {
+				/* Check block timestamp against median timestamp of previous blocks. The last 11 blocks are looked at by
+				default. */
+				/* Note: a block timestamp should also not be too far in the future, but this is checked by Node when
+				receiving a block from someone else. */
+				if let ts = try self.medianHeadTimestamp(startingAt: to, maximumLength: 11) {
+					// Block timestamp must be above median timestamp of last x blocks
+					return block.date.timeIntervalSince(ts) >= 0.0
+				}
+				else {
+					// No timestamps to compare to
+					return true
+				}
 			}
 			else {
-				// No timestamps to compare to
-				return true
+				return false
 			}
 		}
 		else {
@@ -400,6 +406,10 @@ extension Block {
 			return HashType(of: self.dataForSigning) == s
 		}
 		return false
+	}
+
+	public var work: WorkType {
+		return WorkType(self.signature?.difficulty ?? 0)
 	}
 
 	/** Returns true if this block is a genesis (i.e. can only be the first block in a chain), false otherwise. The block

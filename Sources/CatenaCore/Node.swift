@@ -161,6 +161,7 @@ public class Node<LedgerType: Ledger> {
 			if isNew {
 				self.rebroadcast(transaction: transaction, from: peer)
 			}
+			self.miner.start()
 			return true
 
 		case .never:
