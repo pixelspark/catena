@@ -349,7 +349,7 @@ public struct SHA256Hash: Hash {
 	public var difficulty: Int {
 		var n = 0
 		for byte in self.hash {
-			n += byte.numberOfLeadingZeroBits
+			n += byte.leadingZeroBitCount
 			if byte != 0 {
 				break
 			}

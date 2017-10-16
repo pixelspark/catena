@@ -209,24 +209,6 @@ extension String {
 	}
 }
 
-
-extension UInt8 {
-	var numberOfLeadingZeroBits: Int {
-		var n = 0
-		var b = self
-		if b == 0 {
-			n += 8
-		}
-		else {
-			while (b & 0x80) == 0 {
-				b <<= 1
-				n += 1
-			}
-		}
-		return n
-	}
-}
-
 extension Data {
 	public mutating func appendRaw<T>(_ item: T) {
 		var item = item

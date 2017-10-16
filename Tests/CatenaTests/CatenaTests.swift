@@ -159,6 +159,17 @@ class CatenaTests: XCTestCase {
 		XCTAssert(SHA256Hash(of: "Catena".data(using: .utf8)!).hash.base64EncodedString() == "E6uApbqVIWEp6p2ZaTe07Vf690c+gSiNmWidpNXx1IM=")
 		XCTAssert(String(data: SHA256Hash(of: "Catena".data(using: .utf8)!).hash.base64EncodedData(), encoding: .utf8)! == "E6uApbqVIWEp6p2ZaTe07Vf690c+gSiNmWidpNXx1IM=")
 
+		XCTAssert(UInt8(0).leadingZeroBitCount == 8)
+		XCTAssert(UInt8(1).leadingZeroBitCount == 7)
+		XCTAssert(UInt8(2).leadingZeroBitCount == 6)
+		XCTAssert(UInt8(4).leadingZeroBitCount == 5)
+		XCTAssert(UInt8(8).leadingZeroBitCount == 4)
+		XCTAssert(UInt8(16).leadingZeroBitCount == 3)
+		XCTAssert(UInt8(32).leadingZeroBitCount == 2)
+		XCTAssert(UInt8(64).leadingZeroBitCount == 1)
+		XCTAssert(UInt8(128).leadingZeroBitCount == 0)
+		XCTAssert(UInt8(129).leadingZeroBitCount == 0)
+
 		let identityA = try Identity()
 		let pk = identityA.publicKey.stringValue
 		let rpk = PublicKey(string: pk)
