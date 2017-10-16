@@ -138,6 +138,7 @@ do {
 		if initializeOption.value {
 			Log.info("Root private key: \(rootIdentity.privateKey.stringValue)")
 			Log.info("Root public key: \(rootIdentity.publicKey.stringValue)")
+			Log.info("Root identity: \(SHA256Hash(of: rootIdentity.publicKey.data).stringValue)")
 		}
 	}
 
