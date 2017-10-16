@@ -235,7 +235,7 @@ do {
 
 		// Start submitting test blocks if that's what the user requested
 		if testOption.value {
-			let identity = try Identity()
+			let identity = rootIdentity
 
 			node.start(blocking: false)
 			let q = try SQLStatement("CREATE TABLE test (origin TEXT, x TEXT);");
