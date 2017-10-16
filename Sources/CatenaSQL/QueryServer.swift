@@ -56,8 +56,6 @@ public class NodeQueryServer: QueryServer {
 			// for testing, autogenerate a keypair when the username is 'random'
 			if username == "random" {
 				identity = try Identity()
-				try connection.send(error: "Public key: \(identity.publicKey.stringValue)", severity: .info, code: "", endsQuery: false)
-				try connection.send(error: "Private key: \(identity.privateKey.stringValue)", severity: .info, code: "", endsQuery: false)
 			}
 			else {
 				guard let invokerKey = PublicKey(string: username) else {
