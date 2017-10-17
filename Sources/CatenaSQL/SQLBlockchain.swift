@@ -313,12 +313,14 @@ public class SQLBlockchain: Blockchain {
 
 			// Remove database
 			self.database.close()
-			let e = self.databasePath.withCString { cs -> Int32 in
-				return unlink(cs)
-			}
+			if self.databasePath != ":memory:" {
+				let e = self.databasePath.withCString { cs -> Int32 in
+					return unlink(cs)
+				}
 
-			if e != 0 {
-				fatalError("[SQLLedger] Could not delete permanent database; err=\(e)")
+				if e != 0 {
+					fatalError("[SQLLedger] Could not delete permanent database; err=\(e)")
+				}
 			}
 
 			// Create new database
