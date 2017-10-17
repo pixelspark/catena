@@ -8,7 +8,7 @@ COPY . /root/
 RUN cd /root && rm -rf .build
 RUN cd /root && swift build -c $CATENA_CONFIGURATION
 RUN chmod o+rwx /root/.build/$CATENA_CONFIGURATION/*
-RUN mv /root/.build/$CATENA_CONFIGURATION/Catena /usr/bin/catena && mv /root/.build/$CATENA_CONFIGURATION/*.so /usr/lib/
+RUN mv /root/.build/$CATENA_CONFIGURATION/Catena /usr/bin/catena
 
 RUN mkdir /data && chown catena:catena -R /data
 VOLUME /data
