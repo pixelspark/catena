@@ -141,12 +141,14 @@ public struct SQLBlock: Block, CustomDebugStringConvertible {
 		}
 
 		// For a genesis block, the payload must not contain any transactions
-		if isAGenesisBlock {
-			return self.payload.transactions.isEmpty 
+		if isAGenesisBlock && !self.payload.transactions.isEmpty {
+			return false
 		}
-		else {
-			// Non-genesis blocks must contain at least one transaction
-			return !self.payload.transactions.isEmpty
+
+
+		// Non-genesis blocks must contain at least one transaction
+		if !isAGenesisBlock && self.payload.transactions.isEmpty {
+			return false
 		}
 
 		// The signature of the payload must be valid
