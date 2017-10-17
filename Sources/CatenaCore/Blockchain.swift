@@ -457,7 +457,8 @@ extension Block {
 	}
 
 	/** Mine this block (note: use this only for the genesis block, Miner provides threaded mining) */
-	public mutating func mine(difficulty: Int) {
+	public mutating func mine(difficulty: WorkType) {
+		assert(self.signature == nil, "block is already mined")
 		self.date = Date()
 
 		/* Note: if mining takes longer than a few hours, the mined block will not be accepted. As the difficulty level
