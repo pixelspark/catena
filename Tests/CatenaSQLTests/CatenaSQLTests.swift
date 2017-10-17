@@ -56,7 +56,7 @@ class CatenaSQLTests: XCTestCase {
 		var b = try SQLBlock.template(for: pubHash)
 
 		XCTAssert(!tr.shouldAlwaysBeReplayed, "this is not a transaction that requires replaying")
-		XCTAssert(b.isPayloadValid(), "block payload is valid")
+		XCTAssert(!b.isPayloadValid(), "block payload is valid (but shouldn't be because block is empty)")
 		XCTAssert(b.hasRoomFor(transaction: tr), "block can accomodate transaction")
 		XCTAssert(try b.append(transaction: tr), "block can append transaction")
 		XCTAssert(b.isPayloadValid(), "block payload is valid")
