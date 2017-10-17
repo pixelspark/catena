@@ -204,7 +204,7 @@ public class Miner<LedgerType: Ledger> {
 					}
 				}
 
-				if stop {
+				if stop || !block.isPayloadValid() {
 					return
 				}
 
