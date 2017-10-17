@@ -457,9 +457,9 @@ extension Block {
 	}
 
 	/** Mine this block (note: use this only for the genesis block, Miner provides threaded mining) */
-	public mutating func mine(difficulty: WorkType) {
+	public mutating func mine(difficulty: WorkType, timestamp: Date = Date()) {
 		assert(self.signature == nil, "block is already mined")
-		self.date = Date()
+		self.date = timestamp
 
 		/* Note: if mining takes longer than a few hours, the mined block will not be accepted. As the difficulty level
 		is generally low for a genesis block and this is only used for genesis blocks anyway, this should not be an
@@ -531,8 +531,8 @@ public class Orphans<BlockType: Block> {
 	}
 }
 
-extension Ledger {
-	func isNew(block: BlockchainType.BlockType) throws -> Bool {
+public extension Ledger {
+	public func isNew(block: BlockchainType.BlockType) throws -> Bool {
 		return try self.mutex.locked {
 			// We already know this block and it is currently an orphan
 			if orphans.get(orphan: block.signature!) != nil {
@@ -551,7 +551,7 @@ extension Ledger {
 
 	/** Notify the ledger of a new block. An attempt is made to append the block to the currently longest chain. If that
 	fails, the block is saved for later, in case (together with other blocks) a longer chain can be formed. */
-	func receive(block: BlockchainType.BlockType) throws -> Bool {
+	public func receive(block: BlockchainType.BlockType) throws -> Bool {
 		Log.debug("[Ledger] receive block #\(block.index) \(block.signature!.stringValue)")
 		return try self.mutex.locked { () -> Bool in
 			if block.isSignatureValid {
@@ -608,7 +608,7 @@ extension Ledger {
 								var prev = splice
 								for b in stack.reversed() {
 									if try !longest.canAppend(block: b, to: prev) {
-										Log.info("[Ledger] cannot append sidechain: block \(b.index) won't append to \(prev.index)")
+										Log.info("[Ledger] cannot append sidechain: block \(b.index) (prev=\(b.previous.stringValue)) won't append to \(prev.index) \(prev.signature!.stringValue)")
 										return false
 									}
 									prev = b

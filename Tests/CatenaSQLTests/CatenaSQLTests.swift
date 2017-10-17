@@ -1,8 +1,16 @@
 import XCTest
 import CatenaCore
+import LoggerAPI
+import HeliumLogger
 @testable import CatenaSQL
 
 class CatenaSQLTests: XCTestCase {
+	override func setUp() {
+		let logger = HeliumLogger(.info)
+		logger.details = false
+		Log.logger = logger
+	}
+
 	func testPeerDatabase() throws {
 		let db = SQLiteDatabase()
 		try db.open(":memory:")
@@ -61,6 +69,92 @@ class CatenaSQLTests: XCTestCase {
 		XCTAssert(try b.append(transaction: tr), "block can append transaction")
 		XCTAssert(b.isPayloadValid(), "block payload is valid")
 		XCTAssert(!(try b.append(transaction: tr)), "block does not append existing transaction")
+	}
+
+	func testBlockchain() {
+		let root = try! Identity()
+		let seed = "foo".data(using: .utf8)!
+		var genesis = try! SQLBlock(version: SQLBlock.basicVersion, index: 0, nonce: 0, previous: SHA256Hash.zeroHash, miner: SHA256Hash(of: root.publicKey.data), timestamp: 0, payload: seed)
+		genesis.mine(difficulty: 10)
+
+		let b = try! SQLBlockchain(genesis: genesis, database: ":memory:", replay: true)
+		XCTAssert(try! b.difficulty(forBlockFollowing: genesis) == genesis.work, "block following genesis follows genesis difficulty")
+
+		// config block
+		var configBlock = try! SQLBlock(version: SQLBlock.basicVersion, index: 1, nonce: 0, previous: genesis.signature!, miner: SHA256Hash(of: root.publicKey.data), timestamp: 0, payload: Data())
+
+		let statement = SQLStatement.create(table: SQLTable(name: "grants"), schema: SQLGrants.schema)
+		let configTransaction = try! SQLTransaction(statement: statement, invoker: root.publicKey, counter: 0)
+		try! configTransaction.sign(with: root.privateKey)
+		XCTAssert(configBlock.hasRoomFor(transaction: configTransaction), "hasRoomFor")
+		XCTAssert(try! configBlock.append(transaction: configTransaction), "append transaction")
+		configBlock.mine(difficulty: try! b.difficulty(forBlockFollowing: b.highest))
+		XCTAssert(try! b.canAppend(block: configBlock, to: b.highest))
+		XCTAssert(try! b.append(block: configBlock), "can append")
+
+		// Subsequent blocks
+		var blocks: [SQLBlock] = []
+		var newBlock = configBlock
+		var date = Date()
+		for i in 2..<b.difficultyRetargetInterval {
+			newBlock = try! SQLBlock(version: SQLBlock.basicVersion, index: i, nonce: 0, previous: newBlock.signature!, miner: SHA256Hash(of: root.publicKey.data), timestamp: 0, payload: Data())
+
+			let statement = SQLStatement.create(table: SQLTable(name: "foo_\(i)"), schema: SQLSchema(columns: (SQLColumn(name: "x"), SQLType.text)))
+			let newTransaction = try! SQLTransaction(statement: statement, invoker: root.publicKey, counter: i - 1)
+			try! newTransaction.sign(with: root.privateKey)
+			XCTAssert(newBlock.hasRoomFor(transaction: newTransaction), "hasRoomFor")
+			XCTAssert(try! newBlock.append(transaction: newTransaction), "append transaction")
+			newBlock.mine(difficulty: try! b.difficulty(forBlockFollowing: b.highest), timestamp: date.addingTimeInterval(TimeInterval(i * 60)))
+			XCTAssert(try! b.canAppend(block: newBlock, to: b.highest))
+			XCTAssert(try! b.append(block: newBlock), "can append")
+			blocks.append(newBlock)
+		}
+
+		// Test ledger
+		let ledger = try! SQLLedger(genesis: genesis, database: ":memory:", replay: true)
+		XCTAssert(try ledger.canAccept(transaction: configTransaction, pool: nil) == .now)
+		XCTAssert(try ledger.receive(block: configBlock))
+
+		// Check to see if new blocks are accepted
+		for b in blocks {
+			XCTAssert(try! ledger.isNew(block: b))
+			XCTAssert(try! ledger.receive(block: b))
+		}
+		XCTAssert(ledger.longest.highest == blocks.last!, "tip of chain should be last block")
+
+		// Check to see if existing blocks are denied entry
+		for b in blocks {
+			XCTAssert(!(try! ledger.isNew(block: b)))
+			XCTAssert(!(try! ledger.receive(block: b)))
+		}
+
+		// Mine an alternative chain and see how that goes
+		var altBlocks: [SQLBlock] = []
+		let altChain = try! SQLBlockchain(genesis: genesis, database: ":memory:", replay: true)
+		XCTAssert(try! altChain.append(block: configBlock))
+		date = Date().addingTimeInterval(3600)
+		newBlock = configBlock
+		for i in 2..<(2*b.difficultyRetargetInterval) {
+			let prev = newBlock
+			newBlock = try! SQLBlock(version: SQLBlock.basicVersion, index: i, nonce: 0, previous: prev.signature!, miner: SHA256Hash(of: root.publicKey.data), timestamp: 0, payload: Data())
+
+			let statement = SQLStatement.create(table: SQLTable(name: "bar_\(i)"), schema: SQLSchema(columns: (SQLColumn(name: "x"), SQLType.text)))
+			let newTransaction = try! SQLTransaction(statement: statement, invoker: root.publicKey, counter: i - 1)
+			try! newTransaction.sign(with: root.privateKey)
+			XCTAssert(newBlock.hasRoomFor(transaction: newTransaction), "hasRoomFor")
+			XCTAssert(try! newBlock.append(transaction: newTransaction), "append transaction")
+			newBlock.mine(difficulty: try! altChain.difficulty(forBlockFollowing: prev), timestamp: date.addingTimeInterval(TimeInterval(i * 60)))
+			XCTAssert(try! !b.canAppend(block: newBlock, to: b.highest))
+			XCTAssert(try! !b.append(block: newBlock), "can append")
+			altBlocks.append(newBlock)
+			XCTAssert(try! altChain.append(block: newBlock))
+		}
+
+		for b in altBlocks {
+			XCTAssert(try! ledger.isNew(block: b))
+			_ = try! ledger.receive(block: b)
+		}
+		XCTAssert(ledger.longest.highest == altBlocks.last!, "tip of chain should be last block")
 	}
 
 	func testUsers() throws {
