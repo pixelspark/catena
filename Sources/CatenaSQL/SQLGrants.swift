@@ -31,6 +31,7 @@ public extension SQLStatement {
 		case .show(_): return []
 		case .update(let update): return [SQLPrivilege(kind: .update, table: update.table)]
 		case .insert(let ins): return [SQLPrivilege(kind: .insert, table: ins.into)]
+		case .createIndex(table: let t, index: _): return [SQLPrivilege(kind: .never, table: t)]
 		}
 	}
 }

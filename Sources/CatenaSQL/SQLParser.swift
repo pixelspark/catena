@@ -153,6 +153,18 @@ public enum SQLShow {
 	case tables
 }
 
+public struct SQLIndex {
+	let name: SQLIndexName
+	let on: OrderedSet<SQLColumn>
+	let unique: Bool
+
+	func visit(_ visitor: SQLVisitor) throws -> SQLIndex {
+		return try visitor.visit(index: self)
+	}
+}
+
+public typealias SQLIndexName = SQLColumn
+
 public enum SQLStatement {
 	case create(table: SQLTable, schema: SQLSchema)
 	case delete(from: SQLTable, where: SQLExpression?)
@@ -161,6 +173,7 @@ public enum SQLStatement {
 	case select(SQLSelect)
 	case update(SQLUpdate)
 	case show(SQLShow)
+	case createIndex(table: SQLTable, index: SQLIndex)
 
 	enum SQLStatementError: LocalizedError {
 		case syntaxError(query: String)
@@ -194,7 +207,7 @@ public enum SQLStatement {
 
 	var isMutating: Bool {
 		switch self {
-		case .create, .drop, .delete, .update, .insert(_):
+		case .create, .drop, .delete, .update, .insert(_), .createIndex(table: _, index: _):
 			return true
 
 		case .select(_), .show(_):
@@ -211,6 +224,12 @@ public enum SQLStatement {
 			}
 
 			return "CREATE TABLE \(table.sql(dialect: dialect)) (\(def.joined(separator: ", ")));"
+
+		case .createIndex(table: let table, index: let index):
+			let unique = index.unique ? "UNIQUE " : ""
+			let def = index.on.map { expression -> String in expression.sql(dialect: dialect) }
+
+			return "CREATE \(unique)INDEX \(index.name.sql(dialect: dialect)) ON \(table.sql(dialect: dialect)) (\(def.joined(separator: ", ")));"
 
 		case .delete(from: let table, where: let expression):
 			let whereSQL: String
@@ -1103,6 +1122,7 @@ protocol SQLVisitor: class {
 	func visit(statement: SQLStatement) throws -> SQLStatement
 	func visit(schema: SQLSchema) throws -> SQLSchema
 	func visit(join: SQLJoin) throws -> SQLJoin
+	func visit(index: SQLIndex) throws -> SQLIndex
 }
 
 extension SQLVisitor {
@@ -1115,6 +1135,7 @@ extension SQLVisitor {
 	func visit(statement: SQLStatement) throws -> SQLStatement { return statement }
 	func visit(schema: SQLSchema) throws -> SQLSchema { return schema }
 	func visit(join: SQLJoin) throws -> SQLJoin { return join }
+	func visit(index: SQLIndex) throws -> SQLIndex { return index }
 }
 
 extension SQLColumn {
@@ -1172,6 +1193,9 @@ extension SQLStatement {
 		switch self {
 		case .create(table: let t, schema: let s):
 			newSelf = .create(table: try t.visit(visitor), schema: try s.visit(visitor))
+
+		case .createIndex(table: let t, index: let index):
+			newSelf = .createIndex(table: try t.visit(visitor), index: try index.visit(visitor))
 
 		case .delete(from: let table, where: let expr):
 			newSelf = .delete(from: try table.visit(visitor), where: try expr?.visit(visitor))

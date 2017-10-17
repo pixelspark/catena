@@ -517,6 +517,11 @@ class SQLBlockArchive {
 
 				let createStatement = SQLStatement.create(table: table, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
 				_ = try self.database.perform(createStatement.sql(dialect: self.database.dialect))
+
+				let createIndexStatement = SQLStatement.createIndex(table: table, index: SQLIndex(name: SQLIndexName(name: "idx_index"), on: OrderedSet<SQLColumn>([
+					SQLColumn(name: "index")
+				]), unique: true))
+				_ = try self.database.perform(createIndexStatement.sql(dialect: self.database.dialect))
 			}
 		}
 	}
