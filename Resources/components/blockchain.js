@@ -380,8 +380,8 @@ class Agent {
 	}
 
 	// Callback = function(code, res)
-	query(sql, callback) {
-		var data = {sql: sql};
+	query(sql, parameters, callback) {
+		var data = {sql: sql, parameters: parameters};
 
 		http.post(this.url + "api/query", data).then(function(r) {
 			return callback(200, r.body);
@@ -393,7 +393,7 @@ class Agent {
 
 	// Callback = function(err, tables)
 	tables(callback) {
-		this.query("SHOW TABLES;", function(code, res) {
+		this.query("SHOW TABLES;", {}, function(code, res) {
 			if(code == 200) {
 				var tables = [];
 				for(var a=0; a<res.rows.length; a++) {

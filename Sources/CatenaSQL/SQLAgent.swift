@@ -108,7 +108,52 @@ public class SQLAPIEndpoint {
             
             // Parse the statement
             if let q = query as? [String: Any], let sql = q["sql"] as? String {
-                let statement = try SQLStatement(sql)
+                let rawStatement = try SQLStatement(sql)
+
+				// Did the client send parameters to fill in?
+				let suppliedParameters = (q["parameters"] as? [String: Any]) ?? [:]
+				let translatedParameters = suppliedParameters.mapValues { (v: Any) -> SQLExpression in
+					if let num = v as? NSNumber, v is NSNumber {
+						return SQLExpression.literalInteger(num.intValue)
+					}
+					else if let str = v as? String {
+						return SQLExpression.literalString(str)
+					}
+					else {
+						return SQLExpression.null
+					}
+				}
+
+				let statement = rawStatement.bound(to: translatedParameters)
+
+				// Collect parameter information
+				let parameters = statement.parameters
+				let unboundParameters = parameters.flatMap({ (k, v) -> String? in
+					if case .unboundParameter(_) = v {
+						return k
+					}
+					return nil
+				})
+
+				let jsonParameters = parameters.mapValues { (e: SQLExpression) -> Any in
+					switch e {
+					case .unboundParameter(name: _): return NSNull()
+					case .literalString(let s): return s
+					case .literalInteger(let i): return i
+					case .literalUnsigned(let u): return u
+					default: return e.sql(dialect: SQLStandardDialect())
+					}
+				}
+
+				// If there are unbound parameters, return an error
+				if !unboundParameters.isEmpty {
+					_ = response.status(.notAcceptable)
+					response.send(json: [
+						"unbound": unboundParameters,
+						"parameters": jsonParameters
+					])
+					return
+				}
                 
                 // Mutating statements are not executed - client needs to sign and submit a transaction for those
                 if statement.isMutating {
@@ -120,7 +165,8 @@ public class SQLAPIEndpoint {
 					SQL parser/formatter). */
                     response.send(json: [
 						"message": "Performing mutating queries through this API is not supported at this time.",
-						"sql": statement.sql(dialect: SQLStandardDialect())
+						"sql": statement.sql(dialect: SQLStandardDialect()),
+						"parameters": jsonParameters
 					])
                     try response.end()
                 }

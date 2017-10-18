@@ -1274,4 +1274,64 @@ extension SQLExpression {
 	}
 }
 
+fileprivate class SQLParameterVisitor: SQLVisitor {
+	var parameters: [String: SQLExpression] = [:]
+
+	func visit(expression: SQLExpression) throws -> SQLExpression {
+		switch expression {
+		case .unboundParameter(name: let s):
+			self.parameters[s] = expression
+
+		case .boundParameter(name: let s, value: let v):
+			self.parameters[s] = v
+
+		default:
+			break
+		}
+
+		return expression
+	}
+}
+
+fileprivate class SQLParameterBinder: SQLVisitor {
+	let parameters: [String: SQLExpression]
+
+	init(parameters: [String: SQLExpression]) {
+		self.parameters = parameters
+	}
+
+	func visit(expression: SQLExpression) throws -> SQLExpression {
+		switch expression {
+		case .unboundParameter(name: let s):
+			if let v = self.parameters[s] {
+				return SQLExpression.boundParameter(name: s, value: v)
+			}
+
+		case .boundParameter(name: let s, value: _):
+			if let v = self.parameters[s] {
+				return v
+			}
+
+		default:
+			break
+		}
+
+		return expression
+	}
+}
+
+extension SQLStatement {
+	/** All parameters present in this query. The value for an unbound parameter is an
+	SQLExpression.unboundExpression. */
+	var parameters: [String: SQLExpression] {
+		let v = SQLParameterVisitor()
+		_ = try! self.visit(v)
+		return v.parameters
+	}
+
+	func bound(to parameters: [String: SQLExpression]) -> SQLStatement {
+		let b = SQLParameterBinder(parameters: parameters)
+		return try! self.visit(b)
+	}
+}
 

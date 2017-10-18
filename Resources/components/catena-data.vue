@@ -32,7 +32,7 @@ module.exports = {
 	data: function() {
 		return {
 			tables: [],
-			queries: ["CREATE TABLE foo(x INT);"], 
+			queries: ["CREATE TABLE foo(x INT);", "SELECT * FROM foo WHERE x < ?x;", "INSERT INTO foo (x) VALUES (?what);"], 
 			query: "SHOW TABLES;", 
 			table: null,
 			typedQuery: "SHOW TABLES;"
