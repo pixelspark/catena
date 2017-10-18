@@ -1309,7 +1309,7 @@ fileprivate class SQLParameterBinder: SQLVisitor {
 
 		case .boundParameter(name: let s, value: _):
 			if let v = self.parameters[s] {
-				return v
+				return .boundParameter(name: s, value: v)
 			}
 
 		default:
@@ -1329,6 +1329,10 @@ extension SQLStatement {
 		return v.parameters
 	}
 
+	/** Binds parameters in the query. Unbound parameters will be replaced with bound parameters if
+	there is a corresponding value in the `parameters` dictionary. Bound parameters will have their
+	values replaced with the values in the `parameter` dictionary. Bound and unbound parameters in
+	the query remain unchanged if the `parameters` set does not have a new value for them. */
 	func bound(to parameters: [String: SQLExpression]) -> SQLStatement {
 		let b = SQLParameterBinder(parameters: parameters)
 		return try! self.visit(b)
