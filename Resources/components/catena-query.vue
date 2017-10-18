@@ -1,22 +1,19 @@
 <template>
 	<div class="catena-query">
-		<span v-if="error !== null">Error: {{error}}</span>
+		<p class="error" v-if="error !== null"><i class="fa fa-warning"></i> Error: {{error}}</p>
 		<catena-spinner v-else-if="isLoading" fill="rgb(0,55,100)">Loading...</catena-spinner>
 		<div v-else>
-			<template v-if="isUnbound">
-				<p>Set these parameters first!</p>
-			</template>
-
 			<dl v-if="hasParameters">
 				<h2>Parameterized query</h2>
+				<p class="info" v-if="isUnbound"><i class="fa fa-info"></i> Set these parameters first!</p>
+
 				<template v-for="(v, k) in parameters">
 					<dt :key="k">{{k}}</dt>
-					<dd :key="k"><input type="text" :value="v" @keyup="setParameter(k, $event.target.value)"/></dd>
+					<dd :key="k"><input style="width: 100%;" type="text" :value="v" @keyup="setParameter(k, $event.target.value)"/></dd>
 				</template>
-
-				<dt></dt>
-				<dd><button @click="update">Submit</button></dd>
 			</dl>
+
+			<button v-if="hasParameters" @click="update"><i class="fa fa-check"></i> Apply</button>
 
 			<template v-if="isMutating">
 				<h2>Mutating query</h2>
