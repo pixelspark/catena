@@ -122,6 +122,7 @@ public class Miner<LedgerType: Ledger> {
 
 	private func mine() throws {
 		var stop = false
+		var lastMinedBlock: BlockType? = nil
 
 		while !stop {
 			// Form a new block
@@ -140,7 +141,11 @@ public class Miner<LedgerType: Ledger> {
 				}
 
 				if let n = self.node {
-					let base = n.ledger.longest.highest
+					// Find the base block (either our longest chain's tip, or the last mined block
+					var base = n.ledger.longest.highest
+					if let lm = lastMinedBlock, lm.index > base.index {
+						base = lm
+					}
 					difficulty = try! n.ledger.longest.difficulty(forBlockFollowing: base)
 
 					// Set up the block
@@ -239,14 +244,16 @@ public class Miner<LedgerType: Ledger> {
 						self.mutex.locked {
 							self.counter = block.nonce
 
-							// Remove mined transactions from the queue
-							includedTransactions.forEach { tr in
-								self.queue.remove(tr)
-								Log.info("[Miner] Dequeued \(tr) in mining loop")
-							}
-
-							// Inform the node of the good news
 							if let n = self.node {
+								// Remove mined transactions from the queue
+								includedTransactions.forEach { tr in
+									self.queue.remove(tr)
+									Log.info("[Miner] Dequeued \(tr) in mining loop")
+								}
+
+								lastMinedBlock = block
+
+								// Inform the node of the good news
 								DispatchQueue.global(qos: .background).async {
 									Log.info("[Miner] mined block #\(block.index) required difficulty=\(difficulty!) found \(block.signature!.difficulty)")
 									do {
@@ -256,6 +263,10 @@ public class Miner<LedgerType: Ledger> {
 										Log.info("[Miner] mined block #\(block.index), but node fails: \(error.localizedDescription)")
 									}
 								}
+							}
+							else {
+								Log.info("[Miner] mined block #\(block.index), but no node; throwing away block and ending session")
+								stop = true
 							}
 						}
 
