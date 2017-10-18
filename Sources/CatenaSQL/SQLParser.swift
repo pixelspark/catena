@@ -439,7 +439,7 @@ public enum SQLExpression: Equatable {
 				fatalError("bound parameter cannot have another parameter as its value")
 
 			default:
-				return "?\(n)=\(v.sql(dialect: dialect))"
+				return "?\(n):\(v.sql(dialect: dialect))"
 			}
 
 		case .binary(let left, let binary, let right):
