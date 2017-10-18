@@ -148,26 +148,13 @@ public class Node<LedgerType: Ledger> {
 		}
 
 		// Is this transaction in-order?
-		switch try self.ledger.canAccept(transaction: transaction, pool: self.miner.block) {
-		case .now:
-			let isNew = try self.miner.append(transaction: transaction)
-			if isNew {
-				self.rebroadcast(transaction: transaction, from: peer)
-			}
+		let isNew = try self.miner.append(transaction: transaction)
+		self.miner.start()
+		if isNew {
+			self.rebroadcast(transaction: transaction, from: peer)
 			return true
-
-		case .future:
-			let isNew = self.miner.setAside(transaction: transaction)
-			if isNew {
-				self.rebroadcast(transaction: transaction, from: peer)
-			}
-			self.miner.start()
-			return true
-
-		case .never:
-			Log.error("[Node] Not appending transaction \(transaction) to memory pool: ledger says it isn't acceptable")
-			return false
 		}
+		return false
 	}
 
 	private func rebroadcast(transaction: BlockType.TransactionType, from peer: Peer<LedgerType>?) {

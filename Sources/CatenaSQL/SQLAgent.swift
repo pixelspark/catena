@@ -247,7 +247,7 @@ public class SQLAPIEndpoint {
 	}
 
 	private func handleGetPool(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let pool = self.agent.node.miner.block?.payload.transactions.map { return $0.json } ?? []
+		let pool = self.agent.node.miner.queuedTransactions.map { return $0.json } ?? []
 		let aside = self.agent.node.miner.transactionsSetAside.map { return $0.json }
 
 		response.send(json: [
