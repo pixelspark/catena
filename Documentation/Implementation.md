@@ -133,3 +133,12 @@ replay the full set of transactions from block #0 to the splice point.
 All read queries (sent over the Postgres wire protocol) execute in a 'hypothetical' transaction - this is a transaction that is started
 before the query and in which the queued block transactions have been executed already. The transaction is automatically
 rolled back after the query is finished, such that the changes from the queued blocks are not persisted to disk.
+
+### Grants
+
+A transaction requires permissions to be able to make changes to the database. Permission grants are recorded
+in the special `grants` table. This table needs to be created first using a transaction and populated with grants,
+which creates an interesting catch-22: how can the grants table be created when there are no grants that would
+allow a create transaction? For this reason, grants are only enforced after a block has been appended that
+contained at least one transaction inserting into the `grants` table. Users are encouraged to  pre-mine up to
+the point where they have set up initial grants.

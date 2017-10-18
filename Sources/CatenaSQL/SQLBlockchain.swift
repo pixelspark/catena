@@ -731,6 +731,7 @@ public struct SQLMetadata {
 	private let infoHeadHashKey = "head"
 	private let infoHeadIndexKey = "index"
 	private let infoReplayingKey = "replaying"
+	private let enforcingGrantsKey = "enforcingGrants"
 
 	private let infoTrueValue = "true"
 	private let infoFalseValue = "false"
@@ -771,6 +772,24 @@ public struct SQLMetadata {
 		try self.database.transaction(name: "metadata-set-\(index)-\(head.stringValue)") {
 			try self.info.set(key: self.infoHeadHashKey, value: head.stringValue)
 			try self.info.set(key: self.infoHeadIndexKey, value: String(index))
+		}
+	}
+
+	func set(enforcingGrants: Bool) throws {
+		try self.database.transaction(name: "metadata-set-enforcing") {
+			try self.info.set(key: self.enforcingGrantsKey, value: enforcingGrants ? self.infoTrueValue : self.infoFalseValue)
+		}
+	}
+
+	var isEnforcingGrants: Bool {
+		do {
+			if let r = try self.info.get(self.enforcingGrantsKey) {
+				return r == self.infoTrueValue
+			}
+			return false
+		}
+		catch {
+			return false
 		}
 	}
 

@@ -364,13 +364,9 @@ extension SQLBlock {
 			/* Check transaction grants (only grants from previous blocks 'count'; as transactions can potentially change
 			the grants, we need to check them up front) */
 			var counterChanges: [PublicKey: SQLTransaction.CounterType] = [:]
-			let privilegedTransactions = try sortedTransactions.filter { transaction -> Bool in
-				if self.index == 1 {
-					/* Block 1 is special in that it doesn't enforce grants - so that you can actually set them for the
-					first time without getting the error that you don't have the required privileges. */
-					return true
-				}
+			var setEnforcingGrants = false
 
+			let privilegedTransactions = try sortedTransactions.filter { transaction -> Bool in
 				/* Does any of the privileges involve a 'special' table? If so, deny. Note: this should never happen
 				anyway as these tables have a name starting with an underscore, which the parser does not accept */
 				let requiredPrivileges = transaction.statement.requiredPrivileges
@@ -411,8 +407,21 @@ extension SQLBlock {
 
 				counterChanges[transaction.invoker] = transaction.counter
 
-				// Transaction should be executed when the invoker has the required privileges
-				return try meta.grants.check(privileges: requiredPrivileges, forUser: transaction.invoker)
+				if meta.isEnforcingGrants {
+					// Transaction should be executed when the invoker has the required privileges
+					return try meta.grants.check(privileges: requiredPrivileges, forUser: transaction.invoker)
+				}
+				else {
+					/* If this transaction inserts a grant, and we are currently not enforcing grants,
+					the next block starts enforcing grants */
+					if requiredPrivileges.contains(where: { pr in pr.kind == .insert && pr.table != nil && pr.table! == SQLTable(name: SQLMetadata.grantsTableName) }) {
+						setEnforcingGrants = true
+					}
+
+					// If grants are not enforced, allow everything
+					Log.debug("[Block] NOT checking grants for block #\(self.index) because not enforcing")
+					return true
+				}
 			}
 
 			// Write block's transactions to the database
@@ -442,6 +451,11 @@ extension SQLBlock {
 			try meta.archive(block: self)
 
 			// Update info
+			if setEnforcingGrants {
+				Log.debug("[SQLBlock] applying block \(self.index) sets grant enforce flag")
+				try meta.set(enforcingGrants: true)
+			}
+
 			try meta.set(head: self.signature!, index: self.index)
 		}
 	}
