@@ -145,12 +145,17 @@ public class SQLAPIEndpoint {
 					}
 				}
 
+				// Calculate a template hash
+				let templateStatement = parameters.isEmpty ? statement : statement.unbound
+
 				// If there are unbound parameters, return an error
 				if !unboundParameters.isEmpty {
 					_ = response.status(.notAcceptable)
 					response.send(json: [
 						"unbound": unboundParameters,
-						"parameters": jsonParameters
+						"parameters": jsonParameters,
+						"template": templateStatement.sql(dialect: SQLStandardDialect()),
+						"templateHash": templateStatement.templateHash.stringValue
 					])
 					return
 				}
@@ -166,6 +171,8 @@ public class SQLAPIEndpoint {
                     response.send(json: [
 						"message": "Performing mutating queries through this API is not supported at this time.",
 						"sql": statement.sql(dialect: SQLStandardDialect()),
+						"template": templateStatement.sql(dialect: SQLStandardDialect()),
+						"templateHash": templateStatement.templateHash.stringValue,
 						"parameters": jsonParameters
 					])
                     try response.end()

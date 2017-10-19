@@ -142,3 +142,49 @@ which creates an interesting catch-22: how can the grants table be created when 
 allow a create transaction? For this reason, grants are only enforced after a block has been appended that
 contained at least one transaction inserting into the `grants` table. Users are encouraged to  pre-mine up to
 the point where they have set up initial grants.
+
+The following grants can be configured by inserting into the `grants` table:
+
+| Grant name | Argument | Description |
+|--------------|-------------|---------------|
+| create         | table name or nil | Allows creating a table with the indicated name, or any table if argument is nil |
+| update         | table name or nil | Allows updating a table with the indicated name, or any table if argument is nil |
+| delete         | table name or nil | Allows deleting rows from a table with the indicated name, or any table if argument is nil |
+| drop         | table name or nil | Allows dropping a table with the indicated name, or any table if argument is nil |
+| insert         | table name or nil | Allows inserting into a table with the indicated name, or any table if argument is nil |
+| template  | template hash | Allows executing any query whose template hash matches the argument |
+
+### Templates
+
+From each mutating query a set of required privileges can be derived. These privileges are then matched
+against privileges from the `grants` table. If privileges are missing for a particular statement, the system
+derives the *template hash* for the statement and looks for a `template` grant. A template grants allows
+the execution of a particular query as long as its template matches the template hash, regardless of the
+presence of any other required privileges.
+
+The template hash is the SHA256 hash of the UTF-8 encoded, canonically formatted SQL representation
+of a statement whose parameters are all 'unbound'. For example, the following query:
+
+````
+INSERT INTO foo (x) VALUES (?what:5);
+````
+
+Becomes the following query when parameters are unbound:
+
+````
+INSERT INTO foo (x) VALUES (?what);
+````
+
+The canonical SQL representation of the above query is:
+
+````
+INSERT INTO foo ("x") VALUES (?what);
+````
+
+The SHA256 hash of the above query is `f2d1d9be4a547f5583cd7b43f322b284655f12b193be713e0940132fc8cbb2d3`.
+If the invoker of the statement has a grant in the `grants` table with kind `template` for the indicated hash,
+it will be able to execute the query. Note that it can also execute the same query with any other value for
+the 'x' parameter (e.g. '?x:10').
+
+
+

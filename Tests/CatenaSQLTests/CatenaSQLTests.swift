@@ -71,6 +71,23 @@ class CatenaSQLTests: XCTestCase {
 		XCTAssert(!(try b.append(transaction: tr)), "block does not append existing transaction")
 	}
 
+	func testTemplating() {
+		let parser = SQLParser()
+		let q = "INSERT INTO foo (\"x\") VALUES (?what:5);"
+		XCTAssert(parser.parse(q))
+
+		switch parser.root! {
+		case .statement(let s):
+			let templateStatement = s.unbound
+			let sql = templateStatement.sql(dialect: SQLStandardDialect())
+			let hash = SHA256Hash(of: sql.data(using: .utf8)!)
+			XCTAssert(hash.stringValue == "f2d1d9be4a547f5583cd7b43f322b284655f12b193be713e0940132fc8cbb2d3")
+
+		default:
+			XCTFail()
+		}
+	}
+
 	func testBlockchain() {
 		let root = try! Identity()
 		let seed = "foo".data(using: .utf8)!

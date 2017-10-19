@@ -223,10 +223,10 @@ do {
 				into: SQLTable(name: SQLMetadata.grantsTableName),
 				columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
 				values: [
-					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.create.rawValue), .null],
-					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.drop.rawValue), .null],
-					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString(SQLMetadata.grantsTableName)],
-					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.delete.rawValue), .literalString(SQLMetadata.grantsTableName)]
+					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.create(table: nil).privilegeName), .null],
+					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.drop(table: nil).privilegeName), .null],
+					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.insert(table: nil).privilegeName), .literalString(SQLMetadata.grantsTableName)],
+					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.delete(table: nil).privilegeName), .literalString(SQLMetadata.grantsTableName)]
 				]
 			))
 			let grantTransaction = try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey)
@@ -250,7 +250,7 @@ do {
 				into: SQLTable(name: SQLMetadata.grantsTableName),
 				columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
 				values: [
-					[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString("test")]
+					[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.insert(table: nil).privilegeName), .literalString("test")]
 				]
 			))
 			_ = try agent.submit(transaction: try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey), signWith: rootIdentity.privateKey)

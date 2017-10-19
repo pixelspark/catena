@@ -409,12 +409,19 @@ extension SQLBlock {
 
 				if meta.isEnforcingGrants {
 					// Transaction should be executed when the invoker has the required privileges
-					return try meta.grants.check(privileges: requiredPrivileges, forUser: transaction.invoker)
+					if try meta.grants.check(privileges: requiredPrivileges, forUser: transaction.invoker) {
+						// Grants are present
+						return true
+					}
+					else {
+						// Perhaps there is a template grant
+						return try meta.grants.check(privileges: [SQLPrivilege.template(hash: transaction.statement.templateHash)], forUser: transaction.invoker)
+					}
 				}
 				else {
 					/* If this transaction inserts a grant, and we are currently not enforcing grants,
 					the next block starts enforcing grants */
-					if requiredPrivileges.contains(where: { pr in pr.kind == .insert && pr.table != nil && pr.table! == SQLTable(name: SQLMetadata.grantsTableName) }) {
+					if requiredPrivileges.contains(where: { pr in pr == SQLPrivilege.insert(table: SQLTable(name: SQLMetadata.grantsTableName)) }) {
 						setEnforcingGrants = true
 					}
 

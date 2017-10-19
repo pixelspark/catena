@@ -167,6 +167,21 @@ fileprivate class SQLParameterBinder: SQLVisitor {
 	}
 }
 
+fileprivate class SQLParameterUnbinder: SQLVisitor {
+	func visit(expression: SQLExpression) throws -> SQLExpression {
+		switch expression {
+		case .unboundParameter(name: _):
+			return expression
+
+		case .boundParameter(name: let s, value: _):
+			return .unboundParameter(name: s)
+
+		default:
+			return expression
+		}
+	}
+}
+
 extension SQLStatement {
 	/** All parameters present in this query. The value for an unbound parameter is an
 	SQLExpression.unboundExpression. */
@@ -174,6 +189,17 @@ extension SQLStatement {
 		let v = SQLParameterVisitor()
 		_ = try! self.visit(v)
 		return v.parameters
+	}
+
+	/** Returns a version of this statement where all bound parameters are replaced with unbound ones
+	(e.g. the values are removed). Unbound parameters in the original statement are left untouched. */
+	var unbound: SQLStatement {
+		let b = SQLParameterUnbinder()
+		return try! self.visit(b)
+	}
+
+	var templateHash: SHA256Hash {
+		return SHA256Hash(of: self.unbound.sql(dialect: SQLStandardDialect()).data(using: .utf8)!)
 	}
 
 	/** Binds parameters in the query. Unbound parameters will be replaced with bound parameters if

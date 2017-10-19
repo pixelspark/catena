@@ -13,7 +13,7 @@
 			</transition-group>
 		</aside>
 		<article style="overflow-y: auto;">
-			<textarea @keyup="setQuery" :value="typedQuery" @keyup.enter="enterUp"></textarea>
+			<textarea class="catena-sql" @keyup="setQuery" :value="typedQuery" @keyup.enter="enterUp"></textarea>
 			<button @click="perform"><i class="fa fa-play"></i> Query</button>
 			<catena-query :sql="query" v-if="query != '' && query !== null " :agent="agent" :head="head"></catena-query>
 		</article>

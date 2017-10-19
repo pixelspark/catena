@@ -352,7 +352,7 @@ dl dt i {
 	height: 100%;
 }
 
-.catena-data textarea {
+textarea.catena-sql {
 	width: 100%;
 	min-height: 100px;
 	font-family: Courier New, Courier, monospace;
