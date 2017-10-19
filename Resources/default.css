@@ -497,3 +497,13 @@ p.error {
 	opacity: 1;
 	padding-top: 0px;
 }
+
+.catena-hash .catena-hash-fingerprint > div:last-child {
+	border-top-right-radius: 2px;
+	border-bottom-right-radius: 2px;
+}
+
+.catena-hash .catena-hash-fingerprint > div:first-child {
+	border-top-left-radius: 2px;
+	border-bottom-left-radius: 2px;
+}
