@@ -183,8 +183,13 @@ INSERT INTO foo ("x") VALUES (?what);
 
 The SHA256 hash of the above query is `f2d1d9be4a547f5583cd7b43f322b284655f12b193be713e0940132fc8cbb2d3`.
 If the invoker of the statement has a grant in the `grants` table with kind `template` for the indicated hash,
-it will be able to execute the query. Note that it can also execute the same query with any other value for
-the 'x' parameter (e.g. '?x:10').
+it will be allowed to execute the first unmodified query. Note that it can also execute the same query with any other value for
+the 'what' parameter (e.g. '?x:10').
 
+The invoker *must* use the same name for the bound parameter. With a grant for the above template, executing the
+following query would not be allowed:
 
+````
+INSERT INTO foo (x) VALUES (?somethingelse:5);
+````
 
