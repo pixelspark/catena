@@ -14,7 +14,7 @@
 			<dd>
 				<textarea class="catena-sql" v-model="templateQuery" @keyup="resetTemplateHash" style="width: 100%; height: 100px;"></textarea>
 				<p class="error" v-if="templateError !== null">{{templateError}}</p>
-				<p class="info" v-else-if="templateParameters !== null">The grantee will be able to execute the query above with any value(s) for the parameter(s) <b>{{parametersFriendly}}</b>. </p>
+				<p class="info" v-else-if="hasParameters">The grantee will be able to execute the query above with any value(s) for the parameter(s) <b>{{parametersFriendly}}</b>. </p>
 				<button @click="updateTemplateHash"><i class="fa fa-check"></i> Use template</button>
 			</dd>
 		</dl>
@@ -75,6 +75,14 @@ module.exports = {
 			else {
 				return "INSERT INTO grants (\"kind\", \"user\", \"table\") VALUES ('"+this.kind+"', X'"+this.user.publicHashHex+"', '"+this.table+"');";
 			}
+		},
+
+		hasParameters: function() {
+			if(this.templateParameters === null) return false;
+			for(var k in this.templateParameters) {
+				return true;
+			}
+			return false;
 		},
 
 		parametersFriendly: function() {
