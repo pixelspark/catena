@@ -217,15 +217,15 @@ class CatenaSQLTests: XCTestCase {
 
 		// Insert some privileges
 		let ins = SQLInsert(orReplace: false, into: grantsTable, columns: ["user","kind","table"].map { SQLColumn(name: $0) }, values: [
-			[.literalBlob(user.publicKey.data.sha256), .literalString(SQLPrivilege.Kind.insert.rawValue), .literalString("test")]
+			[.literalBlob(user.publicKey.data.sha256), .literalString(SQLPrivilege.insert(table: nil).privilegeName), .literalString("test")]
 		])
 		try _ = db.perform(SQLStatement.insert(ins).sql(dialect: db.dialect))
 
 		// Check privileges
-		XCTAssert(try g.check(privileges: [SQLPrivilege(kind: .insert, table: SQLTable(name: "test"))], forUser: user.publicKey))
-		XCTAssert(try !(g.check(privileges: [SQLPrivilege(kind: .insert, table: SQLTable(name: "TEST"))], forUser: user.publicKey)))
-		XCTAssert(try !(g.check(privileges: [SQLPrivilege(kind: .create, table: SQLTable(name: "test"))], forUser: user.publicKey)))
-		XCTAssert(try !(g.check(privileges: [SQLPrivilege(kind: .insert, table: SQLTable(name: "test"))], forUser: otherUser.publicKey)))
+		XCTAssert(try g.check(privileges: [SQLPrivilege.insert(table: SQLTable(name: "test"))], forUser: user.publicKey))
+		XCTAssert(try !(g.check(privileges: [SQLPrivilege.insert(table: SQLTable(name: "TEST"))], forUser: user.publicKey)))
+		XCTAssert(try !(g.check(privileges: [SQLPrivilege.create(table: SQLTable(name: "test"))], forUser: user.publicKey)))
+		XCTAssert(try !(g.check(privileges: [SQLPrivilege.insert(table: SQLTable(name: "test"))], forUser: otherUser.publicKey)))
 	}
 
 	func testParser() throws {
