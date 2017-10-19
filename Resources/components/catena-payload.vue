@@ -7,7 +7,7 @@
 			</tr>
 			<tr v-for="tr in data" :key="tr.tx.signature">
 				<td><code>{{tr.tx.sql}}</code></td>
-				<td><catena-hash :hash="tr.tx.invoker"></catena-hash> ({{tr.tx.counter}})</td>
+				<td><catena-hash :hash="tr.tx.invoker" format="base64"></catena-hash> ({{tr.tx.counter}})</td>
 			</tr>
 		</table>
 		{{seed}}

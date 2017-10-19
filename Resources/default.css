@@ -298,6 +298,10 @@ dl dt i {
 	  font-family: Courier New, Courier, monospace;
   }
 
+  h1 abbr, h1 code {
+	  font-size: 17pt;
+  }
+
 .catena-tabs {
 	display: block;
 	width: calc(100% - 10px);
@@ -478,4 +482,18 @@ p.info, p.error {
 p.error {
 	border: solid 1px rgba(236,0,0,0.7);
 	background: linear-gradient(to bottom,rgba(236,0,0,0.3)  20%, rgba(236,0,0,0.5) 40%);
+}
+
+.catena-hash .catena-hash-fingerprint {
+	transition-property: opacity, padding-top;
+	transition-duration: 0.5s;
+	opacity: 0;
+	padding-top: 5px;
+}
+
+.catena-hash:hover .catena-hash-fingerprint, .catena-hash.expanded .catena-hash-fingerprint {
+	transition-property: opacity, padding-top;
+	transition-duration: 0.5s;
+	opacity: 1;
+	padding-top: 0px;
 }

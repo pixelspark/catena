@@ -1,6 +1,6 @@
 <template>
 	<div v-if="identity !== null">
-	<h1><i class="fa fa-user"></i> Identity {{identity.publicHash}}</h1>
+	<h1><i class="fa fa-user"></i> Identity <catena-hash :hash="identity.publicHash" format="base64"></catena-hash></h1>
 	<dl>
 		<template v-if="identity !== null">
 			<dt>Public key</dt>

@@ -5,7 +5,7 @@
 				<li v-for="(q, idx) in agent.identities" @click="select(q)" :class="{'selected': identity == q}" :key="idx">
 					<a href="javascript:void(0);" style="float:right;" @click="remove(idx)"><i class="fa fa-times"></i></a>
 					<i class="fa fa-user"></i>
-					<catena-hash :hash="q.publicHash" :expandable="false"></catena-hash>
+					<catena-hash :hash="q.publicHash" format="base64" :expandable="false"></catena-hash>
 				</li>
 			</transition-group>
 
