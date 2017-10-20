@@ -167,7 +167,7 @@ public class Miner<LedgerType: Ledger> {
 							includedTransactions.append(transaction)
 						}
 						else {
-							Log.info("[Miner] Setting aside \(transaction) in mining loop")
+							Log.debug("[Miner] Setting aside \(transaction) in mining loop")
 							setAside.append(transaction)
 						}
 					}
@@ -190,7 +190,7 @@ public class Miner<LedgerType: Ledger> {
 										fatalError("block should be appendable, block said it had room!")
 									}
 									includedTransactions.append(next)
-									Log.info("[Miner] Promoting aside \(next) to queue in mining loop")
+									Log.debug("[Miner] Promoting aside \(next) to queue in mining loop")
 									return false
 								}
 								catch {
@@ -248,7 +248,7 @@ public class Miner<LedgerType: Ledger> {
 								// Remove mined transactions from the queue
 								includedTransactions.forEach { tr in
 									self.queue.remove(tr)
-									Log.info("[Miner] Dequeued \(tr) in mining loop")
+									Log.debug("[Miner] Dequeued \(tr) in mining loop")
 								}
 
 								lastMinedBlock = block
