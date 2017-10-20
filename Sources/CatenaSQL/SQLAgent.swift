@@ -239,7 +239,8 @@ public class SQLAPIEndpoint {
 
 			"longest": [
 				"highest": longest.highest.json,
-				"genesis": longest.genesis.json
+				"genesis": longest.genesis.json,
+				"difficulty": try longest.difficulty(forBlockFollowing: longest.highest)
 			],
 
 			"peers": self.agent.node.peers.map { (url, peer) -> [String: Any] in
