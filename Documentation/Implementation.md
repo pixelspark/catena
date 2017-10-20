@@ -65,12 +65,11 @@ The following limits are currently enforced;
 * _Transactions per block_: a block may not contain more than 100 transactions
 * _Transaction size_: a transaction may not be larger than 10 KiB (measured against the data to be signed)
 
-## Genesis blocks
+## Genesis block
 
-In Catena, two blocks are 'special':
-
-* The genesis block (block #0) in Catena is 'special' in the sense that instead of transactions, it contains a special 'seed string'. The block is deterministically mined (starting from nonce=0) so that a given seed string and difficulty will lead to a specific genesis block and signature.
-* The configuration block (block #1) is special because unlike the other blocks, it does not check grants before executing transactions. This block is actually required to contain the transactions that set up the grants table.
+The genesis block (block #0) in Catena is 'special' in the sense that instead of transactions, it contains a
+special 'seed string'. The block is deterministically mined (starting from nonce=0) so that a given seed
+string and difficulty will lead to a specific genesis block and signature.
 
 ## Transactions
 
