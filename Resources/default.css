@@ -491,7 +491,7 @@ p.error {
 	padding-top: 5px;
 }
 
-.catena-hash:hover .catena-hash-fingerprint, .catena-hash.expanded .catena-hash-fingerprint {
+.catena-hash.expanded .catena-hash-fingerprint {
 	transition-property: opacity, padding-top;
 	transition-duration: 0.5s;
 	opacity: 1;
