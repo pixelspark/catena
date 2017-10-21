@@ -70,10 +70,10 @@ module.exports = {
 	computed: {
 		sql: function() {
 			if(this.kind == 'template') {
-				return "INSERT INTO grants (\"kind\", \"user\", \"table\") VALUES ('"+this.kind+"', X'"+this.user.publicHashHex+"', X'"+this.templateHash+"');";
+				return "INSERT INTO \"grants\" (\"kind\", \"user\", \"table\") VALUES ('"+this.kind+"', X'"+this.user.publicHashHex+"', X'"+this.templateHash+"');";
 			}
 			else {
-				return "INSERT INTO grants (\"kind\", \"user\", \"table\") VALUES ('"+this.kind+"', X'"+this.user.publicHashHex+"', '"+this.table+"');";
+				return "INSERT INTO \"grants\" (\"kind\", \"user\", \"table\") VALUES ('"+this.kind+"', X'"+this.user.publicHashHex+"', '"+this.table+"');";
 			}
 		},
 

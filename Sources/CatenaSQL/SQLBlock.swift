@@ -241,6 +241,16 @@ fileprivate class SQLBackendVisitor: SQLVisitor {
 		self.context = context
 	}
 
+	func visit(table: SQLTable) throws -> SQLTable {
+		/* The table name may not start with 'sqlite_'. Replace with '$sqlite' (this name can never
+		be created from SQL since the '_' character is disallowed as first character). */
+		let forbiddenPrefix = "sqlite_"
+		if table.name.starts(with: forbiddenPrefix) {
+			return SQLTable(name: table.name.replacingOccurrences(of: forbiddenPrefix, with: "sqlite#", options: [], range: forbiddenPrefix.startIndex..<forbiddenPrefix.endIndex))
+		}
+		return table
+	}
+
 	func visit(column: SQLColumn) throws -> SQLColumn {
 		/* Replace occurences of column 'rowid' with '$rowid'. The rowid column is special in SQLite and we are therefore
 		masking it. */
@@ -310,7 +320,8 @@ class SQLExecutive {
 			switch s {
 			case .tables:
 				// TODO make this database-independent (i.e. implement a Database.listOfTables protocol function)
-				let query = "SELECT name FROM sqlite_master WHERE type='table' AND NOT(name LIKE '\\_%' ESCAPE '\\');"
+				// NOTE: here we are translating back the 'sqlite#' to 'sqlite_' (see above)
+				let query = "SELECT (CASE WHEN name LIKE 'sqlite#%' THEN ('sqlite_' || SUBSTR(name, 8)) ELSE name END) as name FROM sqlite_master WHERE type='table' AND NOT(name LIKE '\\_%' ESCAPE '\\');"
 				return try database.perform(query)
 			}
 

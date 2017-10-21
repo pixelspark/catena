@@ -11,7 +11,7 @@ public struct SQLTable: Equatable, Hashable {
 	}
 
 	func sql(dialect: SQLDialect) -> String {
-		return name.lowercased()
+		return dialect.tableIdentifier(name.lowercased())
 	}
 
 	public var hashValue: Int {
@@ -800,7 +800,11 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			})/~)
 
 		// FROM
-		add_named_rule("id-table", rule: firstCharacter ~ followingCharacter*)
+		add_named_rule("id-table-naked", rule: (firstCharacter ~ followingCharacter*) => {
+			self.stack.append(.tableIdentifier(SQLTable(name: self.text)))
+		})
+		add_named_rule("id-table-wrapped", rule: Parser.matchLiteral("\"") ~ ^"id-table-naked" ~ Parser.matchLiteral("\""))
+		add_named_rule("id-table", rule: ^"id-table-wrapped" | ^"id-table-naked")
 
 		// SELECT
 		add_named_rule("tuple", rule: Parser.matchList(^"ex" => { [unowned self] in
@@ -852,18 +856,20 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 			})
 			~~ (
 					Parser.matchLiteralInsensitive("FROM") ~~ ^"id-table" => { [unowned self] in
+						guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
 						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 						guard case .select(var select) = st else { fatalError() }
-						select.from = SQLTable(name: self.text)
+						select.from = table
 						self.stack.append(.statement(.select(select)))
 					}
 					~~ ((Parser.matchLiteralInsensitive("LEFT JOIN") => { [unowned self] in
 							self.stack.append(.join(.left(table: SQLTable(name: ""), on: SQLExpression.null)))
 						}
 						~~ ^"id-table" => { [unowned self] in
+							guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
 							guard case .join(let join) = self.stack.popLast()! else { fatalError() }
 							guard case .left(table: _, on: _) = join else { fatalError() }
-							self.stack.append(.join(.left(table: SQLTable(name: self.text), on: SQLExpression.null)))
+							self.stack.append(.join(.left(table: table, on: SQLExpression.null)))
 						}
 						~~ Parser.matchLiteralInsensitive("ON")
 						~~ ^"ex" => { [unowned self] in
@@ -913,7 +919,8 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 
 		add_named_rule("create-ddl-statement", rule: Parser.matchLiteralInsensitive("CREATE TABLE")
 			~~ (^"id-table" => { [unowned self] in
-					self.stack.append(.statement(.create(table: SQLTable(name: self.text), schema: SQLSchema())))
+					guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
+					self.stack.append(.statement(.create(table: table, schema: SQLSchema())))
 				})
 			~~ Parser.matchLiteral("(")
 			~~ Parser.matchList(^"column-definition" => { [unowned self] in
@@ -932,13 +939,15 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 
 		add_named_rule("drop-ddl-statement", rule: Parser.matchLiteralInsensitive("DROP TABLE")
 			~~ (^"id-table" => { [unowned self] in
-				self.stack.append(.statement(.drop(table: SQLTable(name: self.text))))
+				guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
+				self.stack.append(.statement(.drop(table: table)))
 			})
 		)
 
 		add_named_rule("update-dml-statement", rule: Parser.matchLiteralInsensitive("UPDATE")
 			~~ (^"id-table" => { [unowned self] in
-				let update = SQLUpdate(table: SQLTable(name: self.text))
+				guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
+				let update = SQLUpdate(table: table)
 				self.stack.append(.statement(.update(update)))
 			})
 			~~ Parser.matchLiteralInsensitive("SET")
@@ -966,7 +975,8 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 
 		add_named_rule("delete-dml-statement", rule: Parser.matchLiteralInsensitive("DELETE FROM")
 			~~ (^"id-table" => { [unowned self] in
-				self.stack.append(.statement(.delete(from: SQLTable(name: self.text), where: nil)))
+				guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
+				self.stack.append(.statement(.delete(from: table, where: nil)))
 			})
 			~~ (Parser.matchLiteralInsensitive("WHERE") ~~ ^"ex" => { [unowned self] in
 				guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
@@ -987,9 +997,7 @@ internal class SQLParser: Parser, CustomDebugStringConvertible {
 					self.stack.append(.statement(.insert(insert)))
 				})/~)
 				~~ Parser.matchLiteralInsensitive("INTO")
-				~~ (^"id-table" => { [unowned self] in
-                    self.stack.append(.tableIdentifier(SQLTable(name: self.text)))
-                })
+				~~ (^"id-table" )
 				~~ ((Parser.matchLiteral("(") => { [unowned self] in
                     self.stack.append(.columnList([]))
                 })

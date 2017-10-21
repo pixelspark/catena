@@ -81,7 +81,7 @@ class CatenaSQLTests: XCTestCase {
 			let templateStatement = s.unbound
 			let sql = templateStatement.sql(dialect: SQLStandardDialect())
 			let hash = SHA256Hash(of: sql.data(using: .utf8)!)
-			XCTAssert(hash.stringValue == "f2d1d9be4a547f5583cd7b43f322b284655f12b193be713e0940132fc8cbb2d3")
+			XCTAssert(hash.stringValue == "34d95e10ada95302bb6a16f1ad016b784a4057e670b345c80f855e616c334530")
 
 		default:
 			XCTFail()
