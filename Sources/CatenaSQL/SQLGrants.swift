@@ -71,6 +71,7 @@ public extension SQLStatement {
 		case .update(let update): return [SQLPrivilege.update(table: update.table)]
 		case .insert(let ins): return [SQLPrivilege.insert(table: ins.into)]
 		case .createIndex(table: _, index: _): return [SQLPrivilege.never]
+		case .fail: return []
 		}
 	}
 }

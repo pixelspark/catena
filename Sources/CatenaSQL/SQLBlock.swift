@@ -299,6 +299,17 @@ fileprivate class SQLBackendVisitor: SQLVisitor {
 	}
 }
 
+enum SQLExecutionError: LocalizedError {
+	/** The fail statement was invoked. */
+	case failed
+
+	var errorDescription: String? {
+		switch self {
+		case .failed: return "failed"
+		}
+	}
+}
+
 class SQLExecutive {
 	let context: SQLContext
 	let database: Database
@@ -316,6 +327,9 @@ class SQLExecutive {
 
 		// See if the backend can executive this type of statement
 		switch backendStatement {
+		case .fail:
+			throw SQLExecutionError.failed
+
 		case .show(let s):
 			switch s {
 			case .tables:

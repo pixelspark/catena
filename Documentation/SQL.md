@@ -70,3 +70,8 @@ underscores afterwards). An unbound parameter is written as `?name`. A bound par
 
 Returns a list of all tables that are accessible (disregarding permissions) as a single table with column 'name' containing the
 name of each table.
+
+
+#### FAIL
+
+Ends execution of the statement and rolls back any change made in the transaction.

@@ -174,6 +174,7 @@ public enum SQLStatement {
 	case update(SQLUpdate)
 	case show(SQLShow)
 	case createIndex(table: SQLTable, index: SQLIndex)
+	case fail
 
 	enum SQLStatementError: LocalizedError {
 		case syntaxError(query: String)
@@ -206,7 +207,7 @@ public enum SQLStatement {
 		case .create, .drop, .delete, .update, .insert(_), .createIndex(table: _, index: _):
 			return true
 
-		case .select(_), .show(_):
+		case .select(_), .show(_), .fail:
 			return false
 		}
 	}
@@ -317,6 +318,9 @@ public enum SQLStatement {
 			switch s {
 			case .tables: return "SHOW TABLES;"
 			}
+
+		case .fail:
+			return "FAIL;"
 		}
 	}
 }
@@ -1032,14 +1036,19 @@ internal class SQLParser: CustomDebugStringConvertible {
 				}
 			)
 
+			g["fail-statement"] = Parser.matchLiteralInsensitive("FAIL") => { [unowned self] in
+				self.stack.append(.statement(.fail))
+			}
+
 			// Statement categories
 			g["dql-statement"] = ^"select-dql-statement"
 			g["ddl-statement"] = ^"create-ddl-statement" | ^"drop-ddl-statement" | ^"show-statement"
 			g["dml-statement"] = ^"update-dml-statement" | ^"insert-dml-statement" | ^"delete-dml-statement"
+			g["control-statement"] = ^"fail-statement"
 
 
 			// Statement
-			g["statement"] = (^"ddl-statement" | ^"dml-statement" | ^"dql-statement") ~~ Parser.matchLiteral(";")
+			g["statement"] = (^"ddl-statement" | ^"dml-statement" | ^"dql-statement" | ^"control-statement") ~~ Parser.matchLiteral(";")
 
 			return (^"statement")*!*
 		}
@@ -1243,6 +1252,9 @@ extension SQLStatement {
 
 		case .show(let s):
 			newSelf = .show(s)
+
+		case .fail:
+			newSelf = .fail
 		}
 
 		return try visitor.visit(statement: newSelf)
