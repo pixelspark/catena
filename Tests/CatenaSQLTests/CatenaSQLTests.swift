@@ -228,66 +228,56 @@ class CatenaSQLTests: XCTestCase {
 		XCTAssert(try !(g.check(privileges: [SQLPrivilege.insert(table: SQLTable(name: "test"))], forUser: otherUser.publicKey)))
 	}
 
+	let validSQLStatements = [
+		"SELECT 1+1;",
+		"SELECT a FROM b;",
+		"SELECT a FROM b WHERE c=d;",
+		"SELECT a FROM b WHERE c=d ORDER BY z ASC;",
+		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC;",
+		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT 10;",
+		"DELETE FROM a WHERE x=y;",
+		"UPDATE a SET z=y WHERE a=b;",
+		"INSERT INTO x (a,b,c) VALUES (1,2,3),(4,5,6);",
+		"CREATE TABLE x(a TEXT, b TEXT, c TEXT PRIMARY KEY);",
+		"INSERT INTO x (a,b,c) VALUES (?x, ?yy, ?zy1);",
+		"INSERT INTO x (a,b,c) VALUES (?xy, ?yy:1, ?zy:'123', ?foo:$bar);",
+		"SELECT FOO();",
+		"SELECT FOO()+BAR();",
+		"SELECT FOO(BAR(BAZ()));",
+		"SELECT FOO(BAR(BAZ(1+2+3), 2+3), 4);",
+		"INSERT INTO grants (\"user\", \"kind\", \"table\") VALUES (X\'b6c8c9c9cd55f5914e29941390a5b69e3d5d59bc11bacb27bf0b9940b4398a33\',\'insert\',\'test\');",
+		"FAIL;",
+		"IF 1=1 THEN DELETE FROM baz ELSE FAIL END;",
+		"IF 1=1 THEN DELETE FROM baz ELSE IF 1=2 THEN DELETE FROM foo ELSE FAIL END;",
+		"IF 1=1 THEN DROP TABLE foo END;",
+		"CREATE TABLE \"grants\" (\"kind\" TEXT, \"user\" BLOB, \"table\" BLOB);"
+	]
+
+	let invalidSQLStatements = [
+		"SELECT 1+1", // missing ';'
+		"SELECT $0x;", // Variable name cannot start with digit
+		"SELECT ?0x;", // Parameter name cannot start with digit
+		"SELECT ?empty:;", // Parameter has no value
+		"SELECT ?empty:?other;", // Parameter value may not be another parameter
+		"SELECT ?empty:(1+1);", // Parameter value may not be an expression
+		"SELECT ?empty:?other:1;", // Parameter value may not be another parameter
+		"SELECT ?empty:column;", // Parameter value may not be another column (non-constant)
+		"SELECT ?empty:*;", // Parameter value may not be all columns (non-constant)
+		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT x;", // limit has non-int
+		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT 1.5;", // limit has non-int
+		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT -5;", // limit has non-positive int
+		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT x+1;", // limit has non-int
+	]
+
 	func testParser() throws {
 		let p = SQLParser()
 
-		let valid = [
-			"SELECT 1+1;",
-			"SELECT a FROM b;",
-			"SELECT a FROM b WHERE c=d;",
-			"SELECT a FROM b WHERE c=d ORDER BY z ASC;",
-			"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC;",
-            "SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT 10;",
-			"DELETE FROM a WHERE x=y;",
-			"UPDATE a SET z=y WHERE a=b;",
-			"INSERT INTO x (a,b,c) VALUES (1,2,3),(4,5,6);",
-			"CREATE TABLE x(a TEXT, b TEXT, c TEXT PRIMARY KEY);",
-			"INSERT INTO x (a,b,c) VALUES (?x, ?yy, ?zy1);",
-			"INSERT INTO x (a,b,c) VALUES (?xy, ?yy:1, ?zy:'123', ?foo:$bar);",
-			"SELECT FOO();",
-			"SELECT FOO()+BAR();",
-			"SELECT FOO(BAR(BAZ()));",
-			"SELECT FOO(BAR(BAZ(1+2+3), 2+3), 4);",
-            "INSERT INTO grants (\"user\", \"kind\", \"table\") VALUES (X\'b6c8c9c9cd55f5914e29941390a5b69e3d5d59bc11bacb27bf0b9940b4398a33\',\'insert\',\'test\');",
-			"FAIL;"
-		]
-
-		let invalid = [
-			"SELECT 1+1", // missing ';'
-			"SELECT $0x;", // Variable name cannot start with digit
-			"SELECT ?0x;", // Parameter name cannot start with digit
-			"SELECT ?empty:;", // Parameter has no value
-			"SELECT ?empty:?other;", // Parameter value may not be another parameter
-			"SELECT ?empty:(1+1);", // Parameter value may not be an expression
-			"SELECT ?empty:?other:1;", // Parameter value may not be another parameter
-			"SELECT ?empty:column;", // Parameter value may not be another column (non-constant)
-			"SELECT ?empty:*;", // Parameter value may not be all columns (non-constant)
-            "SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT x;", // limit has non-int
-            "SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT 1.5;", // limit has non-int
-            "SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT -5;", // limit has non-positive int
-            "SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT x+1;", // limit has non-int
-		]
-
-		for v in valid {
+		for v in validSQLStatements {
 			XCTAssert(p.parse(v) != nil, "Failed to parse \(v)")
 		}
 
-		for v in invalid {
+		for v in invalidSQLStatements {
 			XCTAssert(p.parse(v) == nil, "Parsed, but shouldn't have: \(v)")
-		}
-
-		measure {
-			for _ in 0..<40 {
-				for v in valid {
-					let p = SQLParser()
-					_ = p.parse(v)
-				}
-
-				for v in invalid {
-					let p = SQLParser()
-					_ = p.parse(v)
-				}
-			}
 		}
 
 		// Test canonicalization
@@ -303,6 +293,22 @@ class CatenaSQLTests: XCTestCase {
 			}
 			else {
 				XCTFail()
+			}
+		}
+	}
+
+	func testParserPerformance() throws {
+		measure {
+			for _ in 0..<40 {
+				for v in validSQLStatements {
+					let p = SQLParser()
+					_ = p.parse(v)
+				}
+
+				for v in invalidSQLStatements {
+					let p = SQLParser()
+					_ = p.parse(v)
+				}
 			}
 		}
 	}
@@ -328,7 +334,7 @@ class CatenaSQLTests: XCTestCase {
 		for f in failing {
 			XCTAssert(p.parse(f) != nil, "Failed to parse \(f)")
 			if case .statement(let s) = p.root! {
-				XCTAssertThrowsError(try ex.perform(s))
+				XCTAssertThrowsError(try ex.perform(s) { _ in return true })
 			}
 			else {
 				XCTFail("parsing failed")
@@ -338,8 +344,14 @@ class CatenaSQLTests: XCTestCase {
 
     static var allTests = [
         ("testPeerDatabase", testPeerDatabase),
+        ("testTransaction", testTransaction),
+        ("testTemplating", testTemplating),
+        ("testBlockchain", testBlockchain),
+        ("testUsers", testUsers),
+        ("testArchive", testArchive),
         ("testGrants", testGrants),
         ("testParser", testParser),
         ("testSQLBackend", testSQLBackend),
+        ("testParserPerformance", testParserPerformance)
     ]
 }

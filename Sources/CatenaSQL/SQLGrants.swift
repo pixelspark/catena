@@ -61,6 +61,10 @@ public enum SQLPrivilege: Equatable {
 }
 
 public extension SQLStatement {
+	/** Returns the set of privileges required to execute this statement. Note that for control/compound
+	statements, this returns the set of privileges required only for the statement itself, not subseqent
+	statements (e.g. for an IF statement, the privileges for the branch statements should be checked
+	separately). */
 	var requiredPrivileges: [SQLPrivilege] {
 		switch self {
 		case .create(table: let t, schema: _): return [SQLPrivilege.create(table: t)]
@@ -72,6 +76,7 @@ public extension SQLStatement {
 		case .insert(let ins): return [SQLPrivilege.insert(table: ins.into)]
 		case .createIndex(table: _, index: _): return [SQLPrivilege.never]
 		case .fail: return []
+		case .`if`: return []
 		}
 	}
 }

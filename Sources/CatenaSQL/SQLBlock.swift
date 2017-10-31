@@ -303,9 +303,13 @@ enum SQLExecutionError: LocalizedError {
 	/** The fail statement was invoked. */
 	case failed
 
+	/** A required privilege was not granted. */
+	case privilegeRequired
+
 	var errorDescription: String? {
 		switch self {
 		case .failed: return "failed"
+		case .privilegeRequired: return "privilege required"
 		}
 	}
 }
@@ -319,7 +323,12 @@ class SQLExecutive {
 		self.database = database
 	}
 
-	func perform(_ statement: SQLStatement) throws -> Result {
+	func perform(_ statement: SQLStatement, withRegime regime: (([SQLPrivilege]) throws -> (Bool))) throws -> Result {
+		// Check permissions
+		if !(try regime(statement.requiredPrivileges)) {
+			throw SQLExecutionError.privilegeRequired
+		}
+
 		/* Translate the transaction SQL to SQL we can execute on our backend. This includes binding
 		variable and parameter values. */
 		let be = SQLBackendVisitor(context: context)
@@ -329,6 +338,28 @@ class SQLExecutive {
 		switch backendStatement {
 		case .fail:
 			throw SQLExecutionError.failed
+
+		case .`if`(let sqlIf):
+			// Evaluate each branch of the if statement until one of them matches
+			for (condition, statement) in sqlIf.branches {
+				// Evaluate condition
+				let evaluationSQL = "SELECT CASE WHEN (\(condition.sql(dialect: database.dialect))) THEN 1 ELSE 0 END AS result;"
+				let evaluationResult = try database.perform(evaluationSQL)
+				assert(evaluationResult.hasRow, "evaluation of condition must return a row")
+
+				if case .int(let result) = evaluationResult.values[0], result == 1 {
+					// Evaluation was positive
+					return try self.perform(statement, withRegime: regime)
+				}
+			}
+
+			// Execute 'else'
+			if let other = sqlIf.otherwise {
+				return try self.perform(other, withRegime: regime)
+			}
+			else {
+				throw SQLExecutionError.failed
+			}
 
 		case .show(let s):
 			switch s {
@@ -431,29 +462,7 @@ extension SQLBlock {
 				}
 
 				counterChanges[transaction.invoker] = transaction.counter
-
-				if meta.isEnforcingGrants {
-					// Transaction should be executed when the invoker has the required privileges
-					if try meta.grants.check(privileges: requiredPrivileges, forUser: transaction.invoker) {
-						// Grants are present
-						return true
-					}
-					else {
-						// Perhaps there is a template grant
-						return try meta.grants.check(privileges: [SQLPrivilege.template(hash: transaction.statement.templateHash)], forUser: transaction.invoker)
-					}
-				}
-				else {
-					/* If this transaction inserts a grant, and we are currently not enforcing grants,
-					the next block starts enforcing grants */
-					if requiredPrivileges.contains(where: { pr in pr == SQLPrivilege.insert(table: SQLTable(name: SQLMetadata.grantsTableName)) }) {
-						setEnforcingGrants = true
-					}
-
-					// If grants are not enforced, allow everything
-					Log.debug("[Block] NOT checking grants for block #\(self.index) because not enforcing")
-					return true
-				}
+				return true
 			}
 
 			// Write block's transactions to the database
@@ -465,8 +474,37 @@ extension SQLBlock {
 							let context = SQLContext(metadata: meta, invoker: transaction.invoker, block: self, parameterValues: [:])
 							let statement = transaction.statement
 
+							// Check if there is a template grant for this statement
+							let templateGranted = try meta.isEnforcingGrants && meta.grants.check(privileges: [SQLPrivilege.template(hash: transaction.statement.templateHash)], forUser: transaction.invoker)
+
 							let executive = SQLExecutive(context: context, database: database)
-							_ = try executive.perform(statement)
+							_ = try executive.perform(statement) { requiredPrivileges in
+								if meta.isEnforcingGrants {
+									// All parts of a template-granted statement may be executed without further checks
+									if templateGranted {
+										return true
+									}
+									// A statement in a non-templated query should be executed only when the invoker has the required privileges
+									else if try meta.grants.check(privileges: requiredPrivileges, forUser: transaction.invoker) {
+										// Grants are present
+										return true
+									}
+									else {
+										return false
+									}
+								}
+								else {
+									/* If this transaction inserts a grant, and we are currently not enforcing grants,
+									the next block starts enforcing grants */
+									if requiredPrivileges.contains(where: { pr in pr == SQLPrivilege.insert(table: SQLTable(name: SQLMetadata.grantsTableName)) }) {
+										setEnforcingGrants = true
+									}
+
+									// If grants are not enforced, allow everything
+									Log.debug("[Block] NOT checking grants for block #\(self.index) because not enforcing")
+									return true
+								}
+							}
 						}
 					}
 					catch {

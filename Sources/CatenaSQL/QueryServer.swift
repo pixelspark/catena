@@ -80,7 +80,7 @@ public class NodeQueryServer: QueryServer {
 				try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
 					let context = SQLContext(metadata: chain.meta, invoker: identity.publicKey, block: chain.highest, parameterValues: [:])
 					let ex = SQLExecutive(context: context, database: chain.database)
-					let result = try ex.perform(statement)
+					let result = try ex.perform(statement) { _ in return true }
 
 					if case .row = result.state {
 						// Send columns

@@ -163,6 +163,11 @@ public struct SQLIndex {
 	}
 }
 
+public struct SQLIf {
+	var branches: [(SQLExpression, SQLStatement)]
+	var otherwise: SQLStatement? = nil
+}
+
 public typealias SQLIndexName = SQLColumn
 
 public enum SQLStatement {
@@ -175,6 +180,7 @@ public enum SQLStatement {
 	case show(SQLShow)
 	case createIndex(table: SQLTable, index: SQLIndex)
 	case fail
+	indirect case `if`(SQLIf)
 
 	enum SQLStatementError: LocalizedError {
 		case syntaxError(query: String)
@@ -207,12 +213,29 @@ public enum SQLStatement {
 		case .create, .drop, .delete, .update, .insert(_), .createIndex(table: _, index: _):
 			return true
 
+		/* An if statement is mutating when any of its contained statements is mutating (regardless
+		of what branch is taken at runtime). */
+		case .`if`(let sqlIf):
+			if let m = sqlIf.otherwise?.isMutating, m {
+				return true
+			}
+
+			for (_, s) in sqlIf.branches {
+				if s.isMutating {
+					return true
+				}
+			}
+
+			return false
+
 		case .select(_), .show(_), .fail:
 			return false
 		}
 	}
 
-	func sql(dialect: SQLDialect) -> String {
+	func sql(dialect: SQLDialect, isTopLevel: Bool = true) -> String {
+		let end = isTopLevel ? ";" : ""
+
 		switch self {
 		case .create(table: let table, schema: let schema):
 			let def = schema.columns.map { (col, type) -> String in
@@ -220,13 +243,13 @@ public enum SQLStatement {
 				return "\(col.sql(dialect:dialect)) \(type.sql(dialect: dialect))\(primary)"
 			}
 
-			return "CREATE TABLE \(table.sql(dialect: dialect)) (\(def.joined(separator: ", ")));"
+			return "CREATE TABLE \(table.sql(dialect: dialect)) (\(def.joined(separator: ", ")))\(end)"
 
 		case .createIndex(table: let table, index: let index):
 			let unique = index.unique ? "UNIQUE " : ""
 			let def = index.on.map { expression -> String in expression.sql(dialect: dialect) }
 
-			return "CREATE \(unique)INDEX \(index.name.sql(dialect: dialect)) ON \(table.sql(dialect: dialect)) (\(def.joined(separator: ", ")));"
+			return "CREATE \(unique)INDEX \(index.name.sql(dialect: dialect)) ON \(table.sql(dialect: dialect)) (\(def.joined(separator: ", ")))\(end)"
 
 		case .delete(from: let table, where: let expression):
 			let whereSQL: String
@@ -236,10 +259,10 @@ public enum SQLStatement {
 			else {
 				whereSQL = "";
 			}
-			return "DELETE FROM \(table.sql(dialect: dialect))\(whereSQL);"
+			return "DELETE FROM \(table.sql(dialect: dialect))\(whereSQL)\(end)"
 
 		case .drop(let table):
-			return "DROP TABLE \(table.sql(dialect: dialect));"
+			return "DROP TABLE \(table.sql(dialect: dialect))\(end)"
 
 		case .insert(let insert):
 			let colSQL = insert.columns.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
@@ -249,11 +272,11 @@ public enum SQLStatement {
 				}.joined(separator: ", ")
 
 			let orReplaceSQL = insert.orReplace ? " OR REPLACE" : ""
-			return "INSERT\(orReplaceSQL) INTO \(insert.into.sql(dialect: dialect)) (\(colSQL)) VALUES \(tupleSQL);"
+			return "INSERT\(orReplaceSQL) INTO \(insert.into.sql(dialect: dialect)) (\(colSQL)) VALUES \(tupleSQL)\(end)"
 
 		case .update(let update):
 			if update.set.isEmpty {
-				return "UPDATE;";
+				return "UPDATE\(end)";
 			}
 			var updateSQL: [String] = [];
 			for (col, expr) in update.set {
@@ -268,7 +291,7 @@ public enum SQLStatement {
 				whereSQL = ""
 			}
 
-			return "UPDATE \(update.table.sql(dialect: dialect)) SET \(updateSQL.joined(separator: ", "))\(whereSQL);"
+			return "UPDATE \(update.table.sql(dialect: dialect)) SET \(updateSQL.joined(separator: ", "))\(whereSQL)\(end)"
 
 		case .select(let select):
 			let selectList = select.these.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
@@ -308,19 +331,36 @@ public enum SQLStatement {
                     limitSQL = ""
                 }
 
-				return "SELECT\(distinctSQL) \(selectList) FROM \(t.sql(dialect: dialect))\(joinSQL)\(whereSQL)\(orderSQL)\(limitSQL);"
+				return "SELECT\(distinctSQL) \(selectList) FROM \(t.sql(dialect: dialect))\(joinSQL)\(whereSQL)\(orderSQL)\(limitSQL)\(end)"
 			}
 			else {
-				return "SELECT\(distinctSQL) \(selectList);"
+				return "SELECT\(distinctSQL) \(selectList)\(end)"
 			}
 
 		case .show(let s):
 			switch s {
-			case .tables: return "SHOW TABLES;"
+			case .tables: return "SHOW TABLES\(end)"
 			}
 
 		case .fail:
-			return "FAIL;"
+			return "FAIL\(end)"
+
+		case .`if`(let sqlIf):
+			if let first = sqlIf.branches.first {
+				let ifSQL = "IF \(first.0.sql(dialect: dialect)) THEN \(first.1.sql(dialect: dialect, isTopLevel: false)) "
+
+				var elseIfSQL: String = ""
+				for (condition, statement) in sqlIf.branches.dropFirst() {
+					elseIfSQL += "ELSE IF \(condition.sql(dialect: dialect)) THEN \(statement.sql(dialect: dialect, isTopLevel: false)) "
+				}
+
+				if let other = sqlIf.otherwise {
+					elseIfSQL += "ELSE \(other.sql(dialect: dialect, isTopLevel: false)) "
+				}
+
+				return "\(ifSQL)\(elseIfSQL)END\(end)";
+			}
+			return "FAIL\(end)";
 		}
 	}
 }
@@ -1040,17 +1080,53 @@ internal class SQLParser: CustomDebugStringConvertible {
 				self.stack.append(.statement(.fail))
 			}
 
+			g["condition-then"] =
+				^"ex" => { [unowned self] in
+					guard case .expression(let condition) = self.stack.popLast()! else { fatalError() }
+					guard case .statement(let s) = self.stack.popLast()! else { fatalError() }
+					guard case .`if`(var sqlIf) = s else { fatalError() }
+					sqlIf.branches.append((condition, .fail))
+					self.stack.append(.statement(.`if`(sqlIf)))
+				}
+				~~ Parser.matchLiteralInsensitive("THEN")
+				~~ ^"statement" => { [unowned self] in
+					guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
+					guard case .statement(let ifStatement) = self.stack.popLast()! else { fatalError() }
+					guard case .`if`(var sqlIf) = ifStatement else { fatalError() }
+					var branch = sqlIf.branches.popLast()!
+					branch.1 = statement
+					sqlIf.branches.append(branch)
+					self.stack.append(.statement(.`if`(sqlIf)))
+				}
+
+			g["if-statement"] =
+				Parser.matchLiteralInsensitive("IF") => { [unowned self] in
+					self.stack.append(.statement(.`if`(SQLIf(branches: [], otherwise: nil))))
+				}
+				~~ ^"condition-then"
+				~~ (Parser.matchLiteralInsensitive("ELSE IF") ~~ ^"condition-then")*
+				~~ (
+					Parser.matchLiteralInsensitive("ELSE")
+					~~ ^"statement" => { [unowned self] in
+						guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
+						guard case .statement(let ifStatement) = self.stack.popLast()! else { fatalError() }
+						guard case .`if`(var sqlIf) = ifStatement else { fatalError() }
+						sqlIf.otherwise = statement
+						self.stack.append(.statement(.`if`(sqlIf)))
+					}
+				)/~
+				~~ Parser.matchLiteralInsensitive("END")
+
 			// Statement categories
 			g["dql-statement"] = ^"select-dql-statement"
 			g["ddl-statement"] = ^"create-ddl-statement" | ^"drop-ddl-statement" | ^"show-statement"
 			g["dml-statement"] = ^"update-dml-statement" | ^"insert-dml-statement" | ^"delete-dml-statement"
-			g["control-statement"] = ^"fail-statement"
-
+			g["control-statement"] = ^"fail-statement" | ^"if-statement"
 
 			// Statement
-			g["statement"] = (^"ddl-statement" | ^"dml-statement" | ^"dql-statement" | ^"control-statement") ~~ Parser.matchLiteral(";")
+			g["statement"] = (^"ddl-statement" | ^"dml-statement" | ^"dql-statement" | ^"control-statement")
 
-			return (^"statement")*!*
+			return (^"statement") ~~ Parser.matchLiteral(";")*!*
 		}
 	}
 }
@@ -1222,6 +1298,17 @@ extension SQLStatement {
 
 		case .drop(table: let t):
 			newSelf = .drop(table: try t.visit(visitor))
+
+		case .`if`(var sqlIf):
+			if let other = sqlIf.otherwise {
+				sqlIf.otherwise = try other.visit(visitor)
+			}
+
+			sqlIf.branches = try sqlIf.branches.map({ (c,s) in
+				return (try c.visit(visitor), try s.visit(visitor))
+			})
+
+			newSelf = .if(sqlIf)
 
 		case .insert(var ins):
 			ins.columns = try ins.columns.map { try $0.visit(visitor) }

@@ -220,7 +220,7 @@ public class SQLBlockchain: Blockchain {
 		return try self.mutex.locked {
 			let retargetRange = self.retargetingInterval(forBlockFollowing: precedingBlock)
 			let lowerBlock = try self.get(at: retargetRange.lowerBound)
-			let upperBlock = try self.get(at: retargetRange.upperBound)
+			let upperBlock = (precedingBlock.index == retargetRange.upperBound) ? precedingBlock : try self.get(at: retargetRange.upperBound)
 
 			let totalWork = try self.totalWork(between: retargetRange)
 			let totalTime = Int(upperBlock!.timestamp - lowerBlock!.timestamp)

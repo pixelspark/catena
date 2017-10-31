@@ -71,6 +71,23 @@ underscores afterwards). An unbound parameter is written as `?name`. A bound par
 Returns a list of all tables that are accessible (disregarding permissions) as a single table with column 'name' containing the
 name of each table.
 
+#### IF THEN ELSE END
+
+A top-level IF statement can be used to control execution flow. The standard IF statement looks as follows:
+
+	IF ?amount > 0 THEN UPDATE balance SET balance = balance + ?amount WHERE iban = ?iban ELSE FAIL END;
+
+You can also add additional `ELSE IF` clauses:
+
+	IF ?x < 10 THEN INSERT INTO foo(x) VALUES(?x) ELSE IF ?x < 20 THEN INSERT INTO bar(x) VALUES (?x) ELSE FAIL END;
+
+The branches of an IF statement can only contain mutating statements (e.g. no SELECT).
+
+When an `ELSE` clause is omitted, `ELSE FAIL` is implied:
+
+	IF ?x < 10 THEN INSERT INTO foo(x) VALUES(?x) END;
+
+The top-level IF-statement is very useful for restricting template grants to certain subsets of parameters.
 
 #### FAIL
 

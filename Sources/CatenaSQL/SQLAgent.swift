@@ -182,7 +182,7 @@ public class SQLAPIEndpoint {
                         let anon = try Identity()
                         let context = SQLContext(metadata: chain.meta, invoker: anon.publicKey, block: chain.highest, parameterValues: [:])
                         let ex = SQLExecutive(context: context, database: chain.database)
-                        let result = try ex.perform(statement)
+						let result = try ex.perform(statement) { _ in return true }
                         
                         var res: [String: Any] = [
                             "sql": sql
