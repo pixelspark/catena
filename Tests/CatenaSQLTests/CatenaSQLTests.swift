@@ -74,7 +74,7 @@ class CatenaSQLTests: XCTestCase {
 	func testTemplating() {
 		let parser = SQLParser()
 		let q = "INSERT INTO foo (\"x\") VALUES (?what:5);"
-		XCTAssert(parser.parse(q))
+		XCTAssert(parser.parse(q) != nil)
 
 		switch parser.root! {
 		case .statement(let s):
@@ -268,11 +268,25 @@ class CatenaSQLTests: XCTestCase {
 		]
 
 		for v in valid {
-			XCTAssert(p.parse(v), "Failed to parse \(v)")
+			XCTAssert(p.parse(v) != nil, "Failed to parse \(v)")
 		}
 
 		for v in invalid {
-			XCTAssert(!p.parse(v), "Parsed, but shouldn't have: \(v)")
+			XCTAssert(p.parse(v) == nil, "Parsed, but shouldn't have: \(v)")
+		}
+
+		measure {
+			for _ in 0..<40 {
+				for v in valid {
+					let p = SQLParser()
+					_ = p.parse(v)
+				}
+
+				for v in invalid {
+					let p = SQLParser()
+					_ = p.parse(v)
+				}
+			}
 		}
 
 		// Test canonicalization
@@ -282,7 +296,7 @@ class CatenaSQLTests: XCTestCase {
 		];
 
 		for (before, after) in canon {
-			XCTAssert(p.parse(before),"Must parse")
+			XCTAssert(p.parse(before) != nil, "Must parse")
 			if case .statement(let s) = p.root! {
 				XCTAssert(after == s.sql(dialect: SQLStandardDialect()), "canonical form mismatch for '\(before)': '\(after)' != '\(s.sql(dialect: SQLStandardDialect()))'")
 			}
@@ -310,7 +324,7 @@ class CatenaSQLTests: XCTestCase {
 		];
 
 		for f in failing {
-			XCTAssert(p.parse(f), "Failed to parse \(f)")
+			XCTAssert(p.parse(f) != nil, "Failed to parse \(f)")
 			if case .statement(let s) = p.root! {
 				XCTAssertThrowsError(try ex.perform(s))
 			}
