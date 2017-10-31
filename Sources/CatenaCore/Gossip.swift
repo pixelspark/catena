@@ -1,6 +1,5 @@
 import Foundation
 import Kitura
-import KituraRequest
 import LoggerAPI
 import KituraWebSocket
 import Dispatch
