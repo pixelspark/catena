@@ -70,7 +70,7 @@ public extension SQLStatement {
 		case .show(_): return []
 		case .update(let update): return [SQLPrivilege.update(table: update.table)]
 		case .insert(let ins): return [SQLPrivilege.insert(table: ins.into)]
-		case .createIndex(table: let t, index: _): return [SQLPrivilege.never]
+		case .createIndex(table: _, index: _): return [SQLPrivilege.never]
 		}
 	}
 }
