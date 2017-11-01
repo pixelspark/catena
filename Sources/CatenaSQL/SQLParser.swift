@@ -196,7 +196,7 @@ public enum SQLStatement {
 
 	public init(_ sql: String) throws {
 		let parser = SQLParser()
-		guard let root = parser.parse(sql) else {
+		guard let root = try parser.parse(sql) else {
 			throw SQLStatementError.syntaxError(query: sql)
 		}
 
@@ -556,15 +556,26 @@ public enum SQLFragment {
 	case order(SQLOrder)
 }
 
-internal class SQLParser: CustomDebugStringConvertible {
-	private var stack: [SQLFragment] = []
-	private var error = false
+public enum SQLParserError: LocalizedError {
+	case malformedHexEncoding
+	case duplicateColumnName
 
-	public func parse(_ sql: String) -> SQLFragment? {
+	public var errorDescription: String? {
+		switch self {
+		case .malformedHexEncoding: return "malformed hex encoding"
+		case .duplicateColumnName: return "duplicate column name"
+		}
+	}
+}
+
+internal class SQLParser {
+	private var stack: [SQLFragment] = []
+
+	public func parse(_ sql: String) throws -> SQLFragment? {
 		self.stack = []
-		self.error = false
+		defer { self.stack = [] }
 		let p = Parser(grammar: self.grammar)
-		return p.parse(sql) ? self.stack.last! : nil
+		return try p.parse(sql) ? self.stack.last! : nil
 	}
 
 	private func pushLiteralString(_ parser: Parser) {
@@ -572,26 +583,20 @@ internal class SQLParser: CustomDebugStringConvertible {
 		self.stack.append(.expression(.literalString(unescaped)))
 	}
 
-	private func pushLiteralBlob(_ parser: Parser) {
+	private func pushLiteralBlob(_ parser: Parser) throws {
 		if let s = parser.text.hexDecoded {
 			self.stack.append(.expression(.literalBlob(s)))
 		}
 		else {
 			self.stack.append(.expression(.null))
-			self.error = true
+			throw SQLParserError.malformedHexEncoding
 		}
-	}
-
-	var debugDescription: String {
-		return "\(self.stack)"
-	}
-
-	var root: SQLFragment? {
-		return self.error ? nil : self.stack.last
 	}
 
 	public var grammar: Grammar {
 		return Grammar { g in
+			g.nestingDepthLimit = 10
+
 			// Literals
 			let firstCharacter: ParserRule = (("a"-"z")|("A"-"Z"))
 			let followingCharacter: ParserRule = (firstCharacter | ("0"-"9") | literal("_"))
@@ -661,7 +666,7 @@ internal class SQLParser: CustomDebugStringConvertible {
 			}
 
 			g["lit-blob"] = Parser.matchLiteral("X'") ~ Parser.matchAnyCharacterExcept([Character("'")])* => { [unowned self] parser in
-				self.pushLiteralBlob(parser)
+				try self.pushLiteralBlob(parser)
 			} ~ Parser.matchLiteral("'")
 
 			g["lit-string"] = Parser.matchLiteral("'")
@@ -694,7 +699,8 @@ internal class SQLParser: CustomDebugStringConvertible {
 				| ^"lit-constant"
 
 			// Expressions
-			g["ex-sub"] = Parser.matchLiteral("(") ~~ ^"ex" ~~ Parser.matchLiteral(")")
+			g["ex-sub"] =
+				nest(Parser.matchLiteral("(") ~~ ^"ex" ~~ Parser.matchLiteral(")"))
 
 			g["ex-unary-postfix"] = Parser.matchLiteralInsensitive("IS NULL") => { [unowned self] parser in
 				guard case .expression(let right) = self.stack.popLast()! else { fatalError() }
@@ -1006,7 +1012,7 @@ internal class SQLParser: CustomDebugStringConvertible {
 						guard case .update(var update) = st else { fatalError() }
 						if update.set[col] != nil {
 							// Same column named twice, that is not allowed
-							self.error = true
+							throw SQLParserError.duplicateColumnName
 						}
 						update.set[col] = expression
 						self.stack.append(.statement(.update(update)))
@@ -1089,7 +1095,7 @@ internal class SQLParser: CustomDebugStringConvertible {
 					self.stack.append(.statement(.`if`(sqlIf)))
 				}
 				~~ Parser.matchLiteralInsensitive("THEN")
-				~~ ^"statement" => { [unowned self] in
+				~~ nest(^"statement" => { [unowned self] in
 					guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
 					guard case .statement(let ifStatement) = self.stack.popLast()! else { fatalError() }
 					guard case .`if`(var sqlIf) = ifStatement else { fatalError() }
@@ -1097,7 +1103,7 @@ internal class SQLParser: CustomDebugStringConvertible {
 					branch.1 = statement
 					sqlIf.branches.append(branch)
 					self.stack.append(.statement(.`if`(sqlIf)))
-				}
+				})
 
 			g["if-statement"] =
 				Parser.matchLiteralInsensitive("IF") => { [unowned self] in
@@ -1107,13 +1113,13 @@ internal class SQLParser: CustomDebugStringConvertible {
 				~~ (Parser.matchLiteralInsensitive("ELSE IF") ~~ ^"condition-then")*
 				~~ (
 					Parser.matchLiteralInsensitive("ELSE")
-					~~ ^"statement" => { [unowned self] in
+					~~ nest(^"statement" => { [unowned self] in
 						guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
 						guard case .statement(let ifStatement) = self.stack.popLast()! else { fatalError() }
 						guard case .`if`(var sqlIf) = ifStatement else { fatalError() }
 						sqlIf.otherwise = statement
 						self.stack.append(.statement(.`if`(sqlIf)))
-					}
+					})
 				)/~
 				~~ Parser.matchLiteralInsensitive("END")
 
@@ -1160,7 +1166,7 @@ fileprivate extension Parser {
 		return ParserRule { (parser: Parser, reader: Reader) -> Bool in
 			let pos = reader.position
 			for rule in rules {
-				if(rule.matches(parser, reader)) {
+				if(try rule.matches(parser, reader)) {
 					return true
 				}
 				reader.seek(pos)

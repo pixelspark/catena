@@ -18,6 +18,10 @@ Catena supports a subset of SQL with the following limitations:
 In the future, the Catena parser will be expanded to support more types of statements. Only deterministic queries will
 be supported (e.g. no functions that return current date/time or random values).
 
+## Limits
+
+* There can be no more than *10* nested sub-expressions and/or sub-statements (both count to the same total)
+
 ## Variables
 
 Catena exposes several variables in queries:

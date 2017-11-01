@@ -7,7 +7,7 @@ var deps: [Package.Dependency] = [
 	.package(url: "https://github.com/IBM-Swift/Kitura.git", from: Version("2.0.0")),
 	.package(url: "https://github.com/jatoben/CommandLine", from: Version("3.0.0-pre1")),
 	.package(url: "https://github.com/IBM-Swift/BlueCryptor.git", from: Version("0.0.0")),
-	.package(url: "https://github.com/pixelspark/swift-parser-generator.git", from: Version("2.0.0")),
+	.package(url: "https://github.com/pixelspark/swift-parser-generator.git", from: Version("2.0.2")),
 	.package(url: "https://github.com/IBM-Swift/HeliumLogger.git", from: Version("1.7.1")),
 	.package(url: "https://github.com/IBM-Swift/Kitura-WebSocket", from: Version("0.9.1")),
 	.package(url: "https://github.com/vzsg/ed25519.git", from: Version("0.2.0")),

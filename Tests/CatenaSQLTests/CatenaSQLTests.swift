@@ -74,9 +74,10 @@ class CatenaSQLTests: XCTestCase {
 	func testTemplating() {
 		let parser = SQLParser()
 		let q = "INSERT INTO foo (\"x\") VALUES (?what:5);"
-		XCTAssert(parser.parse(q) != nil)
+		let root = try! parser.parse(q)
+		XCTAssert(root != nil)
 
-		switch parser.root! {
+		switch root! {
 		case .statement(let s):
 			let templateStatement = s.unbound
 			let sql = templateStatement.sql(dialect: SQLStandardDialect())
@@ -269,15 +270,24 @@ class CatenaSQLTests: XCTestCase {
 		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT x+1;", // limit has non-int
 	]
 
+	let throwingSQLStatements = [
+		"SELECT (1+((1+((1+((1+((1+((1+((1+((1+((1+((1+((1+(1))))))))))))))))))))));", // nesting depth
+		"IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN FAIL END END END END END END END END END END END;" // nesting depth
+	]
+
 	func testParser() throws {
 		let p = SQLParser()
 
 		for v in validSQLStatements {
-			XCTAssert(p.parse(v) != nil, "Failed to parse \(v)")
+			XCTAssert(try p.parse(v) != nil, "Failed to parse \(v)")
 		}
 
 		for v in invalidSQLStatements {
-			XCTAssert(p.parse(v) == nil, "Parsed, but shouldn't have: \(v)")
+			XCTAssert(try p.parse(v) == nil, "Parsed, but shouldn't have: \(v)")
+		}
+
+		for v in throwingSQLStatements {
+			XCTAssertThrowsError(try p.parse(v), "should throw parsing error: \(v)")
 		}
 
 		// Test canonicalization
@@ -287,14 +297,31 @@ class CatenaSQLTests: XCTestCase {
 		];
 
 		for (before, after) in canon {
-			XCTAssert(p.parse(before) != nil, "Must parse")
-			if case .statement(let s) = p.root! {
+			let root = try p.parse(before)
+			XCTAssert(root != nil, "Must parse")
+			if case .statement(let s) = root! {
 				XCTAssert(after == s.sql(dialect: SQLStandardDialect()), "canonical form mismatch for '\(before)': '\(after)' != '\(s.sql(dialect: SQLStandardDialect()))'")
 			}
 			else {
 				XCTFail()
 			}
 		}
+
+		/* Create a pathetically nested expression - it should fail to parse because it exceeds the
+		nesting depth for subexpressions. */
+		let template = "(i + x)";
+		var nested = "(0 + 1)";
+		for i in 0...11 {
+			nested = template.replacingOccurrences(of: "i", with: "\(i)").replacingOccurrences(of: "x", with: nested)
+		}
+		XCTAssertThrowsError(try p.parse("SELECT \(nested);"))
+
+		/* This should also throw an error, but now because the parser can't deal with it, not because
+		the maximum nesting depth for subexpressions was exceeded (that is only checked after parsing). */
+		for i in 0...1000 {
+			nested = template.replacingOccurrences(of: "i", with: "\(i)").replacingOccurrences(of: "x", with: nested)
+		}
+		XCTAssertThrowsError(try p.parse("SELECT \(nested);"))
 	}
 
 	func testParserPerformance() throws {
@@ -302,12 +329,12 @@ class CatenaSQLTests: XCTestCase {
 			for _ in 0..<40 {
 				for v in validSQLStatements {
 					let p = SQLParser()
-					_ = p.parse(v)
+					_ = try! p.parse(v)
 				}
 
 				for v in invalidSQLStatements {
 					let p = SQLParser()
-					_ = p.parse(v)
+					_ = try! p.parse(v)
 				}
 			}
 		}
@@ -332,8 +359,10 @@ class CatenaSQLTests: XCTestCase {
 		];
 
 		for f in failing {
-			XCTAssert(p.parse(f) != nil, "Failed to parse \(f)")
-			if case .statement(let s) = p.root! {
+			let root = try! p.parse(f)
+			XCTAssert(root != nil, "Failed to parse \(f)")
+
+			if case .statement(let s) = root! {
 				XCTAssertThrowsError(try ex.perform(s) { _ in return true })
 			}
 			else {
