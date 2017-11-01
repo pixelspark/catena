@@ -135,9 +135,9 @@ public class SQLAPIEndpoint {
 					return nil
 				})
 
-				let jsonParameters = parameters.mapValues { (e: SQLExpression) -> Any in
+				let jsonParameters = parameters.mapValues { (e: SQLExpression) -> Any? in
 					switch e {
-					case .unboundParameter(name: _): return NSNull()
+					case .unboundParameter(name: _): return nil
 					case .literalString(let s): return s
 					case .literalInteger(let i): return i
 					case .literalUnsigned(let u): return u
@@ -341,7 +341,7 @@ public class SQLAPIEndpoint {
 			}
 			else {
 				response.send(json: [
-				"counter": NSNull()
+				"counter": nil
 				])
 			}
 			next()
