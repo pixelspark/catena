@@ -124,6 +124,9 @@ module.exports = {
 					self.parameters = res.parameters;
 
 					if("unbound" in res) {
+						for(var a=0; a<res.unbound.length; a++) {
+							self.parameters[res.unbound[a]] = null;
+						}
 						self.isUnbound = true;
 					}
 					else {
