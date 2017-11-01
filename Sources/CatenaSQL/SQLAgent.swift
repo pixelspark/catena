@@ -144,6 +144,8 @@ public class SQLAPIEndpoint {
 					default: return e.sql(dialect: SQLStandardDialect())
 					}
 				}
+				.filter { (_, v) -> Bool in return v != nil }
+				.mapValues { v -> Any in return v as Any }
 
 				// Calculate a template hash
 				let templateStatement = parameters.isEmpty ? statement : statement.unbound
@@ -340,9 +342,7 @@ public class SQLAPIEndpoint {
 				])
 			}
 			else {
-				response.send(json: [
-				"counter": nil
-				])
+				response.send(json: [:])
 			}
 			next()
 		}
