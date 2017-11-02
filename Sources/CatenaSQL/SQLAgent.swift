@@ -3,7 +3,7 @@ import Kitura
 import CatenaCore
 import LoggerAPI
 
-/** The SQL agent coordinates participation in a dist*/
+/** The SQL agent coordinates participation in a distributed blockchain-based database. */
 public class SQLAgent {
 	let node: Node<SQLLedger>
 	private var counters: [PublicKey: SQLTransaction.CounterType] = [:]
@@ -16,69 +16,69 @@ public class SQLAgent {
 	/** Submit a transaction, after issue'ing a consecutive counter value to it and signing it with the private key
 	provided. */
 	public func submit(transaction: SQLTransaction, signWith key: PrivateKey) throws -> Bool {
-        return try autoreleasepool { () -> Bool in
-            try self.mutex.locked {
-                if let previous = self.counters[transaction.invoker] {
-                    Log.debug("[SQLAgent] last counter for \(transaction.invoker) was \(previous)")
-                    transaction.counter = previous + SQLTransaction.CounterType(1)
-                }
-                else {
-                    // Look up the counter value
-                    try self.node.ledger.longest.withUnverifiedTransactions { chain in
-                        if let previous = try chain.meta.users.counter(for: transaction.invoker) {
-                            Log.debug("[SQLAgent] last counter for \(transaction.invoker) was \(previous) according to ledger")
-                            transaction.counter = previous + SQLTransaction.CounterType(1)
-                        }
-                        else {
-                            Log.debug("[SQLAgent] no previous counter for \(transaction.invoker)")
-                            transaction.counter = SQLTransaction.CounterType(0)
-                        }
-                    }
-                }
+		return try autoreleasepool { () -> Bool in
+			try self.mutex.locked {
+				if let previous = self.counters[transaction.invoker] {
+					Log.debug("[SQLAgent] last counter for \(transaction.invoker) was \(previous)")
+					transaction.counter = previous + SQLTransaction.CounterType(1)
+				}
+				else {
+					// Look up the counter value
+					try self.node.ledger.longest.withUnverifiedTransactions { chain in
+						if let previous = try chain.meta.users.counter(for: transaction.invoker) {
+							Log.debug("[SQLAgent] last counter for \(transaction.invoker) was \(previous) according to ledger")
+							transaction.counter = previous + SQLTransaction.CounterType(1)
+						}
+						else {
+							Log.debug("[SQLAgent] no previous counter for \(transaction.invoker)")
+							transaction.counter = SQLTransaction.CounterType(0)
+						}
+					}
+				}
 
-                Log.debug("[SQLAgent] using counter \(transaction.counter) for \(transaction.invoker)")
-                self.counters[transaction.invoker] = transaction.counter
-            }
+				Log.debug("[SQLAgent] using counter \(transaction.counter) for \(transaction.invoker)")
+				self.counters[transaction.invoker] = transaction.counter
+			}
 
-            // Submit
-            try transaction.sign(with: key)
-            return try self.node.receive(transaction: transaction, from: nil)
-        }
+			// Submit
+			try transaction.sign(with: key)
+			return try self.node.receive(transaction: transaction, from: nil)
+		}
 	}
 }
 
 private class SQLAPIEndpointCORS: RouterMiddleware {
-    let allowCorsOrigin: String?
-    
-    init(allowOrigin: String?) {
-        self.allowCorsOrigin = allowOrigin
-    }
-    
-    public func handle(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-        if let ac = self.allowCorsOrigin {
-            response.headers.append("Access-Control-Allow-Origin", value: ac)
-            response.headers.append("Access-Control-Allow-Methods", value: "GET, POST, OPTIONS")
-            response.headers.append("Content-Type", value: "application/json")
-            response.headers.append("Access-Control-Allow-Headers", value: "Content-Type, Accept")
-            if request.method == .options {
-                _ = response.send(status: .OK)
-            }
-            else {
-                next()
-            }
-        }
-        else {
-            next()
-        }
-    }
+	let allowCorsOrigin: String?
+
+	init(allowOrigin: String?) {
+		self.allowCorsOrigin = allowOrigin
+	}
+
+	public func handle(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+		if let ac = self.allowCorsOrigin {
+			response.headers.append("Access-Control-Allow-Origin", value: ac)
+			response.headers.append("Access-Control-Allow-Methods", value: "GET, POST, OPTIONS")
+			response.headers.append("Content-Type", value: "application/json")
+			response.headers.append("Access-Control-Allow-Headers", value: "Content-Type, Accept")
+			if request.method == .options {
+				_ = response.send(status: .OK)
+			}
+			else {
+				next()
+			}
+		}
+		else {
+			next()
+		}
+	}
 }
 
 public class SQLAPIEndpoint {
 	let agent: SQLAgent
-    
-    /** Set 'allowCorsOrigin' to the domain name(s) from which requests may be made. Set to nil to
-     disallow any requests from other domains, or set to '*' to allow from any domain. */
-    public init(agent: SQLAgent, router: Router, allowCorsOrigin: String?) {
+
+	/** Set 'allowCorsOrigin' to the domain name(s) from which requests may be made. Set to nil to
+	disallow any requests from other domains, or set to '*' to allow from any domain. */
+	public init(agent: SQLAgent, router: Router, allowCorsOrigin: String?) {
 		self.agent = agent
 
 		// API used by the web client
@@ -88,7 +88,7 @@ public class SQLAPIEndpoint {
 		router.post("/api/*", middleware: mw)
 		router.get("/api", handler: self.handleIndex)
 		router.get("/api/counter/:hash", handler: self.handleGetCounter)
-        router.post("/api/query", handler: self.handleQuery)
+		router.post("/api/query", handler: self.handleQuery)
 
 		// Debug APIs
 		router.get("/debug/block/:hash", handler: self.handleGetBlock)
@@ -96,19 +96,19 @@ public class SQLAPIEndpoint {
 		router.get("/debug/journal", handler: self.handleGetJournal)
 		router.get("/debug/pool", handler: self.handleGetPool)
 		router.get("/debug/users", handler: self.handleGetUsers)
-        
-        router.all("/", middleware: StaticFileServer(path: "./Resources"))
+
+		router.all("/", middleware: StaticFileServer(path: "./Resources"))
 	}
-    
-    private func handleQuery(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-        do {
-            var data = Data(capacity: 1024)
-            try _ = request.read(into: &data)
-            let query = try JSONSerialization.jsonObject(with: data, options: [])
-            
-            // Parse the statement
-            if let q = query as? [String: Any], let sql = q["sql"] as? String {
-                let rawStatement = try SQLStatement(sql)
+
+	private func handleQuery(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
+		do {
+			var data = Data(capacity: 1024)
+			try _ = request.read(into: &data)
+			let query = try JSONSerialization.jsonObject(with: data, options: [])
+
+			// Parse the statement
+			if let q = query as? [String: Any], let sql = q["sql"] as? String {
+				let rawStatement = try SQLStatement(sql)
 
 				// Did the client send parameters to fill in?
 				let suppliedParameters = (q["parameters"] as? [String: Any]) ?? [:]
