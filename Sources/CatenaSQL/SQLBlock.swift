@@ -285,8 +285,8 @@ fileprivate class SQLBackendVisitor: SQLVisitor {
 			// Replace variables with corresponding literals
 			switch v {
 			case "invoker": return SQLExpression.literalBlob(context.invoker.data.sha256)
-			case "miner": return SQLExpression.literalBlob(context.block.miner.hash)
-			case "timestamp": return SQLExpression.literalInteger(Int(context.block.date.timeIntervalSince1970))
+			case "blockMiner": return SQLExpression.literalBlob(context.block.miner.hash)
+			case "blockTimestamp": return SQLExpression.literalInteger(Int(context.block.date.timeIntervalSince1970))
 			case "blockSignature": return SQLExpression.literalBlob(context.block.signature!.hash)
 			case "previousBlockSignature": return SQLExpression.literalBlob(context.block.previous.hash)
 			case "blockHeight": return SQLExpression.literalInteger(Int(context.block.index))
