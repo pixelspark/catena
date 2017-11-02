@@ -30,10 +30,8 @@ swift package generate-xcodeproj
 
 ### Linux
 
-Building on Linux is experimental. Due to the fact that there is no cross-platform WebSocket client implementation in Swift
-(the current implementation uses Starscream), outgoing peer connections are not supported for the Linux client. Incoming peer connections are possible and can be used by the client to 'talk back', so the client is functional regardless.
-
-To try and compile, first ensure Swift 4 is installed and is in the PATH. Then ensure clang and required libraries are present:
+Building on Linux is fully supported. To build, first ensure Swift 4 is installed and is in the PATH. Then
+ensure clang and required libraries are present:
 
 ````
 apt install clang build-essential libicu-dev libcurl4-openssl-dev openssl libssl-dev
@@ -44,7 +42,15 @@ swift build
 
 The above was tested on Ubuntu 16.04 as well as Debian Stretch with Swift 4.
 
-### Building a Docker image
+Note: Due to the fact that there is no cross-platform WebSocket client implementation in Swift
+(the current implementation uses Starscream), outgoing peer connections are not supported for the Linux client.
+Incoming peer connections are possible and can be used by the client to 'talk back', so the client is functional
+regardless.
+
+### Docker
+
+A docker image is available at the [Docker Hub](https://hub.docker.com/r/pixelspark/catena/). To build the
+Docker image from source (useful if you don't have / can't install Swift locally, for instance):
 
 ````
 git clone https://github.com/pixelspark/catena ./catena
@@ -69,7 +75,8 @@ Use `gulp watch` to have gulp recompile files on change.
 
 ### Natively
 
-The following command starts Catena and initializes a new chain:
+The following command starts Catena and initializes a new chain (replace 'debug' with 'release' after building
+a release version):
 
 ````
 ./.build/debug/Catena -p 8338 -m -c -s 'my seed string'
