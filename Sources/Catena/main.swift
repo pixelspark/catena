@@ -278,6 +278,19 @@ do {
 			node.start(blocking: false)
 		}
 
+		// Set up signal handler
+		signal(SIGINT, SIG_IGN)
+
+		let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+		sigintSrc.setEventHandler {
+			if configureOption.wasSet {
+				try? node.ledger.longest.persistBlocks(upToAndIncluding: 1)
+			}
+			exit(0)
+		}
+		sigintSrc.resume()
+
+		// Run
 		withExtendedLifetime(node) {
 			RunLoop.main.run()
 		}

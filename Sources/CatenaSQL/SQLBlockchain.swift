@@ -240,6 +240,24 @@ public class SQLBlockchain: Blockchain {
 		}
 	}
 
+	/** Persist blocks currently in the queue up to the specified block index. */
+	public func persistBlocks(upToAndIncluding index: SQLBlock.IndexType) throws {
+		return try self.mutex.locked {
+			while self.queue.count > 0 && self.queue.first!.index <= index {
+				let promoted = self.queue.removeFirst()
+				Log.debug("[SQLBlockchain] promoting block \(promoted.index) to permanent storage which is now at \(self.meta.headIndex!)")
+
+				if (self.meta.headIndex! + 1) != promoted.index {
+					Log.info("[SQLBlockchain] need to replay first to \(promoted.index-1)")
+					let prev = try self.get(block: promoted.previous)!
+					try self.replayPermanentStorage(to: prev)
+				}
+				try self.process(block: promoted)
+				Log.debug("[SQLBlockchain] promoted block \(promoted.index) to permanent storage; qs=\(self.queue.count)")
+			}
+		}
+	}
+
 	public func append(block: SQLBlock) throws -> Bool {
 		return try self.mutex.locked {
 			if try self.canAppend(block: block, to: self.highest) {
@@ -247,16 +265,7 @@ public class SQLBlockchain: Blockchain {
 				self.highest = block
 
 				if self.queue.count > maxQueueSize {
-					let promoted = self.queue.removeFirst()
-					Log.debug("[SQLBlockchain] promoting block \(promoted.index) to permanent storage which is now at \(self.meta.headIndex!)")
-
-					if (self.meta.headIndex! + 1) != promoted.index {
-						Log.info("[SQLBlockchain] need to replay first to \(promoted.index-1)")
-						let prev = try self.get(block: promoted.previous)!
-						try self.replayPermanentStorage(to: prev)
-					}
-					try self.process(block: promoted)
-					Log.debug("[SQLBlockchain] promoted block \(promoted.index) to permanent storage; qs=\(self.queue.count)")
+					try persistBlocks(upToAndIncluding: self.queue.first!.index)
 				}
 
 				return true
