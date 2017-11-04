@@ -1,12 +1,13 @@
 import Foundation
-import class NetService.NetService
-import protocol NetService.NetServiceDelegate
+import Dispatch
 import Kitura
 import CommandLineKit
 import LoggerAPI
 import HeliumLogger
 import CatenaCore
 import CatenaSQL
+import class NetService.NetService
+import protocol NetService.NetServiceDelegate
 import class Socket.Socket
 
 let databaseFileOption = StringOption(shortFlag: "d", longFlag: "database", required: false, helpMessage: "Backing database file (default: catena.sqlite)")
