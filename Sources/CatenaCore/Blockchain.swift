@@ -122,6 +122,9 @@ public protocol Block: CustomDebugStringConvertible, Equatable {
 	/** The payload data of this block actually used for signing. */
 	var payloadDataForSigning: Data { get }
 
+	/** The transactions contained in this block. */
+	var transactions: [TransactionType] { get }
+
 	/** The amount of work performed for this block. */
 	var work: WorkType { get }
 

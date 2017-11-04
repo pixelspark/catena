@@ -72,6 +72,16 @@ public class Miner<LedgerType: Ledger> {
 		}
 	}
 
+	/** Removes the indicated transactions from the queue and aside set. */
+	func remove(transactions: [BlockType.TransactionType]) {
+		self.mutex.locked {
+			for tr in transactions {
+				self.queue.remove(tr)
+				self.aside.remove(tr)
+			}
+		}
+	}
+
 	/** Add a transaction to the 'aside' table, which means it will be considered for the next mining block (use this for
 	transactions that are not currently acceptable but may become acceptable in the future). Returns true if the
 	transaction is not yet in the aside list, and false if it already is. */

@@ -378,6 +378,10 @@ public class Node<LedgerType: Ledger> {
 			let isNew = try self.ledger.mutex.locked { () -> Bool in
 				let isNew = try self.ledger.isNew(block: block) && self.ledger.longest.highest.index < block.index
 				let wasAppended = try self.ledger.receive(block: block)
+				if wasAppended {
+					self.miner.remove(transactions: block.transactions)
+				}
+
 				if let p = peer, wasRequested && !wasAppended && block.index > 0 {
 					let (fetchIndex, fetchHash) = self.ledger.orphans.earliestRootFor(orphan: block)
 

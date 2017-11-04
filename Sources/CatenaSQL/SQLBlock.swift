@@ -197,6 +197,10 @@ public struct SQLBlock: Block, CustomDebugStringConvertible {
 		return self.isAGenesisBlock ? self.seed.data(using: .utf8)! : self.payload.dataForSigning
 	}
 
+	public var transactions: [SQLTransaction] {
+		return self.isAGenesisBlock ? [] : self.payload.transactions
+	}
+
 	public var debugDescription: String {
 		return "#\(self.index) [nonce=\(self.nonce), previous=\(self.previous.stringValue), sig=\(self.signature?.stringValue ?? "")]";
 	}
