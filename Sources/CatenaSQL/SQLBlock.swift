@@ -234,7 +234,7 @@ fileprivate enum SQLBackendFunction: String {
 }
 
 /** Translates frontend to backend SQL queries by traversing the SQL parse tree and generating a new one. */
-fileprivate class SQLBackendVisitor: SQLVisitor {
+fileprivate class SQLiteBackendVisitor: SQLVisitor {
 	var context: SQLContext
 
 	init(context: SQLContext) {
@@ -252,12 +252,14 @@ fileprivate class SQLBackendVisitor: SQLVisitor {
 	}
 
 	func visit(column: SQLColumn) throws -> SQLColumn {
-		/* Replace occurences of column 'rowid' with '$rowid'. The rowid column is special in SQLite and we are therefore
-		masking it. */
-		if column == SQLColumn(name: "rowid") {
-			return SQLColumn(name: "$rowid")
+		/* Replace occurences of column 'rowid' with '$rowid'. The rowid column is special in SQLite
+		and we are therefore masking it. The same goes for 'oid'. The reverse translation is done in
+		SQLiteBackendResult. */
+		switch column {
+		case SQLColumn(name: "rowid"): return SQLColumn(name: "$rowid")
+		case SQLColumn(name: "oid"): return SQLColumn(name: "$oid")
+		default: return column
 		}
-		return column
 	}
 
 	func visit(expression: SQLExpression) throws -> SQLExpression {
@@ -314,6 +316,30 @@ enum SQLExecutionError: LocalizedError {
 	}
 }
 
+/** Wraps a backend result and sanitizes it to hide implementation details from the frontend user. This
+performs some of the opposite operations done in SQLiteBackendVisitor. */
+private class SQLiteBackendResult: Result {
+	private let result: Result
+
+	init(result: Result) {
+		self.result = result
+	}
+
+	var hasRow: Bool { return self.result.hasRow }
+	var state: ResultState { return self.result.state }
+	var values: [Value] { return self.result.values }
+	func step() -> ResultState { return self.result.step() }
+
+	var columns: [String] {
+		/** Replace the dollar sign in the first position of a column name. The dollar sign is
+		inserted by SQLiteBackendVisitor for 'special' column names ('rowid', 'oid'). It cannot be
+		in a column name from the frontend (the dollar sign is forbidden). It can however appear as
+		result of a "SELECT '$foo';" statement which leads to a column name "'$foo'". In this case
+		the dollar sign is always at position 1 or later, and passes this transformation without issue. */
+		return self.result.columns.map { $0.replacingOccurrences(of: "$", with: "", options: [], range: $0.startIndex..<($0.index(after: $0.startIndex))) }
+	}
+}
+
 class SQLExecutive {
 	let context: SQLContext
 	let database: Database
@@ -331,7 +357,7 @@ class SQLExecutive {
 
 		/* Translate the transaction SQL to SQL we can execute on our backend. This includes binding
 		variable and parameter values. */
-		let be = SQLBackendVisitor(context: context)
+		let be = SQLiteBackendVisitor(context: context)
 		let backendStatement = try statement.visit(be)
 
 		// See if the backend can executive this type of statement
@@ -367,12 +393,12 @@ class SQLExecutive {
 				// TODO make this database-independent (i.e. implement a Database.listOfTables protocol function)
 				// NOTE: here we are translating back the 'sqlite#' to 'sqlite_' (see above)
 				let query = "SELECT (CASE WHEN name LIKE 'sqlite#%' THEN ('sqlite_' || SUBSTR(name, 8)) ELSE name END) as name FROM sqlite_master WHERE type='table' AND NOT(name LIKE '\\_%' ESCAPE '\\');"
-				return try database.perform(query)
+				return SQLiteBackendResult(result: try database.perform(query))
 			}
 
 		default:
 			let query = backendStatement.sql(dialect: database.dialect)
-			return try database.perform(query)
+			return SQLiteBackendResult(result: try database.perform(query))
 		}
 	}
 }
