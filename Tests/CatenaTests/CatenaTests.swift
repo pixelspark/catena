@@ -79,6 +79,10 @@ private struct TestBlock: Block {
 	static func ==(lhs: TestBlock, rhs: TestBlock) -> Bool {
 		return lhs.index == rhs.index && (lhs.signature == rhs.signature || lhs.payloadData == rhs.payloadData)
 	}
+
+	var transactions: [TestTransaction] {
+		return []
+	}
 }
 
 private class TestChain: Blockchain {
