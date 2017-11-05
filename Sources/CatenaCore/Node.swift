@@ -197,10 +197,10 @@ public class Node<LedgerType: Ledger> {
 			self.mutex.locked {
 				if self.peers[uuid] == nil {
 					let isSelf = self.uuid == uuid
-					let peer = Peer<LedgerType>(url: url, state: isSelf ? .ignored(reason: "added, but is ourselves") : .new, connection: nil, delegate: self)
+					let peer = Peer<LedgerType>(url: url, state: isSelf ? .ignored(reason: "added, but is ourselves") : .new(since: Date()), connection: nil, delegate: self)
 					self.peers[uuid] = peer
 
-					if case .new = peer.state {
+					if case .new(_) = peer.state {
 						do {
 							try self.peerDatabase?.rememberPeer(url: url)
 						}
@@ -455,6 +455,31 @@ public class Node<LedgerType: Ledger> {
 
 	private func tick() {
 		self.mutex.locked {
+			// Remove expired peers
+			var expired: [UUID] = []
+			let now = Date()
+			for (uuid, p) in self.peers {
+				if let ls = p.lastSeen, now.timeIntervalSince(ls) > LedgerType.ParametersType.peerForgetInterval {
+					// Peer was not seen for a while, remove from list
+					expired.append(uuid)
+				}
+				else if case .new(since: let ls) = p.state, now.timeIntervalSince(ls) > LedgerType.ParametersType.peerForgetInterval {
+					expired.append(uuid)
+				}
+				else if case .connecting(since: let ls) = p.state, now.timeIntervalSince(ls) > LedgerType.ParametersType.peerForgetInterval {
+					expired.append(uuid)
+				}
+				else {
+					self.queryQueue.append(uuid)
+				}
+			}
+
+			expired.forEach { uuid in
+				self.peers.removeValue(forKey: uuid)
+				try? self.peerDatabase?.forgetPeer(uuid: uuid)
+				Log.debug("[Node] expiring peer \(uuid): not seen in a long while")
+			}
+
 			// Take the first N from the query queue...
 			var concurrent = 5
 
@@ -476,8 +501,8 @@ public class Node<LedgerType: Ledger> {
 			}
 
 			// Re-query all peers that are not already being queried
-			for (url, _) in self.peers {
-				self.queryQueue.append(url)
+			for (uuid, _) in self.peers {
+				self.queryQueue.append(uuid)
 			}
 		}
 	}

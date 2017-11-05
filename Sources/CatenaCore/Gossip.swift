@@ -609,7 +609,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate, CustomDebugString
 						// Failed peers become 'new' after a certain amount of time, so we can retry
 						if Date().timeIntervalSince(date) > LedgerType.ParametersType.peerRetryAfterFailureInterval {
 							self.connection = nil
-							self.state = .new
+							self.state = .new(since: date)
 						}
                         return false
 
@@ -644,7 +644,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate, CustomDebugString
 						// Reset hung peers
 						if Date().timeIntervalSince(date) > LedgerType.ParametersType.peerRetryAfterFailureInterval {
 							self.connection = nil
-							self.state = .new
+							self.state = .new(since: date)
 						}
                         return true
 					}
@@ -833,7 +833,7 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate, CustomDebugString
 }
 
 public enum PeerState {
-	case new // Peer has not yet connected
+	case new(since: Date) // Peer has not yet connected
 	case connecting(since: Date)
 	case connected // The peer is connected but has not been queried yet
 	case querying(since: Date) // The peer is currently being queried

@@ -219,6 +219,10 @@ public protocol Parameters {
 	/** The maximum number of transactions that are kept aside by a peer (when they cannot be directly
 	accepted into a block, but perhaps in the future). */
 	static var maximumAsideTransactions: Int { get }
+
+	/** When a peer has not been seen for this amount of time, remove it from the list of remembered
+	peers. */
+	static var peerForgetInterval: TimeInterval { get }
 }
 
 /** Default values for ledger parameters. Override as you see fit. */
@@ -264,6 +268,9 @@ public extension Parameters {
 
 	/** A maximum of 1024 transactions may be kept in the aside buffer before the oldest will be pruned. */
 	public static var maximumAsideTransactions: Int { return 1024 }
+
+	/** Forget peers when they haven't been seen for more than one day. */
+	public static var peerForgetInterval: TimeInterval { return 24.0 * 60.0 * 60.0 }
 }
 
 extension Blockchain {
