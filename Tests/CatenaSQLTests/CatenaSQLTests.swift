@@ -340,6 +340,54 @@ class CatenaSQLTests: XCTestCase {
 		}
 	}
 
+	func testVerifier() throws {
+		let p = SQLParser()
+		let mem = SQLiteDatabase()
+		try mem.open(":memory:")
+
+		try! _ = mem.perform("CREATE TABLE foo (x INT);")
+
+		let queries = [
+			"SELECT foo + 1": true,
+			"SELECT x, y FROM foo": true,
+			"SELECT x FROM foo": false,
+			"CREATE TABLE foo (y TEXT)": true,
+			"INSERT INTO baz (x) VALUES (1)": true,
+			"DELETE FROM baz": true,
+			"DELETE FROM foo": false,
+			"INSERT INTO foo (x) VALUES (1)": false,
+			"INSERT INTO foo (x, x) VALUES (1, 1)": true,
+			"INSERT INTO foo (y) VALUES (1)": true,
+			"UPDATE foo SET x = 5": false,
+			"UPDATE foo SET y = 5": true,
+			"DROP TABLE foo": false,
+			"DROP TABLE bar": true,
+			"SHOW TABLES": false,
+		]
+
+		for (q, shouldThrow) in queries {
+			let frag = try! p.parse(q + ";")!
+			guard case .statement(let st) = frag else { XCTFail(); return }
+
+			if shouldThrow {
+				XCTAssertThrowsError(try st.verify(on: mem), "Should throw: \(q)")
+			}
+			else {
+				XCTAssertNoThrow(try st.verify(on: mem), "Should not throw: \(q)")
+			}
+
+			// Should still behave the same when wrapped inside an IF
+			let ifFrag = try! p.parse("IF 1=0 THEN \(q) ELSE FAIL END;")!
+			guard case .statement(let ifStatement) = ifFrag else { XCTFail(); return }
+			if shouldThrow {
+				XCTAssertThrowsError(try ifStatement.verify(on: mem), "Should throw: \(q) inside IF")
+			}
+			else {
+				XCTAssertNoThrow(try ifStatement.verify(on: mem), "Should not throw: \(q) inside IF")
+			}
+		}
+	}
+
 	func testSQLBackend() throws {
 		let p = SQLParser()
 		let mem = SQLiteDatabase()
@@ -381,6 +429,7 @@ class CatenaSQLTests: XCTestCase {
         ("testGrants", testGrants),
         ("testParser", testParser),
         ("testSQLBackend", testSQLBackend),
-        ("testParserPerformance", testParserPerformance)
+        ("testParserPerformance", testParserPerformance),
+        ("testVerifier", testVerifier)
     ]
 }

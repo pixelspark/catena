@@ -245,7 +245,7 @@ fileprivate class SQLiteBackendVisitor: SQLVisitor {
 		self.context = context
 	}
 
-	func visit(table: SQLTable) throws -> SQLTable {
+	fileprivate func tableNameToBackendTableName(_ table: SQLTable) -> SQLTable {
 		/* The table name may not start with 'sqlite_'. Replace with '$sqlite' (this name can never
 		be created from SQL since the '_' character is disallowed as first character). */
 		let forbiddenPrefix = "sqlite_"
@@ -253,6 +253,10 @@ fileprivate class SQLiteBackendVisitor: SQLVisitor {
 			return SQLTable(name: table.name.replacingOccurrences(of: forbiddenPrefix, with: "sqlite#", options: [], range: forbiddenPrefix.startIndex..<forbiddenPrefix.endIndex))
 		}
 		return table
+	}
+
+	func visit(table: SQLTable) throws -> SQLTable {
+		return self.tableNameToBackendTableName(table)
 	}
 
 	func visit(column: SQLColumn) throws -> SQLColumn {
@@ -312,10 +316,30 @@ enum SQLExecutionError: LocalizedError {
 	/** A required privilege was not granted. */
 	case privilegeRequired
 
+	/** A referenced table was not found */
+	case tableDoesNotExist(String)
+
+	/** The specified table cannot be created because it already exists */
+	case tableAlreadyExists(String)
+
+	/** A column was referenced outside the context of a table */
+	case notInTableContext(String)
+
+	/** A referenced column does not exist */
+	case columnDoesNotExist(String)
+
+	/** The same column was specified more than once in an INSERT, CREATE or UPDATE statement */
+	case duplicateColumns
+
 	var errorDescription: String? {
 		switch self {
 		case .failed: return "failed"
 		case .privilegeRequired: return "privilege required"
+		case .tableDoesNotExist(let t): return "table '\(t)' does not exist"
+		case .tableAlreadyExists(let t): return "table '\(t)' already exists"
+		case .notInTableContext(let c): return "column '\(c)' was referenced outside table context"
+		case .columnDoesNotExist(let c): return "table does not contain referenced column '\(c)'"
+		case .duplicateColumns: return "the same column was specified more than once"
 		}
 	}
 }
@@ -401,8 +425,151 @@ class SQLExecutive {
 			}
 
 		default:
+			try backendStatement.verify(on: database)
 			let query = backendStatement.sql(dialect: database.dialect)
 			return SQLiteBackendResult(result: try database.perform(query))
+		}
+	}
+}
+
+extension SQLExpression {
+	/** Checks whether the expression can be evaluated in the given database and context, and throws
+	an error when it can't. Note that this should only be used on backend statements, e.g. the expression
+	cannot contain variables nor parameters at this point. */
+	func verify(on database: Database, context: TableDefinition?, isCreating: Bool = false) throws {
+		switch self {
+		case .allColumns:
+			return
+
+		case .binary(let a, _, let b):
+			try a.verify(on: database, context: context, isCreating: isCreating)
+			try b.verify(on: database, context: context, isCreating: isCreating)
+
+		case .call(_, parameters: let e):
+			try e.forEach { try $0.verify(on: database, context: context, isCreating: isCreating) }
+
+		case .column(let c):
+			if let ctx = context {
+				if !ctx.contains(where: { SQLColumn(name: $0.0) == c }) {
+					throw SQLExecutionError.columnDoesNotExist(c.name)
+				}
+			}
+			else {
+				if !isCreating {
+					throw SQLExecutionError.notInTableContext(c.name)
+				}
+			}
+
+		case .literalBlob(_), .literalInteger(_), .literalString(_), .literalUnsigned(_), .null:
+			return
+
+		case .unary(_, let e):
+			try e.verify(on: database, context: context, isCreating: isCreating)
+
+		case .variable(_), .unboundParameter(name: _), .boundParameter(name: _, value: _):
+			fatalError("Variables/parameters cannot appear in a statement ready for database execution")
+
+		case .when(let whens, else: let e):
+			try e?.verify(on: database, context: context, isCreating: isCreating)
+			try whens.forEach {
+				try $0.when.verify(on: database, context: context, isCreating: isCreating)
+				try $0.then.verify(on: database, context: context, isCreating: isCreating)
+			}
+		}
+	}
+}
+
+extension SQLStatement {
+	/** Perform checks to find out whether this statement will be able to execute on the database,
+	and throw an error when it can't. */
+	func verify(on database: Database) throws {
+		switch self {
+		case .select(let s):
+			if let f = s.from {
+				if try !database.exists(table: f.name) {
+					throw SQLExecutionError.tableDoesNotExist(f.name)
+				}
+
+				let td = try database.definition(for: f.name)
+				try s.`where`?.verify(on: database, context: td)
+				try s.these.forEach { try $0.verify(on: database, context: td) }
+			}
+			else {
+				// Select statement must not contain any column references
+				try s.these.forEach { try $0.verify(on: database, context: nil, isCreating: false) }
+			}
+
+		case .create(table: let t, schema: _):
+			if try database.exists(table: t.name) {
+				throw SQLExecutionError.tableAlreadyExists(t.name)
+			}
+
+		case .drop(table: let t):
+			if try !database.exists(table: t.name) {
+				throw SQLExecutionError.tableDoesNotExist(t.name)
+			}
+
+		case .fail:
+			return
+
+		case .if(let sqlIf):
+			try sqlIf.branches.forEach { try $0.1.verify(on: database) }
+
+		case .insert(let i):
+			if try !database.exists(table: i.into.name) {
+				throw SQLExecutionError.tableDoesNotExist(i.into.name)
+			}
+
+			let td = try database.definition(for: i.into.name)
+
+			// Do we have any duplicate columns?
+			if Set(i.columns).count != i.columns.count {
+				throw SQLExecutionError.duplicateColumns
+			}
+
+			// Check whether referenced columns exist
+			try i.columns.forEach { col in
+				if !td.contains { SQLColumn(name: $0.0) == col } {
+					throw SQLExecutionError.columnDoesNotExist(col.name)
+				}
+			}
+
+		case .show(_):
+			return
+
+		case .update(let u):
+			if try !database.exists(table: u.table.name) {
+				throw SQLExecutionError.tableDoesNotExist(u.table.name)
+			}
+
+			let td = try database.definition(for: u.table.name)
+			try u.`where`?.verify(on: database, context: td, isCreating: false)
+
+			for (col, val) in u.set {
+				if !td.contains(where: { SQLColumn(name: $0.0) == col }) {
+					throw SQLExecutionError.columnDoesNotExist(col.name)
+				}
+				try val.verify(on: database, context: td, isCreating: false)
+			}
+
+		case .delete(let from, let d):
+			if try !database.exists(table: from.name) {
+				throw SQLExecutionError.tableDoesNotExist(from.name)
+			}
+			let td = try database.definition(for: from.name)
+			try d?.verify(on: database, context: td, isCreating: false)
+
+		case .createIndex(let table, let idx):
+			if try !database.exists(table: table.name) {
+				throw SQLExecutionError.tableDoesNotExist(table.name)
+			}
+
+			let td = try database.definition(for: table.name)
+			for col in idx.on {
+				if !td.contains(where: { SQLColumn(name: $0.0) == col }) {
+					throw SQLExecutionError.columnDoesNotExist(col.name)
+				}
+			}
 		}
 	}
 }
@@ -560,3 +727,4 @@ extension SQLBlock {
 		}
 	}
 }
+
