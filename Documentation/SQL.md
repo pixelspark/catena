@@ -70,9 +70,26 @@ underscores afterwards). An unbound parameter is written as `?name`. A bound par
 
 #### DROP TABLE
 
+
+#### DESCRIBE
+
+Returns information on the defintion of a table's contents. The `DESCRIBE` statement must be called
+following an identifier of an existing table (calling `DESCRIBE` for a table that does not exist will cause an
+error). The rows in the returned table are in the order of the columns as they appear on the described table.
+
+The returned table has the following columns:
+
+| column | type | description |
+|---------|-------|---------------|
+| column | TEXT | The name of the column |
+| type | TEXT | The type of the column: TEXT, INT, BLOB |
+| in_primary_key | INT | 1 when the column is part of the table's primary key, 0 when it is not |
+| not_null | INT | 1 when the column cannot be NULL, 0 otherwise |
+| default_value | `type` | The default value for this column, or NULL when it has no default value |
+
 #### SHOW TABLES
 
-Returns a list of all tables that are accessible (disregarding permissions) as a single table with column 'name' containing the
+Returns a list of all tables that are accessible (disregarding permissions) as a single table with column `name` containing the
 name of each table.
 
 #### IF THEN ELSE END

@@ -2,12 +2,13 @@
 	<div class="catena-data">
 		<aside>
 			<transition-group name="list" tag="ul">
-				<li v-for="(t, idx) in tables" @click="selectTable(t)" :class="{'selected': table === t}" :key="t">
+				<li v-for="(t, idx) in tables" @click.self="selectTable(t)" :class="{'selected': table === t}" :key="t">
 					<i class="fa fa-table"></i> {{t}}
+					<a href="javascript:void(0);" style="float:right;" @click.capture="describeTable(t)"><i class="fa fa-info"></i></a>
 				</li>
 
 				<li v-for="(q, idx) in queries" @click="select(q)" :class="{'selected': query == q}" :key="idx">
-					<a href="javascript:void(0);" style="float:right;" @click="remove(idx)"><i class="fa fa-times"></i></a>
+					<a href="javascript:void(0);" style="float:right;" @click.capture="remove(idx)"><i class="fa fa-times"></i></a>
 					<code>{{q}}</code>
 				</li>
 			</transition-group>
@@ -59,6 +60,18 @@ module.exports = {
 		selectTable: function(t) {
 			this.table = t;
 			this.typedQuery = "SELECT * FROM \""+t+"\" LIMIT 50;";
+			this.query = this.typedQuery;
+		},
+
+		describeTable: function(t) {
+			this.table = null;
+			this.typedQuery = "DESCRIBE \""+t+"\";";
+			this.query = this.typedQuery;
+		},
+
+		dropTable: function(t) {
+			this.table = null;
+			this.typedQuery = "DROP TABLE \""+t+"\";";
 			this.query = this.typedQuery;
 		},
 

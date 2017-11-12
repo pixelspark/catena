@@ -77,6 +77,7 @@ public extension SQLStatement {
 		case .createIndex(table: _, index: _): return [SQLPrivilege.never]
 		case .fail: return []
 		case .`if`: return []
+		case .describe(_): return []
 		}
 	}
 }

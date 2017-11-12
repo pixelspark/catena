@@ -178,6 +178,7 @@ public enum SQLStatement {
 	case select(SQLSelect)
 	case update(SQLUpdate)
 	case show(SQLShow)
+	case describe(SQLTable)
 	case createIndex(table: SQLTable, index: SQLIndex)
 	case fail
 	indirect case `if`(SQLIf)
@@ -228,7 +229,7 @@ public enum SQLStatement {
 
 			return false
 
-		case .select(_), .show(_), .fail:
+		case .select(_), .show(_), .fail, .describe(_):
 			return false
 		}
 	}
@@ -341,6 +342,9 @@ public enum SQLStatement {
 			switch s {
 			case .tables: return "SHOW TABLES\(end)"
 			}
+
+		case .describe(let t):
+			return "DESCRIBE \(t.sql(dialect: dialect))\(end)"
 
 		case .fail:
 			return "FAIL\(end)"
@@ -1082,6 +1086,12 @@ internal class SQLParser {
 				}
 			)
 
+			g["describe-statement"] = Parser.matchLiteralInsensitive("DESCRIBE")
+				~~ (^"id-table") => { [unowned self] in
+					guard case .tableIdentifier(let t) = self.stack.popLast()! else { fatalError() }
+					self.stack.append(.statement(.describe(t)))
+				}
+
 			g["fail-statement"] = Parser.matchLiteralInsensitive("FAIL") => { [unowned self] in
 				self.stack.append(.statement(.fail))
 			}
@@ -1125,7 +1135,7 @@ internal class SQLParser {
 
 			// Statement categories
 			g["dql-statement"] = ^"select-dql-statement"
-			g["ddl-statement"] = ^"create-ddl-statement" | ^"drop-ddl-statement" | ^"show-statement"
+			g["ddl-statement"] = ^"create-ddl-statement" | ^"drop-ddl-statement" | ^"show-statement" | ^"describe-statement"
 			g["dml-statement"] = ^"update-dml-statement" | ^"insert-dml-statement" | ^"delete-dml-statement"
 			g["control-statement"] = ^"fail-statement" | ^"if-statement"
 
@@ -1345,6 +1355,9 @@ extension SQLStatement {
 
 		case .show(let s):
 			newSelf = .show(s)
+
+		case .describe(let t):
+			newSelf = .describe(try visitor.visit(table: t))
 
 		case .fail:
 			newSelf = .fail

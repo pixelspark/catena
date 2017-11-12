@@ -20,7 +20,7 @@
 		<template v-if="identity !== null">
 			<dt>Private key</dt>
 			<dd>
-				<catena-expander title="Show..." icon="key">
+				<catena-expander title="Show" icon="key">
 					<code>{{identity.privateBase58}}</code>
 				</catena-expander>
 			</dd>
@@ -30,14 +30,14 @@
 	<h2>Grants</h2>
 	<catena-query v-if="agent !== null" :sql="grantsSQL" :agent="agent" :head="head"></catena-query>
 
-	<catena-expander title="Add..." icon="plus">
+	<catena-expander title="Add" icon="plus">
 		<catena-granter :agent="agent" :user="identity"></catena-granter>
 	</catena-expander>
 
 	<template v-if="identity !== null">
 		<h2>Messaging</h2>
-		<catena-expander title="Sign a message..." icon="hand-spock-o">
-			<textarea style="width: 100%; min-height: 150px;" v-model="messageToSign" @keyup="clearSignature"></textarea>
+		<catena-expander title="Sign a message" icon="hand-spock-o">
+			<textarea class="catena-code" v-model="messageToSign" @keyup="clearSignature"></textarea>
 			<button @click="signMessage">Sign</button> <button @click="clearSignMessage">Clear</button>
 
 			<dl v-if="messageSignature !== null">
@@ -49,8 +49,8 @@
 			</dl>
 		</catena-expander>
 
-		<catena-expander title="Verify a message..." icon="handshake-o">
-			<textarea style="width: 100%; min-height: 150px;" v-model="messageToVerify" @keyup="clearVerify" placeholder="Message (may be combined)"></textarea>
+		<catena-expander title="Verify a message" icon="handshake-o">
+			<textarea class="catena-code" v-model="messageToVerify" @keyup="clearVerify" placeholder="Message (may be combined)"></textarea>
 			<input type="text" style="width: 100%;" :placeholder="'Public key (leave empty to use '+identity.publicBase58+')' " v-model="verifyPublicKey" @keyup="clearVerify"/>
 			<input type="text" style="width: 100%;" placeholder="Signature" v-model="verifySignature" @keyup="clearVerify"/>
 			<button @click="verifyMessage">Verify</button> <button @click="clearVerifyMessage">Clear</button>

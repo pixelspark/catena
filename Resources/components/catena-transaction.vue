@@ -38,7 +38,7 @@
 		<template v-if="transaction !== null">
 			<dt></dt>
 			<dd>
-				<textarea readonly style="width: 100%;" v-model="transaction.jsonObject"></textarea>
+				<textarea readonly class="catena-code" v-model="transactionJSONString"></textarea>
 			</dd>
 		</template>
 	</div>
@@ -62,6 +62,12 @@ module.exports = {
 		sql: function(nv) {
 			this.reset();
 		}
+	},
+
+	computed: {
+		transactionJSONString: function() {
+			return this.transaction == null ? "" : JSON.stringify(this.transaction.jsonObject);
+		},
 	},
 
 	methods: {

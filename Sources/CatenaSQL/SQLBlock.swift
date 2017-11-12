@@ -368,6 +368,40 @@ private class SQLiteBackendResult: Result {
 	}
 }
 
+private class MemoryBackendResult<RowSequenceType: Sequence>: Result where RowSequenceType.Iterator.Element == [Value] {
+	let columns: [String]
+	private var rows: RowSequenceType.Iterator
+	var values: [Value] = []
+	var state: ResultState
+
+	init(columns: [String], rows: RowSequenceType) {
+		self.columns = columns
+		self.rows = rows.makeIterator()
+		self.state = .row
+		_ = self.step()
+	}
+
+	func step() -> ResultState {
+		guard case .row = self.state else { fatalError("cannot call step on a result set in done/error state") }
+
+		if let v = self.rows.next() {
+			self.values = v
+			self.state = .row
+		}
+		else {
+			self.state = .done
+		}
+		return self.state
+	}
+
+	var hasRow: Bool {
+		switch self.state {
+		case .row: return true
+		default: return false
+		}
+	}
+}
+
 class SQLExecutive {
 	let context: SQLContext
 	let database: Database
@@ -414,6 +448,20 @@ class SQLExecutive {
 			else {
 				throw SQLExecutionError.failed
 			}
+
+		case .describe(let t):
+			if try !database.exists(table: t.name) {
+				throw SQLExecutionError.tableDoesNotExist(t.name)
+			}
+
+			let query = "PRAGMA table_info(\(t.sql(dialect: database.dialect)));";
+			let result = try database.perform(query)
+			let columns = ["column", "type", "in_primary_key", "not_null", "default_value"]
+			var rows: [[Value]] = []
+			while case .row = result.step() {
+				rows.append([result["name"], result["type"], result["pk"], result["notnull"], result["dflt_value"]])
+			}
+			return MemoryBackendResult(columns: columns, rows: rows)
 
 		case .show(let s):
 			switch s {
@@ -535,6 +583,9 @@ extension SQLStatement {
 			}
 
 		case .show(_):
+			return
+
+		case .describe(_):
 			return
 
 		case .update(let u):
