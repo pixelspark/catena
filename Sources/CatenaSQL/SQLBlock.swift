@@ -449,6 +449,14 @@ class SQLExecutive {
 				throw SQLExecutionError.failed
 			}
 
+		case .block(let statements):
+			// Execute all statements in-order
+			var lastResult: Result = MemoryBackendResult(columns: [], rows: [])
+			for statement in statements {
+				 lastResult = try self.perform(statement, withRegime: regime)
+			}
+			return lastResult
+
 		case .describe(let t):
 			if try !database.exists(table: t.name) {
 				throw SQLExecutionError.tableDoesNotExist(t.name)
@@ -565,6 +573,9 @@ extension SQLStatement {
 
 		case .if(let sqlIf):
 			try sqlIf.branches.forEach { try $0.1.verify(on: database) }
+
+		case .block(let ss):
+			try ss.forEach { try $0.verify(on: database) }
 
 		case .insert(let i):
 			if try !database.exists(table: i.into.name) {

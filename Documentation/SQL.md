@@ -78,6 +78,11 @@ underscores afterwards). An unbound parameter is written as `?name`. A bound par
 
 #### DROP TABLE
 
+### DO...END
+
+This syntax can be used to execute multiple statements sequentially: `DO x; y; z END;` (where x, y and
+z are each statements). The result of the statement is the result of the *last* statement executed. Sequential
+execution stops when any of the statements fails (and the transaction is rolled back completely).
 
 #### DESCRIBE
 

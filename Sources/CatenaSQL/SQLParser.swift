@@ -200,6 +200,7 @@ public enum SQLStatement {
 	case createIndex(table: SQLTable, index: SQLIndex)
 	case fail
 	indirect case `if`(SQLIf)
+	indirect case block([SQLStatement])
 
 	enum SQLStatementError: LocalizedError {
 		case syntaxError(query: String)
@@ -245,6 +246,14 @@ public enum SQLStatement {
 				}
 			}
 
+			return false
+
+		case .block(let ss):
+			for s in ss {
+				if s.isMutating {
+					return true
+				}
+			}
 			return false
 
 		case .select(_), .show(_), .fail, .describe(_):
@@ -382,7 +391,10 @@ public enum SQLStatement {
 
 				return "\(ifSQL)\(elseIfSQL)END\(end)";
 			}
-			return "FAIL\(end)";
+			return "FAIL\(end)"
+
+		case .block(let ss):
+			return "BEGIN \(ss.map { $0.sql(dialect: dialect, isTopLevel: false) }.joined(separator: "; ")) END\(end)"
 		}
 	}
 }
@@ -1166,11 +1178,24 @@ internal class SQLParser {
 				)/~
 				~~ Parser.matchLiteralInsensitive("END")
 
+			g["block-statement"] =
+				Parser.matchLiteralInsensitive("DO") => {
+					self.stack.append(.statement(.block([])))
+				}
+				~~ Parser.matchList(nest(^"statement" => {
+					guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+					guard case .statement(let blockStatement) = self.stack.popLast()! else { fatalError() }
+					guard case .block(var blockStatements) = blockStatement else { fatalError() }
+					blockStatements.append(st)
+					self.stack.append(.statement(.block(blockStatements)))
+				}), separator: Parser.matchLiteral(";"))
+				~~ Parser.matchLiteralInsensitive("END")
+
 			// Statement categories
 			g["dql-statement"] = ^"select-dql-statement"
 			g["ddl-statement"] = ^"create-ddl-statement" | ^"drop-ddl-statement" | ^"show-statement" | ^"describe-statement"
 			g["dml-statement"] = ^"update-dml-statement" | ^"insert-dml-statement" | ^"delete-dml-statement"
-			g["control-statement"] = ^"fail-statement" | ^"if-statement"
+			g["control-statement"] = ^"fail-statement" | ^"if-statement" | ^"block-statement"
 
 			// Statement
 			g["statement"] = (^"ddl-statement" | ^"dml-statement" | ^"dql-statement" | ^"control-statement")
@@ -1394,6 +1419,9 @@ extension SQLStatement {
 
 		case .fail:
 			newSelf = .fail
+
+		case .block(let ss):
+			newSelf = .block(try ss.map { return try visitor.visit(statement: $0) })
 		}
 
 		return try visitor.visit(statement: newSelf)

@@ -252,7 +252,8 @@ class CatenaSQLTests: XCTestCase {
 		"IF 1=1 THEN DELETE FROM baz ELSE IF 1=2 THEN DELETE FROM foo ELSE FAIL END;",
 		"IF 1=1 THEN DROP TABLE foo END;",
 		"CREATE TABLE \"grants\" (\"kind\" TEXT, \"user\" BLOB, \"table\" BLOB);",
-		"SELECT EXISTS(SELECT 1);"
+		"SELECT EXISTS(SELECT 1);",
+		"IF 1=0 THEN DO SELECT 1; SELECT 2 END ELSE DO SELECT 3; SELECT 3 END END;"
 	]
 
 	let invalidSQLStatements = [
