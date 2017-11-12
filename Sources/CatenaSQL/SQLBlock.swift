@@ -523,6 +523,9 @@ extension SQLExpression {
 				try $0.when.verify(on: database, context: context, isCreating: isCreating)
 				try $0.then.verify(on: database, context: context, isCreating: isCreating)
 			}
+
+		case .exists(let s):
+			try SQLStatement.select(s).verify(on: database)
 		}
 	}
 }

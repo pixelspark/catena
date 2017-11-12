@@ -20,7 +20,11 @@ be supported (e.g. no functions that return current date/time or random values).
 
 ## Limits
 
-* There can be no more than *10* nested sub-expressions and/or sub-statements (both count to the same total)
+* There can be no more than *10* nested sub-expressions and/or sub-statements (both count to the same total). The folllowing add one nesting level:
+
+* Sub-statements of an `IF` expression
+* Sub-expressions between brackets
+* The select statement inside an `EXISTS` expression.
 
 ## Variables
 
@@ -55,6 +59,10 @@ underscores afterwards). An unbound parameter is written as `?name`. A bound par
 
 * LENGTH(str): returns the length of string `str`
 * ABS(num): returns the absolute value of number `num`
+
+## Supported query constructs
+
+* EXISTS(select): returns '1' when the `select` statement returns at least one row, '0' if it returns no rows. The select query may contain references to the outside query ('correlated' subquery).
 
 ## Supported statement types
 

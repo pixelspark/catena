@@ -251,7 +251,8 @@ class CatenaSQLTests: XCTestCase {
 		"IF 1=1 THEN DELETE FROM baz ELSE FAIL END;",
 		"IF 1=1 THEN DELETE FROM baz ELSE IF 1=2 THEN DELETE FROM foo ELSE FAIL END;",
 		"IF 1=1 THEN DROP TABLE foo END;",
-		"CREATE TABLE \"grants\" (\"kind\" TEXT, \"user\" BLOB, \"table\" BLOB);"
+		"CREATE TABLE \"grants\" (\"kind\" TEXT, \"user\" BLOB, \"table\" BLOB);",
+		"SELECT EXISTS(SELECT 1);"
 	]
 
 	let invalidSQLStatements = [
@@ -268,6 +269,8 @@ class CatenaSQLTests: XCTestCase {
 		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT 1.5;", // limit has non-int
 		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT -5;", // limit has non-positive int
 		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT x+1;", // limit has non-int
+		"SELECT EXISTS(1+1);",
+		"SELECT EXISTS(UPDATE foo SET x=1);"
 	]
 
 	let throwingSQLStatements = [

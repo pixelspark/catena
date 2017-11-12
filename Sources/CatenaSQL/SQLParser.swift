@@ -94,7 +94,7 @@ public struct SQLSchema {
 	}
 }
 
-public enum SQLJoin {
+public enum SQLJoin: Equatable {
 	case left(table: SQLTable, on: SQLExpression)
 
 	func sql(dialect: SQLDialect) -> String {
@@ -103,9 +103,16 @@ public enum SQLJoin {
 			return "LEFT JOIN \(t.sql(dialect: dialect)) ON \(on.sql(dialect: dialect))"
 		}
 	}
+
+	public static func ==(lhs: SQLJoin, rhs: SQLJoin) -> Bool {
+		switch (lhs, rhs) {
+		case (.left(table: let lt, on: let lo), .left(table: let rt, on: let ro)):
+			return lt == rt && lo == ro
+		}
+	}
 }
 
-public struct SQLSelect {
+public struct SQLSelect: Equatable {
 	public var these: [SQLExpression] = []
 	public var from: SQLTable? = nil
 	public var joins: [SQLJoin] = []
@@ -122,6 +129,17 @@ public struct SQLSelect {
 		self.distinct = distinct
 		self.orders = orders
         self.limit = limit
+	}
+
+	public static func ==(lhs: SQLSelect, rhs: SQLSelect) -> Bool {
+		return
+			lhs.these == rhs.these &&
+				lhs.from == rhs.from &&
+				lhs.joins == rhs.joins &&
+				lhs.where == rhs.where &&
+				lhs.distinct == rhs.distinct &&
+				lhs.orders == rhs.orders &&
+				lhs.limit == rhs.limit
 	}
 }
 
@@ -443,6 +461,7 @@ public enum SQLExpression: Equatable {
 	indirect case binary(SQLExpression, SQLBinary, SQLExpression)
 	indirect case unary(SQLUnary, SQLExpression)
 	indirect case call(SQLFunction, parameters: [SQLExpression])
+	indirect case exists(SQLSelect)
 
 	func sql(dialect: SQLDialect) -> String {
 		switch self {
@@ -506,6 +525,10 @@ public enum SQLExpression: Equatable {
 			}
 
 			return "CASE\(whensString)\(elseString) END"
+
+		case .exists(let s):
+			let st = SQLStatement.select(s)
+			return "EXISTS (\(st.sql(dialect: dialect, isTopLevel: false)))"
 		}
 	}
 
@@ -524,6 +547,7 @@ public enum SQLExpression: Equatable {
 			case (.when(let lw, else: let le), .when(let rw, else: let re)): return lw == rw && le == re
 			case (.binary(let ll, let lo, let lr), .binary(let rl, let ro, let rr)): return ll == rl && lo == ro && lr == rr
 			case (.unary(let lu, let le), .unary(let ru, let re)):return lu == ru && le == re
+			case (.exists(let ls), .exists(let rs)): return ls == rs
 			default: return false
 		}
 	}
@@ -538,9 +562,13 @@ public enum SQLOrderDirection: String {
 	}
 }
 
-public struct SQLOrder {
+public struct SQLOrder: Equatable {
 	var expression: SQLExpression
 	var direction: SQLOrderDirection = .ascending
+
+	public static func ==(lhs: SQLOrder, rhs: SQLOrder) -> Bool {
+		return lhs.expression == rhs.expression && lhs.direction == rhs.direction
+	}
 }
 
 public enum SQLFragment {
@@ -765,6 +793,11 @@ internal class SQLParser {
 					guard case .unaryOperator(let op) = self.stack.popLast()! else { fatalError() }
 					self.stack.append(.expression(.unary(op, expr)))
 				})
+				| nest(Parser.matchLiteralInsensitive("EXISTS") ~~ Parser.matchLiteral("(") ~~ ^"select-dql-statement" => { [unowned self] in
+					guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+					guard case .select(let select) = st else { fatalError() }
+					self.stack.append(.expression(.exists(select)))
+				} ~~ Parser.matchLiteral(")"))
 				| ((^"ex-prefix-call" ~~ ^"ex-sub") => { [unowned self] in
 					guard case .expression(let expr) = self.stack.popLast()! else { fatalError() }
 					guard case .unaryOperator(let op) = self.stack.popLast()! else { fatalError() }
@@ -1397,6 +1430,12 @@ extension SQLExpression {
 			newSelf = .when(try whens.map {
 				return SQLWhen(when: try $0.when.visit(visitor), then: try $0.then.visit(visitor))
 			}, else: try e?.visit(visitor))
+
+		case .exists(let s):
+			let st = SQLStatement.select(s)
+			let newStatement = try st.visit(visitor)
+			guard case .select(let newSelect) = newStatement else { fatalError("cannot return a different statement") }
+			newSelf = .exists(newSelect)
 		}
 
 		return try visitor.visit(expression: newSelf)
