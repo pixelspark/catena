@@ -36,7 +36,7 @@
 				</catena-tab>
 
 				<catena-tab name="Identities">
-					<catena-identities :agent="agent"></catena-identities>
+					<catena-identities :agent="agent" :head="index.highest"></catena-identities>
 				</catena-tab>
 
 				<catena-tab name="Blocks">

@@ -38,7 +38,7 @@
 		<template v-if="transaction !== null">
 			<dt></dt>
 			<dd>
-				<textarea readonly>{{transaction.jsonObject}}</textarea>
+				<textarea readonly style="width: 100%;" v-model="transaction.jsonObject"></textarea>
 			</dd>
 		</template>
 	</div>
@@ -99,7 +99,7 @@ module.exports = {
 			if(this.invoker !== null) {
 				let id = this.agent.identities[this.invoker];
 				this.agent.counter(id.publicBase58, function(err, ctr) {
-					if(ctr === null) {
+					if(ctr === null || typeof(ctr) == 'undefined') {
 						self.counter = 0;
 					}
 					else {

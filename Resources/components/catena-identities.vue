@@ -27,7 +27,7 @@
 					<dd><button @click="loadKey"><i class="fa fa-check"></i> Load</button></dd>
 				</dl>
 			</div>
-			<catena-identity v-if="identity !== null" :identity="identity" :agent="agent"></catena-identity>
+			<catena-identity v-if="identity !== null" :identity="identity" :agent="agent" :head="head"></catena-identity>
 		</article>
 	</div>
 </template>
@@ -38,7 +38,8 @@ const Agent = require("./blockchain").Agent;
 
 module.exports = {
 	props: {
-		agent: Agent
+		agent: Agent,
+		head: {type: String, default: null}
 	},
 	
 	data: function() {

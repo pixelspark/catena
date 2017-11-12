@@ -99,6 +99,12 @@ class Identity {
 		return ed25519.verify(sig, msg, this.publicKey);
 	}
 
+	static verify(msg, pubKey, sig) {
+		let pubData = base58check.decode(pubKey);
+		if(pubData.prefix[0] != 88) throw new Error("Invalid public key version");
+		return ed25519.verify(sig, msg, pubData.data);
+	}
+
 	get publicHashHex() {
 		let hex = atob(this.publicHash);
 		return hexEncode(hex);

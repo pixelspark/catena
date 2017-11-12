@@ -401,6 +401,14 @@ article h3 {
 	text-shadow: 1px 1px 0px rgba(255,255,255,0.8);
 }
 
+.catena-expander {
+	display: inline-block;
+}
+
+.catena-expander.expanded {
+	display: block;
+}
+
 .catena-expander > button {
 	margin-left: 5px;
 }
