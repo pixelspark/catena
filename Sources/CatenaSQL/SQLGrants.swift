@@ -115,11 +115,13 @@ public class SQLGrants {
 
 			case .create(table: let t), .delete(table: let t), .update(table: let t), .drop(table: let t), .insert(table: let t):
 				if let table = t {
+					// Permission must be for the table we are creating/deleting/updating/dropping/inserting (in/from), or for NULL (any table)
 					let specificCheckExpression = SQLExpression.binary(.column(SQLColumn(name: "table")), .equals, .literalString(table.name))
 					subjectCheckExpression = SQLExpression.binary(subjectCheckExpression, .or, specificCheckExpression)
 				}
 
 			case .template(hash: let hash):
+				// Permission must be for the template hash (a permission for a NULL template grant does not have any effects)
 				subjectCheckExpression = SQLExpression.binary(.column(SQLColumn(name: "table")), .equals, .literalBlob(hash.hash))
 			}
 
@@ -130,7 +132,12 @@ public class SQLGrants {
 				joins: [],
 				where: SQLExpression.binary(
 					SQLExpression.binary(
-						SQLExpression.binary(SQLExpression.column(SQLColumn(name: "user")), .equals, .literalBlob(user.data.sha256)),
+						// Privilege must be for this user or for all users (user=NULL)
+						SQLExpression.binary(
+							SQLExpression.binary(SQLExpression.column(SQLColumn(name: "user")), .equals, .literalBlob(user.data.sha256)),
+							SQLBinary.or,
+							SQLExpression.unary(.isNull, SQLExpression.column(SQLColumn(name: "user")))
+						),
 						SQLBinary.and,
 						SQLExpression.binary(SQLExpression.column(SQLColumn(name: "kind")), .equals, .literalString(p.privilegeName))
 					),
