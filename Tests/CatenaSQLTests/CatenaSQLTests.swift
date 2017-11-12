@@ -269,7 +269,7 @@ class CatenaSQLTests: XCTestCase {
 		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT 1.5;", // limit has non-int
 		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT -5;", // limit has non-positive int
 		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT x+1;", // limit has non-int
-		"SELECT EXISTS(1+1);",
+		//"SELECT EXISTS(1+1);", // Parses, but references non-existing function 'exists'
 		"SELECT EXISTS(UPDATE foo SET x=1);"
 	]
 
