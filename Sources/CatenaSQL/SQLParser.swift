@@ -1421,7 +1421,7 @@ extension SQLStatement {
 			newSelf = .fail
 
 		case .block(let ss):
-			newSelf = .block(try ss.map { return try visitor.visit(statement: $0) })
+			newSelf = .block(try ss.map { return try $0.visit(visitor) })
 		}
 
 		return try visitor.visit(statement: newSelf)
