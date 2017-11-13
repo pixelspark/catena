@@ -66,17 +66,23 @@ name of each table.
 
 A top-level IF statement can be used to control execution flow. The standard IF statement looks as follows:
 
+````
 IF ?amount > 0 THEN UPDATE balance SET balance = balance + ?amount WHERE iban = ?iban ELSE FAIL END;
+````
 
 You can also add additional `ELSE IF` clauses:
 
+````
 IF ?x < 10 THEN INSERT INTO foo(x) VALUES(?x) ELSE IF ?x < 20 THEN INSERT INTO bar(x) VALUES (?x) ELSE FAIL END;
+````
 
 The branches of an IF statement can only contain mutating statements (e.g. no SELECT).
 
 When an `ELSE` clause is omitted, `ELSE FAIL` is implied:
 
+````
 IF ?x < 10 THEN INSERT INTO foo(x) VALUES(?x) END;
+````
 
 The top-level IF-statement is very useful for restricting template grants to certain subsets of parameters.
 
@@ -122,6 +128,14 @@ Parameter names follow variable name rules (i.e. should start with an alphanumer
 underscores afterwards). An unbound parameter is written as `?name`. A bound parameter is written as `?name:value` where
 `value` is a constant literal (e.g. a string, integer, blob, null or a variable whose value is known before the query executes). Hence
 `value` may not be another parameter or a column reference.
+
+### Logical and comparison operators
+
+Catena supports the standard comparison operators (=, <>, <=, >=, >, <) as well as the standard logic operators (AND, OR). Logic operators
+result in an integer `1` (true) or `0` (false).
+
+Non-zero values are (cf. SQLite semantics) interpreted as being true. Values that cast to a non-zero integer
+are considered true as well (e.g. `SELECT 1 AND '1foo';` returns `1`, whereas `SELECT 1 AND '0foo';` returns `0`,).
 
 ### Functions
 
