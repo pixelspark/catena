@@ -253,7 +253,11 @@ class CatenaSQLTests: XCTestCase {
 		"IF 1=1 THEN DROP TABLE foo END;",
 		"CREATE TABLE \"grants\" (\"kind\" TEXT, \"user\" BLOB, \"table\" BLOB);",
 		"SELECT EXISTS(SELECT 1);",
-		"IF 1=0 THEN DO SELECT 1; SELECT 2 END ELSE DO SELECT 3; SELECT 3 END END;"
+		"IF 1=0 THEN DO SELECT 1; SELECT 2 END ELSE DO SELECT 3; SELECT 3 END END;",
+		"SELECT (1=1) AND (1=0);",
+		"SELECT (1=1) OR (1=0);",
+		"SELECT 1 AND 0;",
+		"SELECT (1=1) AND (1=0) AND (1=1);",
 	]
 
 	let invalidSQLStatements = [
@@ -271,7 +275,12 @@ class CatenaSQLTests: XCTestCase {
 		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT -5;", // limit has non-positive int
 		"SELECT DISTINCT a FROM b WHERE c=d ORDER BY z ASC LIMIT x+1;", // limit has non-int
 		//"SELECT EXISTS(1+1);", // Parses, but references non-existing function 'exists'
-		"SELECT EXISTS(UPDATE foo SET x=1);"
+		"SELECT EXISTS(UPDATE foo SET x=1);",
+		"SELECT 1AND0;", // There must be whitespace in between
+		"SELECT 1 AND0;", // There must be whitespace in between
+		/// TODO: FIXME: require spaces *before* keywords
+		//"SELECT 1AND 0;", // There must be whitespace in between
+		"SELECTCASEWHEN1=1THEN1ELSE0END;" // There must be whitespace in between
 	]
 
 	let throwingSQLStatements = [
