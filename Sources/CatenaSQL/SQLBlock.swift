@@ -466,8 +466,9 @@ class SQLExecutive {
 			let result = try database.perform(query)
 			let columns = ["column", "type", "in_primary_key", "not_null", "default_value"]
 			var rows: [[Value]] = []
-			while case .row = result.step() {
+			while case .row = result.state {
 				rows.append([result["name"], result["type"], result["pk"], result["notnull"], result["dflt_value"]])
+				result.step()
 			}
 			return MemoryBackendResult(columns: columns, rows: rows)
 
