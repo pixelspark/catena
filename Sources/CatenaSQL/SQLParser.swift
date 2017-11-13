@@ -394,7 +394,7 @@ public enum SQLStatement {
 			return "FAIL\(end)"
 
 		case .block(let ss):
-			return "BEGIN \(ss.map { $0.sql(dialect: dialect, isTopLevel: false) }.joined(separator: "; ")) END\(end)"
+			return "DO \(ss.map { $0.sql(dialect: dialect, isTopLevel: false) }.joined(separator: "; ")) END\(end)"
 		}
 	}
 }
