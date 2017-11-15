@@ -33,6 +33,21 @@ var ccDeps: [Target.Dependency] = [
 
 let package = Package(
     name: "Catena",
+
+    products: [
+		.library(
+			name: "CatenaCore",
+			type: .static,
+			targets: ["CatenaCore"]
+		),
+		.library(
+			name: "CatenaSQL",
+			type: .static,
+			targets: ["CatenaSQL"]
+		),
+		.executable(name: "Catena", targets: ["Catena"]),
+	],
+
     dependencies: deps,
 
     targets: [
