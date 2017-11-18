@@ -1,22 +1,26 @@
 <template>
 	<div>
 		<nav>
-			<h1>Catena</h1>
+			<ul>
+				<li>
+					<img src="static/logo.png" class="logo" alt="Catena"/>
+				</li>
 
-			<template v-if="connection == null">
-				Address: <input :value="url" placholder="address:port" v-on:keyup="set('url', $event.target.value)">
-				<button @click="connect">Connect</button>
-			</template> 
-			<template v-else>
-				{{url}}
-					<button @click="disconnect">Disconnect</button>
-			</template>
-			
-			<template v-if="index !== null">
-				<span>{{index.peers.length}} peers</span>,
-				<span>{{index.height}} blocks</span>
-				<span>(last updated at <catena-timestamp :timestamp="index.time"></catena-timestamp>)</span>
-			</template>
+				<li v-if="connection == null">
+					Address: <input :value="url" placholder="address:port" v-on:keyup="set('url', $event.target.value)">
+					<button @click="connect">Connect</button>
+				</li> 
+				<li v-else>
+					{{url}}
+						<button @click="disconnect">Disconnect</button>
+				</li>
+				
+				<li v-if="index !== null">
+					<span>{{index.peers.length}} peers</span>,
+					<span>{{index.height}} blocks</span>
+					<span>(last updated at <catena-timestamp :timestamp="index.time"></catena-timestamp>)</span>
+				</li>
+			</ul>
 		</nav>
 
 		<main v-if="error === null && connection !== null && (index === null || agent === null)">

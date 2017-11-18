@@ -1,3 +1,5 @@
+![Logo](/Documentation/Logo.png)
+
 # Catena - SQL on a blockchain
 
 Catena is a distributed database based on a blockchain, accessible using SQL. Catena timestamps database transactions (SQL) in a decentralized way between nodes that do not or cannot trust each other, while enforcing modification permissions ('grants') that were agreed upon earlier.

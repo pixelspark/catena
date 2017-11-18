@@ -200,10 +200,26 @@ input {
 	padding: 3px;
 }
 
-nav h1, nav span, nav input, nav {
+nav h1, nav span, nav input, nav, nav li {
 	color: rgba(255,255,255,0.6);
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+nav ul li {
+	display: inline-block;
+	margin-left: 0px;
+	height: 50px;
+	vertical-align: middle;
+	line-height: 50px;
+}
+
+nav img.logo {
+	height: 50px;
+	padding-top: 10px;
+	padding-bottom: 10px;
+	display: inline-block;
+	margin-right: 10px;
 }
 
 nav button, nav input, th button {
