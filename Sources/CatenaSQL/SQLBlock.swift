@@ -516,12 +516,20 @@ extension SQLStatement {
 			return []
 
 		case .select(let s):
-			return s.these.map { e -> SQLColumn in
+			var hasAll = false
+			let c = s.these.map { e -> SQLColumn in
 				switch e {
 				case .column(let c): return c
+				case .allColumns:
+					hasAll = true
+					fallthrough
 				default: return SQLColumn(name: e.sql(dialect: SQLStandardDialect()))
 				}
 			}
+			if hasAll {
+				return nil
+			}
+			return c
 
 		case .show(_):
 			return SQLExecutive.showColumns.map { SQLColumn(name: $0) }
