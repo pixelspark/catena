@@ -258,11 +258,11 @@ class CatenaSQLTests: XCTestCase {
 		"SELECT (1=1) OR (1=0);",
 		"SELECT 1 AND 0;",
 		"SELECT (1=1) AND (1=0) AND (1=1);",
+		"SELECT $0x;", // Variable name can start with digit (previously couldn't)
 	]
 
 	let invalidSQLStatements = [
 		"SELECT 1+1", // missing ';'
-		"SELECT $0x;", // Variable name cannot start with digit
 		"SELECT ?0x;", // Parameter name cannot start with digit
 		"SELECT ?empty:;", // Parameter has no value
 		"SELECT ?empty:?other;", // Parameter value may not be another parameter

@@ -178,12 +178,12 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 
 				Int16[R] The result-column format codes. Each must presently be zero (text) or
 				one (binary). */
-				guard let numberOfResultFormatCodes =  reader.readUInt16() else { throw QueryServerError.protocolError }
+				/*guard let numberOfResultFormatCodes =  reader.readUInt16() else { throw QueryServerError.protocolError }
 				let resultFormatCodes = try (0..<(Int(numberOfResultFormatCodes))).map { _ -> PQFormat in
 					guard let r = reader.readUInt16() else { throw QueryServerError.protocolError }
 					guard let format = PQFormat(rawValue: r) else { throw QueryServerError.protocolError }
 					return format
-				}
+				}*/
 
 				let parsedParameterValues = try self.parse(parameters: parameterValues, formats: parameterFormatCodes)
 
