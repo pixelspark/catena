@@ -1,6 +1,7 @@
 import Foundation
 import Socket
 import Dispatch
+import LoggerAPI
 
 public final class QueryClientConnection<PreparedStatementType: PreparedStatement> {
 	private enum State {
@@ -133,58 +134,65 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 		if let messageLength = self.readInt32(), let messageData = try self.read(length: messageLength - 4) {
 			var reader = DataReader(data: messageData)
 			if 	let destinationPortalName = reader.readZeroTerminatedString(),
-				let preparedStatementName = reader.readZeroTerminatedString()
-				/*let numberOfParameterFormatCodes = reader.readUInt16() */ {
-				/* Int16		The number of parameter format codes that follow (denoted C below). This
-				can be zero to indicate that there are no parameters or that the parameters
-				all use the default format (text); or one, in which case the specified
-				format code is applied to all parameters; or it can equal the actual number
-				of parameters.
+				let preparedStatementName = reader.readZeroTerminatedString(),
+				let numberOfParameterFormatCodes = reader.readUInt16() {
+				/* Int16	The number of parameter format codes that follow (denoted C below). This
+							can be zero to indicate that there are no parameters or that the parameters
+							all use the default format (text); or one, in which case the specified
+							format code is applied to all parameters; or it can equal the actual number
+							of parameters.
 
 				Int16[C]	The parameter format codes. Each must presently be zero (text) or one (binary). */
-				//let parameterFormatCodes = (0..<numberOfParameterFormatCodes).map { _ in return reader.readUInt16() ?? 0 }
+				let parameterFormatCodes = try (0..<numberOfParameterFormatCodes).map { _ -> PQFormat in
+					guard let r = reader.readUInt16() else { throw QueryServerError.protocolError }
+					guard let format = PQFormat(rawValue: r) else { throw QueryServerError.protocolError }
+					return format
+				}
 
 				/*
-				Int16		The number of parameter values that follow (possibly zero). This must match
-				the number of parameters needed by the query.
+				Int16	The number of parameter values that follow (possibly zero). This must match
+						the number of parameters needed by the query.
 
 				Next, the following pair of fields appear for each parameter:
 
-				Int32		The length of the parameter value, in bytes (this count does not include
-				itself). Can be zero. As a special case, -1 indicates a NULL parameter
-				value. No value bytes follow in the NULL case.
-				Byten		The value of the parameter, in the format indicated by the associated
-				format code. n is the above length. */
-				/*guard let numberOfParameterValues = reader.readUInt16() else { throw QueryServerError.protocolError }
+				Int32	The length of the parameter value, in bytes (this count does not include
+						itself). Can be zero. As a special case, -1 indicates a NULL parameter
+						value. No value bytes follow in the NULL case.
+				Byten	The value of the parameter, in the format indicated by the associated
+						format code. n is the above length. */
+				guard let numberOfParameterValues = reader.readUInt16() else { throw QueryServerError.protocolError }
 
 				let parameterValues = try (0..<numberOfParameterValues).map { _ -> Data in
 					guard let length = reader.readUInt32() else { throw QueryServerError.protocolError }
 					guard let bytes = reader.readBytes(Int(length)) else { throw QueryServerError.protocolError }
 					return bytes
-				}*/
+				}
 
 				/* After the last parameter, the following fields appear:
 
-				Int16		The number of result-column format codes that follow (denoted R below).
-				This can be zero to indicate that there are no result columns or that the
-				result columns should all use the default format (text); or one, in which
-				case the specified format code is applied to all result columns (if any);
-				or it can equal the actual number of result columns of the query.
+				Int16	The number of result-column format codes that follow (denoted R below).
+						This can be zero to indicate that there are no result columns or that the
+						result columns should all use the default format (text); or one, in which
+						case the specified format code is applied to all result columns (if any);
+						or it can equal the actual number of result columns of the query.
 
-				Int16[R]	The result-column format codes. Each must presently be zero (text) or
+				Int16[R] The result-column format codes. Each must presently be zero (text) or
 				one (binary). */
-				/*guard let numberOfResultFormatCodes =  reader.readUInt16() else { throw QueryServerError.protocolError }
-				let resultFormatCodes = try (0..<(Int(numberOfResultFormatCodes))).map { _ -> UInt16 in
+				guard let numberOfResultFormatCodes =  reader.readUInt16() else { throw QueryServerError.protocolError }
+				let resultFormatCodes = try (0..<(Int(numberOfResultFormatCodes))).map { _ -> PQFormat in
 					guard let r = reader.readUInt16() else { throw QueryServerError.protocolError }
-					return r
-				}*/
+					guard let format = PQFormat(rawValue: r) else { throw QueryServerError.protocolError }
+					return format
+				}
+
+				let parsedParameterValues = try self.parse(parameters: parameterValues, formats: parameterFormatCodes)
 
 				if let statement = self.preparedStatements[preparedStatementName] {
 					if let _ = self.portals[destinationPortalName], !destinationPortalName.isEmpty {
 						throw QueryServerError.portalAlreadyExists
 					}
 					else {
-						self.portals[destinationPortalName] = Portal(statement: statement)
+						self.portals[destinationPortalName] = Portal(statement: statement, parameters: parsedParameterValues)
 
 						/* Should send message BindComplete to client:
 						Byte1('2')	Identifies the message as a Bind-complete indicator.
@@ -205,6 +213,40 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 		else {
 			return false
 		}
+	}
+
+	private func parse(parameters: [Data], formats: [PQFormat]) throws -> [PQValue] {
+		var values = Array<PQValue>(repeating: PQValue.null, count: parameters.count)
+		for (idx, data) in parameters.enumerated() {
+			let format: PQFormat
+			if idx < formats.count {
+				format = formats[idx]
+			}
+			else {
+				// When there is only one format code, this is the one we will use
+				// Otherwise, default to text.
+				format = (formats.count == 1) ? formats[0] : .text
+			}
+
+			switch format {
+			case .text:
+				if let s = String(data: data, encoding: .utf8) {
+					values.append(PQValue.text(s))
+				}
+				else {
+					values.append(PQValue.null)
+				}
+
+			case .binary:
+				if let s = String(data: data, encoding: .utf8) {
+					values.append(PQValue.text(s))
+				}
+				else {
+					values.append(PQValue.null)
+				}
+			}
+		}
+		return values
 	}
 
 	private func readClose() throws -> Bool {
@@ -329,7 +371,12 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 			Describe, the format code is not yet known and will always be zero. */
 
 			/// Request columns from prepared statement and send description
-			try send(description: try statement.fields())
+			if let cp = self.currentPortalName, let portal = self.portals[cp] {
+				try send(description: try statement.fields(for: portal.parameters))
+			}
+			else {
+				try send(description: try statement.fields(for: []))
+			}
 		}
 		else {
 			// Send NoData response
@@ -412,7 +459,7 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 							try self.sendRowDescription(for: st)
 
 							// When result is nil, there is no result
-							try server.query(st, connection: self) { resultSet in
+							try server.query(st, parameters: [], connection: self) { resultSet in
 								if let result = resultSet {
 									assert(st.willReturnRows, "results may only be returned when the statement promised to do so")
 									try self.send(result: result)
@@ -459,7 +506,7 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 						guard let s = self.server else { return false }
 						self.state = .querying
 						self.currentPortalName = portalName
-						try s.query(portal.statement, connection: self) { result in
+						try s.query(portal.statement, parameters: portal.parameters, connection: self) { result in
 							if let result = result {
 								try self.send(result: result)
 							}
@@ -699,10 +746,12 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 /** A portal is a prepared statement with bound parameters. */
 fileprivate class Portal<PreparedStatementType: PreparedStatement> {
 	let statement: PreparedStatementType
+	let parameters: [PQValue]
 	var result: ResultSet? = nil
 
-	init(statement: PreparedStatementType) {
+	init(statement: PreparedStatementType, parameters: [PQValue]) {
 		self.statement = statement
+		self.parameters = parameters
 	}
 }
 

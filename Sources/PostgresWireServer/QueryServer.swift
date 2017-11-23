@@ -8,7 +8,7 @@ public protocol PreparedStatement {
 	'false' for DDL/DML statements. */
 	var willReturnRows: Bool { get }
 
-	func fields() throws -> [PQField]
+	func fields(for parameters: [PQValue]) throws -> [PQField]
 }
 
 public protocol ResultSet: class {
@@ -63,7 +63,7 @@ open class QueryServer<PreparedStatementType: PreparedStatement> {
 
 	/** Overridden by child classes to perform queries. Should return nil for empty results (e.g.
 	DML/DDL commands) when statement.willReturnRows is false. */
-	open func query(_ query: PreparedStatementType, connection: QueryClientConnection<PreparedStatementType>, callback: @escaping (ResultSet?) throws -> ()) throws {
+	open func query(_ query: PreparedStatementType, parameters: [PQValue], connection: QueryClientConnection<PreparedStatementType>, callback: @escaping (ResultSet?) throws -> ()) throws {
 		fatalError("Must override")
 	}
 

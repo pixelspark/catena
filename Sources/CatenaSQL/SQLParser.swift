@@ -661,7 +661,7 @@ internal class SQLParser {
 				self.stack.append(.expression(.null))
 			}
 
-			g["lit-variable"] = Parser.matchLiteral("$") ~ ((firstCharacter ~ (followingCharacter*)/~) => { [unowned self] parser in
+			g["lit-variable"] = Parser.matchLiteral("$") ~ (((firstCharacter | ("0"-"9")) ~ (followingCharacter*)/~) => { [unowned self] parser in
 				self.stack.append(.expression(.variable(parser.text)))
 			})
 

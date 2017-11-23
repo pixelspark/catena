@@ -53,32 +53,43 @@ public class QueryServerPreparedStatement: PreparedStatement {
 		return !statement.isPotentiallyMutating
 	}
 
-	public func fields() throws -> [PQField] {
-		if self.statement.isPotentiallyMutating {
+	func bound(to parameters: [PQValue]) -> SQLStatement {
+		var bindings: [String: SQLExpression] = [:]
+		for (idx, value) in parameters.enumerated() {
+			switch value {
+			case .text(let s): bindings["\(idx)"] = SQLExpression.literalString(s)
+			case .bool(let b): bindings["\(idx)"] = SQLExpression.literalInteger(b ? 1 : 0)
+			// FIXME: Support floating point
+			case .float4(let f): bindings["\(idx)"] = SQLExpression.literalString("\(f)")
+			case .float8(let f): bindings["\(idx)"] = SQLExpression.literalString("\(f)")
+			case .int(let i): bindings["\(idx)"] = SQLExpression.literalInteger(Int(i))
+			case .null: bindings["\(idx)"] = SQLExpression.null
+			}
+		}
+
+		return self.statement.replacing(variables: bindings)
+	}
+
+	public func fields(for parameters: [PQValue]) throws -> [PQField] {
+		let statement = self.bound(to: parameters)
+
+		if statement.isPotentiallyMutating {
 			// Mutating statements will not return any rows, ever
 			return []
 		}
-		else if let cols = self.statement.columnsInResult {
+		else if let cols = statement.columnsInResult {
 			return cols.map { PQField(name: $0.name, type: .text) }
 		}
 		else {
 			// Just perform and cache the result
 			var result: [PQField] = []
-			try self.performNonMutating() { res in
-				result = res.result.columns.map { c in return PQField(name: c, type: .text) }
+			try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
+				let context = SQLContext(metadata: chain.meta, invoker: self.identity.publicKey, block: chain.highest, parameterValues: [:])
+				let ex = SQLExecutive(context: context, database: chain.database)
+				let rs = try ex.perform(self.statement) { _ in return true }
+				result = rs.columns.map { c in return PQField(name: c, type: .text) }
 			}
 			return result
-		}
-	}
-
-	func performNonMutating(_ callback: @escaping (QueryServerResultSet) throws -> ()) throws {
-		assert(!self.statement.isPotentiallyMutating)
-
-		try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
-			let context = SQLContext(metadata: chain.meta, invoker: self.identity.publicKey, block: chain.highest, parameterValues: [:])
-			let ex = SQLExecutive(context: context, database: chain.database)
-			let result = try ex.perform(self.statement) { _ in return true }
-			try callback(QueryServerResultSet(result: result))
 		}
 	}
 }
@@ -151,11 +162,10 @@ public class NodeQueryServer: QueryServer<QueryServerPreparedStatement> {
 		return try QueryServerPreparedStatement(sql: sql, identity: identity, agent: self.agent)
 	}
 
-	public override func query(_ query: QueryServerPreparedStatement, connection: QueryClientConnection<QueryServerPreparedStatement>, callback: @escaping (ResultSet?) throws -> ()) throws {
-		Log.info("[Query] Execute: \(query.statement.sql(dialect: SQLStandardDialect()))")
-
+	public override func query(_ query: QueryServerPreparedStatement, parameters: [PQValue], connection: QueryClientConnection<QueryServerPreparedStatement>, callback: @escaping (ResultSet?) throws -> ()) throws {
 		// Parse the statement
-		let statement = try SQLStatement(query.statement.sql(dialect: SQLStandardDialect()))
+		let statement = try SQLStatement(query.bound(to: parameters).sql(dialect: SQLStandardDialect()))
+		Log.info("[Query] Execute: \(statement.sql(dialect: SQLStandardDialect()))")
 
 		// Mutating statements are queued
 		if statement.isPotentiallyMutating {
@@ -165,8 +175,11 @@ public class NodeQueryServer: QueryServer<QueryServerPreparedStatement> {
 			try callback(nil)
 		}
 		else {
-			try query.performNonMutating { res in
-				try callback(res)
+			try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
+				let context = SQLContext(metadata: chain.meta, invoker: query.identity.publicKey, block: chain.highest, parameterValues: [:])
+				let ex = SQLExecutive(context: context, database: chain.database)
+				let result = try ex.perform(statement) { _ in return true }
+				try callback(QueryServerResultSet(result: result))
 			}
 		}
 	}

@@ -9,6 +9,11 @@ internal enum PQSeverity: String {
 	case info = "INFO"
 }
 
+internal enum PQFormat: UInt16 {
+	case text = 0
+	case binary = 1
+}
+
 public struct PQField {
 	var name: String
 	var tableId: Int32 = 0

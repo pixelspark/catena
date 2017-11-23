@@ -515,9 +515,13 @@ extension SQLStatement {
 			// DML/DDL statements do not return data
 			return []
 
-		case .select(_):
-			// TODO: implement (when we have aliases)
-			return nil
+		case .select(let s):
+			return s.these.map { e -> SQLColumn in
+				switch e {
+				case .column(let c): return c
+				default: return SQLColumn(name: e.sql(dialect: SQLStandardDialect()))
+				}
+			}
 
 		case .show(_):
 			return SQLExecutive.showColumns.map { SQLColumn(name: $0) }

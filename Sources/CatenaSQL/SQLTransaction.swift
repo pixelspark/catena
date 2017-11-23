@@ -182,6 +182,21 @@ fileprivate class SQLParameterUnbinder: SQLVisitor {
 	}
 }
 
+fileprivate class SQLVariableBinder: SQLVisitor {
+	let variables: [String: SQLExpression]
+
+	init(variables: [String: SQLExpression]) {
+		self.variables = variables
+	}
+
+	func visit(expression: SQLExpression) throws -> SQLExpression {
+		if case .variable(let s) = expression, let v = self.variables[s] {
+			return v
+		}
+		return expression
+	}
+}
+
 extension SQLStatement {
 	/** All parameters present in this query. The value for an unbound parameter is an
 	SQLExpression.unboundExpression. */
@@ -208,6 +223,11 @@ extension SQLStatement {
 	the query remain unchanged if the `parameters` set does not have a new value for them. */
 	func bound(to parameters: [String: SQLExpression]) -> SQLStatement {
 		let b = SQLParameterBinder(parameters: parameters)
+		return try! self.visit(b)
+	}
+
+	func replacing(variables: [String: SQLExpression]) -> SQLStatement {
+		let b = SQLVariableBinder(variables: variables)
 		return try! self.visit(b)
 	}
 }
