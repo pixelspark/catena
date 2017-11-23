@@ -1,6 +1,7 @@
 import Foundation
 import Socket
 import LoggerAPI
+import Dispatch
 
 public protocol PreparedStatement {
 	/** Whether execution of this statement will (can) return any rows. Usually 'true' for SELECT,
