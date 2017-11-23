@@ -263,7 +263,8 @@ public class SQLiteResult: Result {
 
 		switch self.state {
 		case .row:
-			switch sqlite3_step(self.resultset) {
+			let res = sqlite3_step(self.resultset)
+			switch res {
 			case SQLITE_DONE:
 				self.state = .done
 
@@ -279,8 +280,11 @@ public class SQLiteResult: Result {
 			case SQLITE_MISUSE:
 				fatalError("SQLite misuse")
 
+			case SQLITE_ABORT:
+				fatalError("SQLite aborted")
+
 			default:
-				self.state = .error("Unknown error code")
+				self.state = .error("Unknown error code: \(res)")
 			}
 
 		case .done, .error(_):

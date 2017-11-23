@@ -403,6 +403,12 @@ private class MemoryBackendResult<RowSequenceType: Sequence>: Result where RowSe
 }
 
 class SQLExecutive {
+	/** The column names in the result set for a DESCRIBE statement */
+	static fileprivate let describeColumns = ["column", "type", "in_primary_key", "not_null", "default_value"]
+
+	/** The column names in the result set of a SHOW statement */
+	static fileprivate let showColumns = ["name"]
+
 	let context: SQLContext
 	let database: Database
 
@@ -464,13 +470,12 @@ class SQLExecutive {
 
 			let query = "PRAGMA table_info(\(t.sql(dialect: database.dialect)));";
 			let result = try database.perform(query)
-			let columns = ["column", "type", "in_primary_key", "not_null", "default_value"]
 			var rows: [[Value]] = []
 			while case .row = result.state {
 				rows.append([result["name"], result["type"], result["pk"], result["notnull"], result["dflt_value"]])
 				result.step()
 			}
-			return MemoryBackendResult(columns: columns, rows: rows)
+			return MemoryBackendResult(columns: SQLExecutive.describeColumns, rows: rows)
 
 		case .show(let s):
 			switch s {
@@ -485,6 +490,42 @@ class SQLExecutive {
 			try backendStatement.verify(on: database)
 			let query = backendStatement.sql(dialect: database.dialect)
 			return SQLiteBackendResult(result: try database.perform(query))
+		}
+	}
+}
+
+extension SQLStatement {
+	/** Returns the set of columns in the result, or nil if that can't be determined without executing
+	the statement first. */
+	public var columnsInResult: [SQLColumn]? {
+		switch self {
+		case .block(let statements):
+			// Depends on the last statement
+			if let last = statements.last {
+				return last.columnsInResult
+			}
+
+			// No statements in the block, then no columns
+			return []
+
+		case .describe(_):
+			return SQLExecutive.describeColumns.map { SQLColumn(name: $0) }
+
+		case .update(_), .insert(_), .delete(from: _, where: _), .drop(table: _), .create(table: _, schema: _), .fail, .createIndex(table: _, index: _):
+			// DML/DDL statements do not return data
+			return []
+
+		case .select(_):
+			// TODO: implement (when we have aliases)
+			return nil
+
+		case .show(_):
+			return SQLExecutive.showColumns.map { SQLColumn(name: $0) }
+
+		case .if(_):
+			// Can't really know without executing
+			// TODO: if all branches have the same set, return that?
+			return nil
 		}
 	}
 }

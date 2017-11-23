@@ -62,10 +62,18 @@ let package = Package(
 			]
 		),
 		.target(
+			name: "PostgresWireServer",
+			dependencies: [
+				"HeliumLogger",
+				/* Socket is in Kitura package? */
+			]
+		),
+		.target(
 			name: "CatenaSQL",
 			dependencies: [
 				"CatenaCore",
-				"SwiftParser"
+				"SwiftParser",
+				"PostgresWireServer"
 			]
 		),
 		.target(

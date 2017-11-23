@@ -163,7 +163,7 @@ public class SQLAPIEndpoint {
 				}
                 
                 // Mutating statements are not executed - client needs to sign and submit a transaction for those
-                if statement.isMutating {
+                if statement.isPotentiallyMutating {
                     _ = response.status(.notAcceptable)
 
 					/* We do send back the SQL query as we would write it using the standard SQL dialect

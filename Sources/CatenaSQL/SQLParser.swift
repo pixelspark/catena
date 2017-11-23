@@ -228,7 +228,7 @@ public enum SQLStatement {
 		self = statement
 	}
 
-	var isMutating: Bool {
+	var isPotentiallyMutating: Bool {
 		switch self {
 		case .create, .drop, .delete, .update, .insert(_), .createIndex(table: _, index: _):
 			return true
@@ -236,12 +236,12 @@ public enum SQLStatement {
 		/* An if statement is mutating when any of its contained statements is mutating (regardless
 		of what branch is taken at runtime). */
 		case .`if`(let sqlIf):
-			if let m = sqlIf.otherwise?.isMutating, m {
+			if let m = sqlIf.otherwise?.isPotentiallyMutating, m {
 				return true
 			}
 
 			for (_, s) in sqlIf.branches {
-				if s.isMutating {
+				if s.isPotentiallyMutating {
 					return true
 				}
 			}
@@ -250,7 +250,7 @@ public enum SQLStatement {
 
 		case .block(let ss):
 			for s in ss {
-				if s.isMutating {
+				if s.isPotentiallyMutating {
 					return true
 				}
 			}
