@@ -380,7 +380,7 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 		}
 		else {
 			// Send NoData response
-			let buf = Data(bytes: [UInt8(Character("n").codePoint), 0, 0, 0, 5])
+			let buf = Data(bytes: [UInt8(Character("n").codePoint), 0, 0, 0, 4])
 			try self.socket.write(from: buf)
 		}
 	}
@@ -648,9 +648,6 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 		packet.append(data)
 		packet.append(UInt8(0))
 		try self.socket.write(from: packet)
-
-		self.state = .ready
-		self.run()
 	}
 
 	private func run() {
