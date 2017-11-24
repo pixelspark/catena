@@ -4,6 +4,7 @@ import PackageDescription
 
 var deps: [Package.Dependency] = [
 	.package(url: "https://github.com/pixelspark/sqlite.git", from: Version("3.0.0")),
+	.package(url: "https://github.com/pixelspark/postgres-wire-server.git", from: Version("1.0.0")),
 	.package(url: "https://github.com/IBM-Swift/Kitura.git", from: Version("2.0.0")),
 	.package(url: "https://github.com/jatoben/CommandLine", from: Version("3.0.0-pre1")),
 	.package(url: "https://github.com/IBM-Swift/BlueCryptor.git", from: Version("0.0.0")),
@@ -59,13 +60,6 @@ let package = Package(
 				"CatenaCore",
 				"CatenaSQL",
 				"CommandLine"
-			]
-		),
-		.target(
-			name: "PostgresWireServer",
-			dependencies: [
-				"HeliumLogger",
-				/* Socket is in Kitura package? */
 			]
 		),
 		.target(
