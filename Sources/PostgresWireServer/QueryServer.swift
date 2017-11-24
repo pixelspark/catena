@@ -3,6 +3,8 @@ import Socket
 import LoggerAPI
 import Dispatch
 
+/** Represents a prepared statement. Prepared statements are instantiated by your QueryServer
+subclass's instance method `prepare`. */
 public protocol PreparedStatement {
 	/** Whether execution of this statement will (can) return any rows. Usually 'true' for SELECT,
 	'false' for DDL/DML statements. */
@@ -11,12 +13,17 @@ public protocol PreparedStatement {
 	func fields(for parameters: [PQValue]) throws -> [PQField]
 }
 
+/** Represents a query result set. The rows returned from this result set should match the columns
+returned by a call to the `fields` method on the corresponding PreparedStatement. */
 public protocol ResultSet: class {
 	var error: String? { get }
 	var hasRow: Bool { get }
 	func row() throws -> [PQValue]
 }
 
+/** The query server listens on a socket and instantiates QueryClientConnection objects for each
+client - this object will further handle communications. The QueryServer class should be subclasses
+to implement a server. The methods `prepare` and `query` should be overridden. */
 open class QueryServer<PreparedStatementType: PreparedStatement> {
 	public enum Family {
 		case ipv4
@@ -30,13 +37,12 @@ open class QueryServer<PreparedStatementType: PreparedStatement> {
 		}
 	}
 
-	let port: Int
-	let family: Family
+	public let port: Int
+	public let family: Family
 
 	private var connectedSockets = [Int32: QueryClientConnection<PreparedStatementType>]()
 	private var listenSocket: Socket? = nil
 	private var continueRunning = true
-
 	private let socketLockQueue = DispatchQueue(label: "popsiql.socketLock")
 
 	public init(port: Int, family: Family = .ipv6) {
@@ -56,7 +62,7 @@ open class QueryServer<PreparedStatementType: PreparedStatement> {
 		}
 	}
 
-	/** Overriden by child classes; returns a prepared statement for the given SQL */
+	/** Overriden by child classes; returns a prepared statement for the given SQL query string. */
 	open func prepare(_ sql: String, connection: QueryClientConnection<PreparedStatementType>) throws -> PreparedStatementType {
 		fatalError("Must override")
 	}

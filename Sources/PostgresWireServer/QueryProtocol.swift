@@ -3,17 +3,6 @@ import Socket
 import Dispatch
 import HeliumLogger
 
-internal enum PQSeverity: String {
-	case error = "ERROR"
-	case fatal = "FATAL"
-	case info = "INFO"
-}
-
-internal enum PQFormat: UInt16 {
-	case text = 0
-	case binary = 1
-}
-
 public struct PQField {
 	var name: String
 	var tableId: Int32 = 0
@@ -98,19 +87,14 @@ public enum QueryServerError: LocalizedError {
 	}
 }
 
-internal enum PQFrontendMessage: String {
-	case password = "p"
-	case simpleQuery = "Q"
-	case parse = "P"
-	case bind = "B"
-	case execute = "E"
-	case describe = "D"
-	case close = "C"
-	case flush = "H"
-	case sync = "S"
-	case functionCall = "F"
-	case copyData = "d"
-	case copyCompletion = "c"
-	case copyFailure = "f"
-	case termination = "X"
+internal enum PQSeverity: String {
+	case error = "ERROR"
+	case fatal = "FATAL"
+	case info = "INFO"
 }
+
+internal enum PQFormat: UInt16 {
+	case text = 0
+	case binary = 1
+}
+
