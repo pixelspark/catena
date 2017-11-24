@@ -197,7 +197,7 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 						/* Should send message BindComplete to client:
 						Byte1('2')	Identifies the message as a Bind-complete indicator.
 						Int32(4)	Length of message contents in bytes, including self. */
-						let buf = Data(bytes: [UInt8(Character("2").codePoint), 0, 0, 0, 5])
+						let buf = Data(bytes: [UInt8(Character("2").codePoint), 0, 0, 0, 4])
 						try self.socket.write(from: buf)
 						self.state = .ready
 						return true
@@ -265,7 +265,7 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 						self.preparedStatements[name] = nil
 
 						// Send close complete
-						let buf = Data(bytes: [UInt8(Character("3").codePoint), 0, 0, 0, 5])
+						let buf = Data(bytes: [UInt8(Character("3").codePoint), 0, 0, 0, 4])
 						try self.socket.write(from: buf)
 						return true
 					}
@@ -279,7 +279,7 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 						self.portals[name] = nil
 
 						// Send close complete
-						let buf = Data(bytes: [UInt8(Character("3").codePoint), 0, 0, 0, 5])
+						let buf = Data(bytes: [UInt8(Character("3").codePoint), 0, 0, 0, 4])
 						try self.socket.write(from: buf)
 						return true
 					}
@@ -332,7 +332,7 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 				self.preparedStatements[destinationName] = statement
 
 				// Send ParseComplete message ('1' + In32(5) indicating length of total message)
-				let buf = Data(bytes: [UInt8(Character("1").codePoint), 0, 0, 0, 5])
+				let buf = Data(bytes: [UInt8(Character("1").codePoint), 0, 0, 0, 4])
 				try self.socket.write(from: buf)
 				self.state = .ready
 				return true
@@ -438,120 +438,108 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 		return false
 	}
 
-	/** Reads the next packet in preparing/ready state. Returns whether the connection should continue
-	to process packets. */
 	private func readQuery() throws -> Bool {
-		switch self.state {
-		case .ready, .closed: break
-		default: fatalError("invalid state")
-		}
+		if let len = self.readInt32(), let queryData = try self.read(length: len - UInt32(4)) {
+			let trimmed = queryData.subdata(in: 0..<(queryData.endIndex.advanced(by: -1)))
+			if let q = String(data: trimmed, encoding: .utf8) {
+				if let server = self.server {
+					let st = try server.prepare(q, connection: self)
+					self.state = .querying
+					self.currentPortalName = nil
+					try self.sendRowDescription(for: st)
 
-		if let type = try self.readByte() {
-			if type == CChar(Character("Q").codePoint) {
-				// Query
-				if let len = self.readInt32(), let queryData = try self.read(length: len - UInt32(4)) {
-					let trimmed = queryData.subdata(in: 0..<(queryData.endIndex.advanced(by: -1)))
-					if let q = String(data: trimmed, encoding: .utf8) {
-						if let server = self.server {
-							let st = try server.prepare(q, connection: self)
-							self.state = .querying
-							self.currentPortalName = nil
-							try self.sendRowDescription(for: st)
-
-							// When result is nil, there is no result
-							try server.query(st, parameters: [], connection: self) { resultSet in
-								if let result = resultSet {
-									assert(st.willReturnRows, "results may only be returned when the statement promised to do so")
-									try self.send(result: result)
-								}
-								else {
-									assert(!st.willReturnRows, "statements that promise to return rows should result in a non-nil result set")
-								}
-
-								// TODO: obtain tag from prepared statement
-								try self.sendQueryComplete(tag: "SELECT")
-								try self.sendReadyForQuery()
-								self.state = .ready
-							}
+					// When result is nil, there is no result
+					try server.query(st, parameters: [], connection: self) { resultSet in
+						if let result = resultSet {
+							assert(st.willReturnRows, "results may only be returned when the statement promised to do so")
+							try self.send(result: result)
 						}
-						return true
-					}
-					return false
-				}
-				else {
-					return false
-				}
-			}
-			else if type == CChar(Character("X").codePoint) {
-				return false
-			}
-			else if type == CChar(Character("P").codePoint) {
-				return try self.readParse()
-			}
-			else if type == CChar(Character("B").codePoint) {
-				return try self.readBind()
-			}
-			else if type == CChar(Character("E").codePoint) {
-				/* Execute message.
-				Byte1('E')	Identifies the message as an Execute command.
-				Int32		Length of message contents in bytes, including self.
-				String		The name of the portal to execute (an empty string selects the unnamed
-				portal).
-				Int32		Maximum number of rows to return, if portal contains a query that returns
-				rows (ignored otherwise). Zero denotes "no limit". */
-				if let messageLength = self.readInt32(), let messageData = try self.read(length: messageLength - 4) {
-					var reader = DataReader(data: messageData)
-					if let portalName = reader.readZeroTerminatedString() {
-						guard let portal = self.portals[portalName] else { throw QueryServerError.portalNotFound }
-						guard let s = self.server else { return false }
-						self.state = .querying
-						self.currentPortalName = portalName
-						try s.query(portal.statement, parameters: portal.parameters, connection: self) { result in
-							if let result = result {
-								try self.send(result: result)
-							}
-							try self.sendQueryComplete(tag: "SELECT") // TODO fetch tag from command
+						else {
+							assert(!st.willReturnRows, "statements that promise to return rows should result in a non-nil result set")
 						}
 
-						return true
-					}
-				}
-				return false
-			}
-			else if type == CChar(Character("C").codePoint) {
-				return try self.readClose()
-			}
-			else if type == CChar(Character("D").codePoint) {
-				return try self.readDescribe()
-			}
-			else if type == CChar(Character("S").codePoint) {
-				/* Sync message
-				Byte1('S')	Identifies the message as a Sync command.
-				Int32(4)	Length of message contents in bytes, including self. */
-				if let messageLength = self.readInt32() {
-					_ = try self.read(length: messageLength - 4)
-
-					// Close the active portal
-					if let portalName = self.currentPortalName {
-						self.portals[portalName] = nil
-						self.currentPortalName = nil
-						self.state = .ready
+						// TODO: obtain tag from prepared statement
+						try self.sendQueryComplete(tag: "SELECT")
 						try self.sendReadyForQuery()
-						return true
-					}
-					else {
-						throw QueryServerError.portalNotFound
+						self.state = .ready
 					}
 				}
-				return false
+				return true
 			}
-			else {
-				// Unknown packet type
-				throw QueryServerError.protocolError
-			}
+			return false
 		}
 		else {
 			return false
+		}
+	}
+
+	private func readExecute() throws -> Bool {
+		/* Execute message.
+		Byte1('E')	Identifies the message as an Execute command.
+		Int32		Length of message contents in bytes, including self.
+		String		The name of the portal to execute (an empty string selects the unnamed
+		portal).
+		Int32		Maximum number of rows to return, if portal contains a query that returns
+		rows (ignored otherwise). Zero denotes "no limit". */
+		if let messageLength = self.readInt32(), let messageData = try self.read(length: messageLength - 4) {
+			var reader = DataReader(data: messageData)
+			if let portalName = reader.readZeroTerminatedString() {
+				guard let portal = self.portals[portalName] else { throw QueryServerError.portalNotFound }
+				guard let s = self.server else { return false }
+				self.state = .querying
+				self.currentPortalName = portalName
+				try s.query(portal.statement, parameters: portal.parameters, connection: self) { result in
+					if let result = result {
+						try self.send(result: result)
+					}
+					try self.sendQueryComplete(tag: "SELECT") // TODO fetch tag from command
+				}
+
+				return true
+			}
+		}
+		return false
+	}
+
+	private func readSync() throws -> Bool {
+		/* Sync message
+		Byte1('S')	Identifies the message as a Sync command.
+		Int32(4)	Length of message contents in bytes, including self. */
+		if let messageLength = self.readInt32() {
+			_ = try self.read(length: messageLength - 4)
+
+			// Close the active portal
+			if let portalName = self.currentPortalName {
+				self.portals[portalName] = nil
+				self.currentPortalName = nil
+				self.state = .ready
+				try self.sendReadyForQuery()
+				return true
+			}
+			else {
+				throw QueryServerError.portalNotFound
+			}
+		}
+		return false
+	}
+
+	/** Reads the next packet in preparing/ready state. Returns whether the connection should continue
+	to process packets. */
+	private func readPacket() throws -> Bool {
+		guard let messageType = try self.readByte() else { return false }
+		guard let messageLetter = Unicode.Scalar(Int(messageType)) else { throw QueryServerError.protocolError }
+
+		switch Character(messageLetter) {
+		case "C": return try self.readClose()
+		case "E": return try self.readExecute()
+		case "P": return try self.readParse()
+		case "Q": return try self.readQuery()
+		case "B": return try self.readBind()
+		case "D": return try self.readDescribe()
+		case "S": return try self.readSync()
+		case "X": return false
+		default:
+			throw QueryServerError.protocolError
 		}
 	}
 
@@ -702,13 +690,10 @@ public final class QueryClientConnection<PreparedStatementType: PreparedStatemen
 						}
 					}
 
-				case .ready:
-					if try !self.readQuery() {
+				case .ready, .querying:
+					if try !self.readPacket() {
 						shouldKeepRunning = false
 					}
-
-				case .querying:
-					return
 
 				case .closed:
 					return
