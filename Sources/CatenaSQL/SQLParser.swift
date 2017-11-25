@@ -169,6 +169,7 @@ public struct SQLUpdate {
 
 public enum SQLShow {
 	case tables
+	case all
 }
 
 public struct SQLIndex {
@@ -368,6 +369,7 @@ public enum SQLStatement {
 		case .show(let s):
 			switch s {
 			case .tables: return "SHOW TABLES\(end)"
+			case .all: return "SHOW ALL\(end)"
 			}
 
 		case .describe(let t):
@@ -1144,9 +1146,12 @@ internal class SQLParser {
 				)
 
 			g["show-statement"] = Parser.matchLiteralInsensitive("SHOW ") ~~ (
-				Parser.matchLiteralInsensitive("TABLES") => { [unowned self] in
+				(Parser.matchLiteralInsensitive("TABLES") => { [unowned self] in
 					self.stack.append(.statement(.show(.tables)))
-				}
+				})
+				| (Parser.matchLiteralInsensitive("ALL") => { [unowned self] in
+					self.stack.append(.statement(.show(.all)))
+				})
 			)
 
 			g["describe-statement"] = Parser.matchLiteralInsensitive("DESCRIBE ")

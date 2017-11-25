@@ -407,7 +407,8 @@ class SQLExecutive {
 	static fileprivate let describeColumns = ["column", "type", "in_primary_key", "not_null", "default_value"]
 
 	/** The column names in the result set of a SHOW statement */
-	static fileprivate let showColumns = ["name"]
+	static fileprivate let showTablesColumns = ["name"]
+	static fileprivate let showAllColumns = ["name", "setting", "description"]
 
 	let context: SQLContext
 	let database: Database
@@ -484,6 +485,9 @@ class SQLExecutive {
 				// NOTE: here we are translating back the 'sqlite#' to 'sqlite_' (see above)
 				let query = "SELECT (CASE WHEN name LIKE 'sqlite#%' THEN ('sqlite_' || SUBSTR(name, 8)) ELSE name END) as name FROM sqlite_master WHERE type='table' AND NOT(name LIKE '\\_%' ESCAPE '\\');"
 				return SQLiteBackendResult(result: try database.perform(query))
+
+			case .all:
+				return MemoryBackendResult(columns: SQLExecutive.showAllColumns, rows: [])
 			}
 
 		default:
@@ -531,8 +535,12 @@ extension SQLStatement {
 			}
 			return c
 
-		case .show(_):
-			return SQLExecutive.showColumns.map { SQLColumn(name: $0) }
+		case .show(let t):
+			switch t {
+			case .tables: return SQLExecutive.showTablesColumns.map { SQLColumn(name: $0) }
+			case .all: return SQLExecutive.showAllColumns.map { SQLColumn(name: $0) }
+			}
+
 
 		case .if(_):
 			// Can't really know without executing

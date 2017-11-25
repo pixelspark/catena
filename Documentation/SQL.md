@@ -57,10 +57,16 @@ The returned table has the following columns:
 | not_null | INT | 1 when the column cannot be NULL, 0 otherwise |
 | default_value | `type` | The default value for this column, or NULL when it has no default value |
 
+#### SHOW
+
 #### SHOW TABLES
 
 Returns a list of all tables that are accessible (disregarding permissions) as a single table with column `name` containing the
 name of each table.
+
+#### SHOW ALL
+
+Currently unimplemented; returns connection settings. The columns are named 'name', 'setting' and 'description'.
 
 #### IF ... THEN ... ELSE ... END
 
