@@ -28,23 +28,6 @@ extension Value {
 	}
 }
 
-/** Translates statements received from the front-end to statements that are acceptable on-chain.
-E.g. this replaces macros like calls to 'version()' with a string literal. */
-fileprivate class FrontEndStatementVisitor: SQLVisitor {
-	func visit(expression: SQLExpression) throws -> SQLExpression {
-		switch expression {
-		case .call(let fun, parameters: _):
-			if fun == SQLFunction(name: "version") {
-				return .literalString("catena-1.0")
-			}
-			return expression
-
-		default:
-			return expression
-		}
-	}
-}
-
 public class QueryServerPreparedStatement: PreparedStatement {
 	let statement: SQLStatement
 	let identity: Identity

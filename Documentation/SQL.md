@@ -148,6 +148,13 @@ are considered true as well (e.g. `SELECT 1 AND '1foo';` returns `1`, whereas `S
 * LENGTH(str): returns the length of string `str`
 * ABS(num): returns the absolute value of number `num`
 
+### Macros
+
+Macros are functions that are executed by the client before a query is submitted to the chain.
+
+* VERSION(): returns information about the current version of the software (this primarily exists for Postgres compatibility and is unlikely to change except for major changes)
+* UUID(): generates a new, random UUID string
+
 ### Subexpressions
 
 * EXISTS(select): returns '1' when the `select` statement returns at least one row, '0' if it returns no rows. The select query may contain references to the outside query ('correlated' subquery).

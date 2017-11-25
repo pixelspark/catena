@@ -855,3 +855,22 @@ extension SQLBlock {
 	}
 }
 
+/** Translates statements received from the front-end to statements that are acceptable on-chain.
+E.g. this replaces macros like calls to 'version()' with a string literal. */
+internal class FrontEndStatementVisitor: SQLVisitor {
+	func visit(expression: SQLExpression) throws -> SQLExpression {
+		switch expression {
+		case .call(let fun, parameters: _):
+			if fun == SQLFunction(name: "version") {
+				return .literalString("catena-1.0")
+			}
+			else if fun == SQLFunction(name: "uuid") {
+				return .literalString(UUID().uuidString)
+			}
+			return expression
+
+		default:
+			return expression
+		}
+	}
+}

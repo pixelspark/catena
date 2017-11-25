@@ -124,7 +124,7 @@ public class SQLAPIEndpoint {
 					}
 				}
 
-				let statement = rawStatement.bound(to: translatedParameters)
+				let statement = try rawStatement.bound(to: translatedParameters).visit(FrontEndStatementVisitor())
 
 				// Collect parameter information
 				let parameters = statement.parameters
