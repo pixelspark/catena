@@ -208,7 +208,10 @@ public class Server<LedgerType: Ledger>: WebSocketService {
 	public func disconnected(connection: WebSocketConnection, reason: WebSocketCloseReasonCode) {
 		Log.info("[Server] disconnected gossip \(connection.id); reason=\(reason)")
 		self.mutex.locked {
-			self.gossipConnections.removeValue(forKey: connection.id)
+			if let pic = self.gossipConnections[connection.id] {
+				pic.disconnected()
+				self.gossipConnections.removeValue(forKey: connection.id)
+			}
 		}
 	}
 
@@ -434,6 +437,11 @@ public class PeerIncomingConnection<LedgerType: Ledger>: PeerConnection<LedgerTy
 		self.connection.close()
 	}
 
+	/** Called by the Server class when the WebSocket connection is disconnected. */
+	fileprivate func disconnected() {
+		self.delegate?.peer(disconnected: self)
+	}
+
 	func close() {
 		self.connection.close()
 	}
@@ -487,10 +495,6 @@ public class PeerOutgoingConnection<LedgerType: Ledger>: PeerConnection<LedgerTy
 		if !self.connection.isConnected {
 			self.connection.connect()
 		}
-	}
-
-	deinit {
-		self.delegate?.peer(disconnected: self)
 	}
 
 	public override func send(data: Data) throws {
@@ -604,6 +608,17 @@ public class Peer<LedgerType: Ledger>: PeerConnectionDelegate, CustomDebugString
 			Log.debug("Advance peer \(url) from state \(self.state)")
 			do {
 				if let n = node {
+					// If the connection has been disconnected since the last time we checked, reset state
+					if self.connection == nil {
+						switch self.state {
+						case .connected, .connecting(since: _), .queried, .querying(since: _), .passive:
+							self.state = .new(since: Date())
+
+						case .new(since: _), .failed(error: _, at: _), .ignored(reason: _):
+							break
+						}
+					}
+
 					switch self.state {
 					case .failed(error: _, at: let date):
 						// Failed peers become 'new' after a certain amount of time, so we can retry
