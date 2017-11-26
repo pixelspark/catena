@@ -130,20 +130,21 @@ class CatenaSQLTests: XCTestCase {
 
 		// Test ledger
 		let ledger = try! SQLLedger(genesis: genesis, database: ":memory:", replay: true)
+		var r: [SQLTransaction] = []
 		XCTAssert(try ledger.canAccept(transaction: configTransaction, pool: nil) == .now)
-		XCTAssert(try ledger.receive(block: configBlock))
+		XCTAssert(try ledger.receive(block: configBlock, recovered: &r))
 
 		// Check to see if new blocks are accepted
 		for b in blocks {
 			XCTAssert(try! ledger.isNew(block: b))
-			XCTAssert(try! ledger.receive(block: b))
+			XCTAssert(try! ledger.receive(block: b, recovered: &r))
 		}
 		XCTAssert(ledger.longest.highest == blocks.last!, "tip of chain should be last block")
 
 		// Check to see if existing blocks are denied entry
 		for b in blocks {
 			XCTAssert(!(try! ledger.isNew(block: b)))
-			XCTAssert(!(try! ledger.receive(block: b)))
+			XCTAssert(!(try! ledger.receive(block: b, recovered: &r)))
 		}
 
 		// Mine an alternative chain and see how that goes
@@ -170,7 +171,7 @@ class CatenaSQLTests: XCTestCase {
 
 		for b in altBlocks {
 			XCTAssert(try! ledger.isNew(block: b))
-			_ = try! ledger.receive(block: b)
+			_ = try! ledger.receive(block: b, recovered: &r)
 		}
 		XCTAssert(ledger.longest.highest == altBlocks.last!, "tip of chain should be last block")
 	}

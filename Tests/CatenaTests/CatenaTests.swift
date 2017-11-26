@@ -241,19 +241,20 @@ class CatenaTests: XCTestCase {
 
 		var b = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: ts, payload: Data())
 		b.mine(difficulty: try ledger.longest.difficulty(forBlockFollowing: ledger.longest.genesis))
-		XCTAssert(try ledger.receive(block: b))
+		var r: [TestTransaction] = []
+		XCTAssert(try ledger.receive(block: b, recovered: &r))
 		XCTAssert(ledger.longest.highest == b)
 
 		// Attempt to append an invalid block
 		var c = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: ts, payload: Data())
 		c.mine(difficulty: try ledger.longest.difficulty(forBlockFollowing: ledger.longest.genesis))
 		c.nonce = 0
-		XCTAssert(!(try ledger.receive(block: c)))
+		XCTAssert(!(try ledger.receive(block: c, recovered: &r)))
 
 		// Attempt to add an outdated block should fail
 		var d = try TestBlock(version: 1, index: 1, nonce: 0, previous: ledger.longest.genesis.signature!, miner: minerID, timestamp: ts, payload: Data())
 		d.mine(difficulty: try ledger.longest.difficulty(forBlockFollowing: ledger.longest.genesis))
-		XCTAssert(!(try ledger.receive(block: d)))
+		XCTAssert(!(try ledger.receive(block: d, recovered: &r)))
 
 		// Attempt to add an easier block should fail
 		var e = try TestBlock(version: 1, index: 2, nonce: 0, previous: b.signature!, miner: minerID, timestamp: ts, payload: Data())
@@ -264,10 +265,10 @@ class CatenaTests: XCTestCase {
 			e.mine(difficulty: 1)
 		}
 		XCTAssert(!(try ledger.longest.canAppend(block: e, to: ledger.longest.highest)))
-		XCTAssert(!(try ledger.receive(block: e)))
+		XCTAssert(!(try ledger.receive(block: e, recovered: &r)))
 		e.signature = nil
 		e.mine(difficulty: try ledger.longest.difficulty(forBlockFollowing: ledger.longest.highest))
-		XCTAssert(try ledger.receive(block: e))
+		XCTAssert(try ledger.receive(block: e, recovered: &r))
 
 
 		XCTAssert(ledger.longest.highest == e)
