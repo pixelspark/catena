@@ -377,10 +377,15 @@ public class Node<LedgerType: Ledger> {
 
 			let isNew = try self.ledger.mutex.locked { () -> Bool in
 				let isNew = try self.ledger.isNew(block: block) && self.ledger.longest.highest.index < block.index
-				let wasAppended = try self.ledger.receive(block: block)
+				var recovered: [BlockType.TransactionType] = []
+				let wasAppended = try self.ledger.receive(block: block, recovered: &recovered)
 				if wasAppended {
 					self.miner.remove(transactions: block.transactions)
 				}
+
+				// Re-add recovered transactions to miner queue
+				Log.info("[Node] Re-adding \(recovered.count) transactions to miner queue after chain splice")
+				recovered.forEach { _ = try? self.miner.append(transaction: $0) }
 
 				if let p = peer, wasRequested && !wasAppended && block.index > 0 {
 					let (fetchIndex, fetchHash) = self.ledger.orphans.earliestRootFor(orphan: block)

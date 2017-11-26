@@ -324,6 +324,19 @@ extension Blockchain {
 
 		return Date(timeIntervalSince1970: TimeInterval(times.median))
 	}
+
+	/** Returns the set of transactions in blocks starting at the indicated index up to and including
+	the current highest block. */
+	public func transactions(from: BlockType.IndexType) throws -> [BlockType.TransactionType] {
+		var transactions: [BlockType.TransactionType] = []
+		var block: BlockType? = self.highest
+		while let b = block, b.index >= from {
+			transactions.append(contentsOf: b.transactions)
+			block = try self.get(block: b.previous)
+		}
+
+		return transactions
+	}
 }
 
 public struct SHA256Hash: Hash {
@@ -561,7 +574,7 @@ public extension Ledger {
 
 	/** Notify the ledger of a new block. An attempt is made to append the block to the currently longest chain. If that
 	fails, the block is saved for later, in case (together with other blocks) a longer chain can be formed. */
-	public func receive(block: BlockchainType.BlockType) throws -> Bool {
+	public func receive(block: BlockchainType.BlockType, recovered: inout [BlockchainType.BlockType.TransactionType]) throws -> Bool {
 		Log.debug("[Ledger] receive block #\(block.index) \(block.signature!.stringValue)")
 		return try self.mutex.locked { () -> Bool in
 			if block.isSignatureValid {
@@ -623,6 +636,10 @@ public extension Ledger {
 									}
 									prev = b
 								}
+
+								// What transactions are we cutting away?
+								let maxRecover: BlockchainType.BlockType.IndexType = 5
+								recovered = try self.longest.transactions(from: max(self.longest.highest.index - maxRecover, splice.index))
 
 								// First cut the tree up to the splice point for the sidechain
 								if splice.signature! != self.longest.highest.signature! {
