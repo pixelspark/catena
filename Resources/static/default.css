@@ -23,7 +23,9 @@ body {
 }
 
 p {
-	margin-bottom: 0.8em;
+	margin-bottom: 2em;
+	max-width: 600px;
+	line-height: 1.2em;
 }
 
 main button {

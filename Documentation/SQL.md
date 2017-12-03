@@ -17,11 +17,25 @@ Catena supports a subset of SQL with the following general remarks:
 In the future, the Catena parser will be expanded to support more types of statements. Only deterministic queries will
 be supported (e.g. no functions that return current date/time or random values).
 
+Any transaction executes in a 'current database'. Some statements can be executed outside of a specific
+database context. For these, any database name (e.g. "") is allowed.
+
 ## Statements
 
 ### Statement types
 
 The following statement types are supported in Catena.
+
+#### CREATE DATABASE
+
+Creates a database and makes the invoker of the statement the owner of the database. If the database
+already exists, the transaction is rolled back. Note: the 'current database' for the transaction must be the
+database that is about to be created.
+
+#### DROP DATABASE
+
+Removes the indicated database, but only if there are no tables left in the database. Only the owner of the
+database can execute this statement.
 
 #### SELECT
 
@@ -40,6 +54,22 @@ The following statement types are supported in Catena.
 This syntax can be used to execute multiple statements sequentially: `DO x; y; z END;` (where x, y and
 z are each statements). The result of the statement is the result of the *last* statement executed. Sequential
 execution stops when any of the statements fails (and the transaction is rolled back completely).
+
+#### GRANT / REVOKE
+
+Grant and revoke statements create privileges in a database to perform certain privileged actions. The
+statements look as follows:
+
+````
+GRANT permission TO X'userhash';
+GRANT permission ON "table" TO X'userhash';
+REVOKE permission TO X'userhash';
+REVOKE permission ON "table" TO X'userhash';
+````
+
+In the above, `permission` is one of the valid permission names (e.g. create, delete, update, drop). When
+no table is specified, the grant applies to all tables In the database. A grant can be created and remains
+valid for tables that do not exist yet, or are dropped while a grant exists.
 
 #### DESCRIBE
 
@@ -67,6 +97,14 @@ name of each table.
 #### SHOW ALL
 
 Currently unimplemented; returns connection settings. The columns are named 'name', 'setting' and 'description'.
+
+#### SHOW DATABASES
+
+Returns a list of databases. This statement can be executed outside of database context.
+
+#### SHOW GRANTS
+
+Returns the list of grants in the current database (the columns are `user`, `kind` and `table`).
 
 #### IF ... THEN ... ELSE ... END
 

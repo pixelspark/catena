@@ -1,6 +1,16 @@
 <template>
 	<div>
 		<dl>
+			<dt>Database</dt>
+			<dd>
+				<select v-model="database">
+					<option value="">Select...</option>
+					<option v-for="db in databases" :value="db" :key="db">{{db}}</option>
+				</select>
+			</dd>
+		</dl>
+
+		<dl>
 			<dt>Kind</dt>
 			<dd>
 				<select v-model="kind">
@@ -29,7 +39,7 @@
 			</dd>
 		</dl>
 
-		<catena-transaction :sql="sql" v-if="(table !== null || templateHash !== null) && kind !== null" :agent="agent"></catena-transaction>
+		<catena-transaction :sql="sql" v-if="(table !== null || templateHash !== null) && kind !== null" :agent="agent" :database="database"></catena-transaction>
 	</div>
 </template>
 
@@ -47,7 +57,8 @@ module.exports = {
 			"update": "Update",
 			"drop": "Drop",
 			"create": "Create",
-			"template": "Template"
+			"template": "Template",
+			"grant": "Grant"
 		}; } }
 	},
 
@@ -55,12 +66,20 @@ module.exports = {
 		return { 
 			kind: "insert",
 			tables: [],
+			database: "",
+			databases: [],
 			table: null,
 			templateQuery: "",
 			templateHash: null,
 			templateError: null,
 			templateParameters: null,
 		};
+	},
+
+	watch: {
+		database: function() {
+			this.refresh();
+		}
 	},
 
 	created: function() {
@@ -70,10 +89,10 @@ module.exports = {
 	computed: {
 		sql: function() {
 			if(this.kind == 'template') {
-				return "INSERT INTO \"grants\" (\"kind\", \"user\", \"table\") VALUES ('"+this.kind+"', X'"+this.user.publicHashHex+"', X'"+this.templateHash+"');";
+				return "GRANT template X'"+this.templateHash+"' TO X'"+this.user.publicHashHex+"';";
 			}
 			else {
-				return "INSERT INTO \"grants\" (\"kind\", \"user\", \"table\") VALUES ('"+this.kind+"', X'"+this.user.publicHashHex+"', '"+this.table+"');";
+				return "GRANT "+this.kind+" ON \""+this.table+"\" TO X'"+this.user.publicHashHex+"';";
 			}
 		},
 
@@ -105,7 +124,7 @@ module.exports = {
 			self.templateParameters = null;
 			self.templateError = null;
 			self.templateHash = null;
-			this.agent.query(this.templateQuery, {}, function(code, res) {
+			this.agent.query(this.templateQuery, {}, self.database, function(code, res) {
 				if(code == 200) {
 					self.templateError = "This is not a mutating query!";
 				}
@@ -123,9 +142,19 @@ module.exports = {
 		refresh: function() {
 			var self = this;
 
-			this.agent.tables(function(code, tbls) {
-				self.tables = tbls;
+			this.agent.databases(function(err, databases) {
+				databases.sort();
+				self.databases = databases;
 			});
+
+			if(self.database != "") {
+				this.agent.tables(self.database, function(code, tbls) {
+					self.tables = tbls;
+				});
+			}
+			else {
+				self.tables = [];
+			}
 		}
 	}
 };

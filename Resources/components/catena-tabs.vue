@@ -18,6 +18,7 @@
 <script>
 module.exports = {
 	template: '#catena-tabs',
+
 	data: function() {
 		return {tabs: [], currentTab: 0};
 	},

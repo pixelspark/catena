@@ -167,6 +167,7 @@ Sent in reply to a `query` request to let the other side know that this peer is 
 ````
 {"t": "tx", "tx": {
 	"tx": {
+		"database": databaseName,
 		"sql": txSQL,
 		"counter": txCounter,
 		"invoker": txInvoker

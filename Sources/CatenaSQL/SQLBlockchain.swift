@@ -367,6 +367,90 @@ public class SQLBlockchain: Blockchain {
 	}
 }
 
+public class SQLDatabasesTable {
+	let database: Database
+	let table: SQLTable
+
+	private let nameColumn = SQLColumn(name: "name")
+	private let ownerColumn = SQLColumn(name: "owner")
+
+	init(database: Database, table: SQLTable) throws {
+		self.database = database
+		self.table = table
+
+		try database.transaction {
+			if !(try database.exists(table: self.table.name)) {
+				var cols = OrderedDictionary<SQLColumn, SQLType>()
+				cols.append(.text, forKey: self.nameColumn)
+				cols.append(.blob, forKey: self.ownerColumn)
+				let createStatement = SQLStatement.createTable(table: self.table, schema: SQLSchema(
+					columns: cols,
+					primaryKey: self.nameColumn
+				))
+				try _ = self.database.perform(createStatement.sql(dialect: self.database.dialect))
+			}
+		}
+	}
+
+	public func owner(for database: SQLDatabase) throws -> SQLBlockchain.BlockType.IdentityType? {
+		let selectStatement = SQLStatement.select(SQLSelect(
+			these: [.column(self.ownerColumn)],
+			from: self.table,
+			joins: [],
+			where: SQLExpression.binary(.column(self.nameColumn), .equals, .literalString(database.name.lowercased())),
+			distinct: false,
+			orders: []
+		))
+
+		let r = try self.database.perform(selectStatement.sql(dialect: self.database.dialect))
+		if r.hasRow, case .blob(let value) = r.values[0] {
+			return try SQLBlockchain.BlockType.IdentityType(hash: value)
+		}
+		return nil
+	}
+
+	public func exists(database: SQLDatabase) throws -> Bool {
+		return try self.owner(for: database) != nil
+	}
+
+	public func create(database: SQLDatabase, owner: SQLBlockchain.BlockType.IdentityType) throws {
+		let insertStatement = SQLStatement.insert(SQLInsert(
+			orReplace: false,
+			into: self.table,
+			columns: [self.nameColumn, self.ownerColumn],
+			values: [[.literalString(database.name.lowercased()), .literalBlob(owner.hash)]]
+		))
+		try _ = self.database.perform(insertStatement.sql(dialect: self.database.dialect))
+	}
+
+	public func drop(database: SQLDatabase) throws {
+		let dropStatement = SQLStatement.delete(from: self.table, where:
+			.binary(.column(self.nameColumn), .equals, .literalString(database.name.lowercased()))
+		)
+		try _ = self.database.perform(dropStatement.sql(dialect: self.database.dialect))
+	}
+
+	/** Returns a list of databases with their owners */
+	public func list() throws -> [SQLDatabase: PublicKey] {
+		let selectStatement = SQLStatement.select(SQLSelect(
+			these: [.column(self.nameColumn), .column(self.ownerColumn)],
+			from: self.table,
+			joins: [],
+			distinct: false,
+			orders: []
+		))
+
+		let r = try self.database.perform(selectStatement.sql(dialect: self.database.dialect))
+
+		var data: [SQLDatabase: PublicKey] = [:]
+		while r.hasRow, case .text(let name) = r.values[0], case .blob(let owner) = r.values[1] {
+			data[SQLDatabase(name: name)] = PublicKey(data: owner)
+			r.step()
+		}
+		return data
+	}
+}
+
 public class SQLUsersTable {
 	let database: Database
 	let table: SQLTable
@@ -384,7 +468,7 @@ public class SQLUsersTable {
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
 				cols.append(.blob, forKey: self.userColumn)
 				cols.append(.int, forKey: self.counterColumn)
-				let createStatement = SQLStatement.create(table: self.table, schema: SQLSchema(
+				let createStatement = SQLStatement.createTable(table: self.table, schema: SQLSchema(
 					columns: cols,
 					primaryKey: self.userColumn
 				))
@@ -462,7 +546,7 @@ public class SQLKeyValueTable {
 				var cols = OrderedDictionary<SQLColumn, SQLType>()
 				cols.append(.text, forKey: self.keyColumn)
 				cols.append(.text, forKey: self.valueColumn)
-				let createStatement = SQLStatement.create(table: self.table, schema: SQLSchema(
+				let createStatement = SQLStatement.createTable(table: self.table, schema: SQLSchema(
 					columns: cols,
 					primaryKey: self.keyColumn))
 				try _ = self.database.perform(createStatement.sql(dialect: self.database.dialect))
@@ -526,7 +610,7 @@ class SQLBlockArchive {
 				cols.append(SQLType.blob, forKey: SQLColumn(name: "payload"))
 				cols.append(SQLType.int, forKey: SQLColumn(name: "work"))
 
-				let createStatement = SQLStatement.create(table: table, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
+				let createStatement = SQLStatement.createTable(table: table, schema: SQLSchema(columns: cols, primaryKey: SQLColumn(name: "signature")))
 				_ = try self.database.perform(createStatement.sql(dialect: self.database.dialect))
 
 				let createIndexStatement = SQLStatement.createIndex(table: table, index: SQLIndex(name: SQLIndexName(name: "idx_index"), on: OrderedSet<SQLColumn>([
@@ -674,7 +758,7 @@ public class SQLPeerDatabase: PeerDatabase {
 		self.table = table
 
 		if try !self.database.exists(table: table.name) {
-			let create = SQLStatement.create(table: self.table, schema: SQLSchema(primaryKey: uuidColumn, columns:
+			let create = SQLStatement.createTable(table: self.table, schema: SQLSchema(primaryKey: uuidColumn, columns:
 				(uuidColumn, .text),
 				(urlColumn, .text)
 			))
@@ -720,27 +804,25 @@ public class SQLPeerDatabase: PeerDatabase {
 }
 
 public struct SQLMetadata {
-	public static let grantsTableName = "grants"
+	static let grantsTableName = "_grants"
 	static let infoTableName = "_info"
 	static let blocksTableName = "_blocks"
 	static let usersTableName = "_users"
-
-	/** All tables maintained for metadata that are visible to chain queries. */
-	static let specialVisibleTables = [grantsTableName]
+	static let databasesTableName = "_databases"
 
 	/** All tables that are maintained for metadata, but invisible to chain queries. */
-	static let specialInvisibleTables = [infoTableName, blocksTableName, usersTableName]
+	static let specialInvisibleTables = [infoTableName, blocksTableName, usersTableName, grantsTableName, databasesTableName]
 
-	let info: SQLKeyValueTable
-	public let grants: SQLGrants
-	public let users: SQLUsersTable
 	let database: Database
+	internal let info: SQLKeyValueTable
+	internal let grants: SQLGrants
+	internal let users: SQLUsersTable
 	internal let archive: SQLBlockArchive
+	internal let databases: SQLDatabasesTable
 
 	private let infoHeadHashKey = "head"
 	private let infoHeadIndexKey = "index"
 	private let infoReplayingKey = "replaying"
-	private let enforcingGrantsKey = "enforcingGrants"
 
 	private let infoTrueValue = "true"
 	private let infoFalseValue = "false"
@@ -751,6 +833,7 @@ public struct SQLMetadata {
 		self.archive = try SQLBlockArchive(table: SQLTable(name: SQLMetadata.blocksTableName), database: database)
 		self.grants = try SQLGrants(database: database, table: SQLTable(name: SQLMetadata.grantsTableName))
 		self.users = try SQLUsersTable(database: database, table: SQLTable(name: SQLMetadata.usersTableName))
+		self.databases = try SQLDatabasesTable(database: database, table: SQLTable(name: SQLMetadata.databasesTableName))
 	}
 
 	var headHash: SQLBlock.HashType? {
@@ -781,24 +864,6 @@ public struct SQLMetadata {
 		try self.database.transaction(name: "metadata-set-\(index)-\(head.stringValue)") {
 			try self.info.set(key: self.infoHeadHashKey, value: head.stringValue)
 			try self.info.set(key: self.infoHeadIndexKey, value: String(index))
-		}
-	}
-
-	func set(enforcingGrants: Bool) throws {
-		try self.database.transaction(name: "metadata-set-enforcing") {
-			try self.info.set(key: self.enforcingGrantsKey, value: enforcingGrants ? self.infoTrueValue : self.infoFalseValue)
-		}
-	}
-
-	var isEnforcingGrants: Bool {
-		do {
-			if let r = try self.info.get(self.enforcingGrantsKey) {
-				return r == self.infoTrueValue
-			}
-			return false
-		}
-		catch {
-			return false
 		}
 	}
 

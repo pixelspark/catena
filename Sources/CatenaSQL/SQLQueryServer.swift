@@ -29,11 +29,12 @@ extension Value {
 }
 
 public class QueryServerPreparedStatement: PreparedStatement {
+	let database: SQLDatabase
 	let statement: SQLStatement
 	let identity: Identity
 	let agent: SQLAgent
 
-	init(sql: String, identity: Identity, agent: SQLAgent) throws {
+	init(sql: String, database: SQLDatabase, identity: Identity, agent: SQLAgent) throws {
 		var sql = sql
 		if sql.isEmpty {
 			throw QueryError.init(message: "query may not be empty")
@@ -44,6 +45,7 @@ public class QueryServerPreparedStatement: PreparedStatement {
 			sql += ";"
 		}
 
+		self.database = database
 		self.statement = try SQLStatement(sql).visit(FrontEndStatementVisitor())
 		self.identity = identity
 		self.agent = agent
@@ -84,9 +86,15 @@ public class QueryServerPreparedStatement: PreparedStatement {
 			// Just perform and cache the result
 			var result: [PQField] = []
 			try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
-				let context = SQLContext(metadata: chain.meta, invoker: self.identity.publicKey, block: chain.highest, parameterValues: [:])
+				let context = SQLContext(
+					database: self.database,
+					metadata: chain.meta,
+					invoker: self.identity.publicKey,
+					block: chain.highest,
+					parameterValues: [:]
+				)
 				let ex = SQLExecutive(context: context, database: chain.database)
-				let rs = try ex.perform(self.statement) { _ in return true }
+				let rs = try ex.perform(self.statement)
 				result = rs.columns.map { c in return PQField(name: c, type: .text) }
 			}
 			return result
@@ -159,26 +167,39 @@ public class NodeQueryServer: QueryServer<QueryServerPreparedStatement> {
 			identity = Identity(publicKey: invokerKey, privateKey: passwordKey)
 		}
 
-		return try QueryServerPreparedStatement(sql: sql, identity: identity, agent: self.agent)
+		let database = SQLDatabase(name: connection.database ?? "")
+		return try QueryServerPreparedStatement(sql: sql, database: database, identity: identity, agent: self.agent)
 	}
 
 	public override func query(_ query: QueryServerPreparedStatement, parameters: [PQValue], connection: QueryClientConnection<QueryServerPreparedStatement>, callback: @escaping (ResultSet?) throws -> ()) throws {
 		// Parse the statement
+		let database = SQLDatabase(name: connection.database ?? "")
 		let statement = try SQLStatement(query.bound(to: parameters).sql(dialect: SQLStandardDialect()))
-		Log.info("[Query] Execute: \(statement.sql(dialect: SQLStandardDialect()))")
+		Log.info("[Query] Execute in \(database.name): \(statement.sql(dialect: SQLStandardDialect()))")
 
 		// Mutating statements are queued
 		if statement.isPotentiallyMutating {
 			// This needs to go to the ledger
-			let transaction = try SQLTransaction(statement: statement, invoker: query.identity.publicKey, counter: SQLTransaction.CounterType(0))
+			let transaction = try SQLTransaction(
+				statement: statement,
+				invoker: query.identity.publicKey,
+				database: database,
+				counter: SQLTransaction.CounterType(0)
+			)
 			_ = try self.agent.submit(transaction: transaction, signWith: query.identity.privateKey)
 			try callback(nil)
 		}
 		else {
 			try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
-				let context = SQLContext(metadata: chain.meta, invoker: query.identity.publicKey, block: chain.highest, parameterValues: [:])
+				let context = SQLContext(
+					database: database,
+					metadata: chain.meta,
+					invoker: query.identity.publicKey,
+					block: chain.highest,
+					parameterValues: [:]
+				)
 				let ex = SQLExecutive(context: context, database: chain.database)
-				let result = try ex.perform(statement) { _ in return true }
+				let result = try ex.perform(statement)
 				try callback(QueryServerResultSet(result: result))
 			}
 		}

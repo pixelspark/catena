@@ -22,8 +22,10 @@ The following endpoints are available:
 
 ### /api/query
 
-This endpoint expects a POST request with a JSON object as body. The JSON object contains a single
-`sql` field which contains an SQL statement.
+This endpoint expects a POST request with a JSON object as body. The JSON object contains the following fields:
+
+* `sql` field which contains an SQL statement
+* `database` field which contains the name of the database in which the statement is to be executed
 
 The endpoint will return HTTP status `200` (OK) when the query could be executed. The response will
 be a JSON object that looks like this:

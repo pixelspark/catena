@@ -3,12 +3,15 @@
 		<dl>
 			<dt>Query</dt>
 			<dd><code>{{sql}}</code></dd>
+
+			<dt>Database</dt>
+			<dd><code>{{database}}</code></dd>
 		
 			<dt>Invoker</dt>
 			<dd>
 				<select @change="updateInvoker" :value="invoker" :disabled="submitting || submitted">
 					<option :value="null">Select...</option>
-					<option v-for="(identity, idx) in agent.identities" :value="idx">{{identity.publicHash}}</option>
+					<option v-for="(identity, idx) in agent.identities" :value="idx" :key="identity.publicHash">{{identity.publicHash}}</option>
 				</select>
 			</dd>
 		
@@ -51,6 +54,7 @@ const Transaction = require('./blockchain').Transaction;
 module.exports = {
 	props: {
 		sql: String,
+		database: String,
 		agent: Agent
 	},
 
@@ -73,8 +77,11 @@ module.exports = {
 	methods: {
 		sign: function() {
 			let id = this.agent.identities[this.invoker];
-			this.transaction = new Transaction(id, this.counter, this.sql);
+			this.transaction = new Transaction(id, this.database, this.counter, this.sql);
 			this.transaction.sign();
+			if(!this.transaction.verify()) {
+				throw new Error("my own transaction should verify");
+			}
 		},
 
 		submit: function() {

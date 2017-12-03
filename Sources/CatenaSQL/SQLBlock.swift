@@ -207,6 +207,7 @@ public struct SQLBlock: Block, CustomDebugStringConvertible {
 }
 
 struct SQLContext {
+	let database: SQLDatabase
 	let metadata: SQLMetadata
 	let invoker: PublicKey
 	let block: SQLBlock
@@ -247,19 +248,48 @@ fileprivate class SQLiteBackendVisitor: SQLVisitor {
 
 	fileprivate func tableNameToBackendTableName(_ table: SQLTable) -> SQLTable {
 		/* The table name may not start with 'sqlite_'. Replace with '$sqlite' (this name can never
-		be created from SQL since the '_' character is disallowed as first character). */
+		be created from SQL since the '_' character is disallowed as first character). Uppercase is
+		fine. */
 		let forbiddenPrefix = "sqlite_"
 		if table.name.starts(with: forbiddenPrefix) {
 			return SQLTable(name: table.name.replacingOccurrences(of: forbiddenPrefix, with: "sqlite#", options: [], range: forbiddenPrefix.startIndex..<forbiddenPrefix.endIndex))
 		}
-		return table
+
+		// Prepend database name
+		return SQLTable(name: "\(self.databaseNameToBackendName(self.context.database).name)$\(table.name)")
+	}
+
+	fileprivate func databaseNameToBackendName(_ db: SQLDatabase) -> SQLDatabase {
+		/* The database name may not start with 'sqlite_'. Replace with '$sqlite' (this name can never
+		be created from SQL since the '_' character is disallowed as first character). */
+		let forbiddenPrefix = "sqlite_"
+		if db.name.starts(with: forbiddenPrefix) {
+			return SQLDatabase(name: db.name.replacingOccurrences(of: forbiddenPrefix, with: "sqlite#", options: [], range: forbiddenPrefix.startIndex..<forbiddenPrefix.endIndex))
+		}
+		return db
+	}
+
+	func visit(database: SQLDatabase) throws -> SQLDatabase {
+		if database.name.isEmpty {
+			throw SQLExecutionError.invalidDatabaseName
+		}
+
+		return self.databaseNameToBackendName(database)
 	}
 
 	func visit(table: SQLTable) throws -> SQLTable {
+		if table.name.isEmpty {
+			throw SQLExecutionError.invalidTableName
+		}
+
 		return self.tableNameToBackendTableName(table)
 	}
 
 	func visit(column: SQLColumn) throws -> SQLColumn {
+		if column.name.isEmpty {
+			throw SQLExecutionError.invalidColumnName
+		}
+
 		/* Replace occurences of column 'rowid' with '$rowid'. The rowid column is special in SQLite
 		and we are therefore masking it. The same goes for 'oid'. The reverse translation is done in
 		SQLiteBackendResult. */
@@ -322,6 +352,12 @@ enum SQLExecutionError: LocalizedError {
 	/** The specified table cannot be created because it already exists */
 	case tableAlreadyExists(String)
 
+	/** A referenced database was not found */
+	case databaseDoesNotExist(String)
+
+	/** The specified database cannot be created because it already exists */
+	case databaseAlreadyExists(String)
+
 	/** A column was referenced outside the context of a table */
 	case notInTableContext(String)
 
@@ -331,15 +367,33 @@ enum SQLExecutionError: LocalizedError {
 	/** The same column was specified more than once in an INSERT, CREATE or UPDATE statement */
 	case duplicateColumns
 
+	/** Database, colum or table name was invalid (empty) */
+	case invalidDatabaseName
+	case invalidColumnName
+	case invalidTableName
+
+	/** The database cannot be dropped because it is not empty */
+	case databaseNotEmpty
+
+	/** This statement must be executed in a database */
+	case requiresDatabaseContext
+
 	var errorDescription: String? {
 		switch self {
 		case .failed: return "failed"
 		case .privilegeRequired: return "privilege required"
 		case .tableDoesNotExist(let t): return "table '\(t)' does not exist"
 		case .tableAlreadyExists(let t): return "table '\(t)' already exists"
+		case .databaseDoesNotExist(let t): return "database '\(t)' does not exist"
+		case .databaseAlreadyExists(let t): return "database '\(t)' already exists"
 		case .notInTableContext(let c): return "column '\(c)' was referenced outside table context"
 		case .columnDoesNotExist(let c): return "table does not contain referenced column '\(c)'"
 		case .duplicateColumns: return "the same column was specified more than once"
+		case .invalidDatabaseName: return "invalid database name"
+		case .invalidTableName: return "invalid table name"
+		case .invalidColumnName: return "invalid column name"
+		case .requiresDatabaseContext: return "no database selected"
+		case .databaseNotEmpty: return "database is not empty"
 		}
 	}
 }
@@ -408,7 +462,9 @@ class SQLExecutive {
 
 	/** The column names in the result set of a SHOW statement */
 	static fileprivate let showTablesColumns = ["name"]
+	static fileprivate let showDatabasesColumns = ["name", "owner"]
 	static fileprivate let showAllColumns = ["name", "setting", "description"]
+	static fileprivate let showGrantsColumns = ["user", "kind", "table"]
 
 	let context: SQLContext
 	let database: Database
@@ -418,19 +474,80 @@ class SQLExecutive {
 		self.database = database
 	}
 
-	func perform(_ statement: SQLStatement, withRegime regime: (([SQLPrivilege]) throws -> (Bool))) throws -> Result {
+	func isAllowed(_ statement: SQLStatement, templateGranted: Bool) throws -> Bool {
+		// Database-level statements may obtain their privileges from (template) grants
+		if statement.requiredPrivileges.isEmpty {
+			// Anyone is allowed to do this anyway
+			return true
+		}
+
+		if statement.requiresDatabaseContext {
+			// All parts of a template-granted statement may be executed without further checks
+			if templateGranted {
+				return true
+			}
+			// A statement in a non-templated query should be executed only when the invoker has the required privileges
+			else if try self.context.metadata.grants.check(privileges: statement.requiredPrivileges, forUser: self.context.invoker, in: self.context.database) {
+				// Grants are present
+				return true
+			}
+		}
+
+		// Otherwise, only the database owner can do anything on the database
+		if let owner = try self.context.metadata.databases.owner(for: self.context.database) {
+			if SQLBlockchain.BlockType.IdentityType(of: self.context.invoker.data) == owner {
+				return true
+			}
+			else {
+				return false
+			}
+		}
+		else if case .createDatabase(let d) = statement, d == self.context.database {
+			/* A 'create database' statement can be xecuted if there is no database owner (e.g. it
+			does not yet exist) and the transaction database equals the name of the database to be
+			created */
+			return true
+		}
+
+		else {
+			// Sorry...
+			return false
+		}
+	}
+
+	private func tables(in: SQLDatabase, context: SQLContext) throws -> Result {
+		// TODO make this database-independent (i.e. implement a Database.listOfTables protocol function)
+		// NOTE: here we are translating back the 'sqlite#' to 'sqlite_' (see above)
+		let prefix = SQLiteBackendVisitor(context: context).tableNameToBackendTableName(SQLTable(name: "")).name
+		let tableName = "SUBSTR(name, LENGTH(\(database.dialect.literalString(prefix)))+1)"
+		let query = "SELECT (CASE WHEN \(tableName) LIKE 'sqlite#%' THEN ('sqlite_' || SUBSTR(\(tableName), 8)) ELSE \(tableName) END) as name FROM sqlite_master WHERE type='table' AND NOT(name LIKE '\\_%' ESCAPE '\\') AND name LIKE \(database.dialect.literalString(prefix + "%"));"
+		return SQLiteBackendResult(result: try database.perform(query))
+}
+
+	/** Performs the given front-end query on the database, verifying the statement and privileges. */
+	func perform(_ statement: SQLStatement, templateGranted: Bool = false) throws -> Result {
+		Log.debug("[Executive] FE: \(statement.sql(dialect: SQLStandardDialect()))")
+		// Check if there is a template grant for this statement
+		let templateGranted = try templateGranted || self.context.metadata.grants.check(
+			privileges: [SQLPrivilege.template(hash: statement.templateHash)],
+			forUser: self.context.invoker,
+			in: self.context.database
+		)
+
+		// Does this require database context?
+		if statement.requiresDatabaseContext && context.database.name.isEmpty {
+			throw SQLExecutionError.requiresDatabaseContext
+		}
+
 		// Check permissions
-		if !(try regime(statement.requiredPrivileges)) {
+		if !(try self.isAllowed(statement, templateGranted: templateGranted)) {
 			throw SQLExecutionError.privilegeRequired
 		}
 
-		/* Translate the transaction SQL to SQL we can execute on our backend. This includes binding
-		variable and parameter values. */
-		let be = SQLiteBackendVisitor(context: context)
-		let backendStatement = try statement.visit(be)
+		let backendifier = SQLiteBackendVisitor(context: context)
 
 		// See if the backend can executive this type of statement
-		switch backendStatement {
+		switch statement {
 		case .fail:
 			throw SQLExecutionError.failed
 
@@ -438,19 +555,19 @@ class SQLExecutive {
 			// Evaluate each branch of the if statement until one of them matches
 			for (condition, statement) in sqlIf.branches {
 				// Evaluate condition
-				let evaluationSQL = "SELECT CASE WHEN (\(condition.sql(dialect: database.dialect))) THEN 1 ELSE 0 END AS result;"
+				let evaluationSQL = "SELECT CASE WHEN (\(try condition.visit(backendifier).sql(dialect: database.dialect))) THEN 1 ELSE 0 END AS result;"
 				let evaluationResult = try database.perform(evaluationSQL)
 				assert(evaluationResult.hasRow, "evaluation of condition must return a row")
 
 				if case .int(let result) = evaluationResult.values[0], result == 1 {
 					// Evaluation was positive
-					return try self.perform(statement, withRegime: regime)
+					return try self.perform(statement, templateGranted: templateGranted)
 				}
 			}
 
 			// Execute 'else'
 			if let other = sqlIf.otherwise {
-				return try self.perform(other, withRegime: regime)
+				return try self.perform(other, templateGranted: templateGranted)
 			}
 			else {
 				throw SQLExecutionError.failed
@@ -460,16 +577,17 @@ class SQLExecutive {
 			// Execute all statements in-order
 			var lastResult: Result = MemoryBackendResult(columns: [], rows: [])
 			for statement in statements {
-				 lastResult = try self.perform(statement, withRegime: regime)
+				 lastResult = try self.perform(statement, templateGranted: templateGranted)
 			}
 			return lastResult
 
 		case .describe(let t):
-			if try !database.exists(table: t.name) {
+			let backendTable = try t.visit(backendifier)
+			if try !database.exists(table: backendTable.name) {
 				throw SQLExecutionError.tableDoesNotExist(t.name)
 			}
 
-			let query = "PRAGMA table_info(\(t.sql(dialect: database.dialect)));";
+			let query = "PRAGMA table_info(\(backendTable.sql(dialect: database.dialect)));";
 			let result = try database.perform(query)
 			var rows: [[Value]] = []
 			while case .row = result.state {
@@ -481,18 +599,126 @@ class SQLExecutive {
 		case .show(let s):
 			switch s {
 			case .tables:
-				// TODO make this database-independent (i.e. implement a Database.listOfTables protocol function)
-				// NOTE: here we are translating back the 'sqlite#' to 'sqlite_' (see above)
-				let query = "SELECT (CASE WHEN name LIKE 'sqlite#%' THEN ('sqlite_' || SUBSTR(name, 8)) ELSE name END) as name FROM sqlite_master WHERE type='table' AND NOT(name LIKE '\\_%' ESCAPE '\\');"
-				return SQLiteBackendResult(result: try database.perform(query))
+				return try self.tables(in: self.context.database, context: self.context)
+
+			case .databases:
+				let data = try self.context.metadata.databases.list()
+				let rows = data.map({ (key, value) -> [Value] in
+					return [.text(key.name), .blob(value.data)]
+				})
+
+				return MemoryBackendResult(columns: SQLExecutive.showDatabasesColumns, rows: rows)
+
+			case .grants(let sg):
+				var filter = SQLExpression.binary(.column(SQLColumn(name: "database")), .equals, .literalString(context.database.name))
+
+				if let forUser = sg.forUser {
+					filter = SQLExpression.binary(filter, .and, SQLExpression.binary(.column(SQLColumn(name: "user")), .equals, .literalBlob(forUser)))
+				}
+
+				if let forTable = sg.forTable {
+					filter = SQLExpression.binary(filter, .and, SQLExpression.binary(.column(SQLColumn(name: "table")), .equals, .literalString(forTable.name)))
+				}
+
+				let select = SQLStatement.select(SQLSelect(
+					these: [
+						.column(SQLColumn(name: "user")),
+						.column(SQLColumn(name: "kind")),
+						.column(SQLColumn(name: "table"))
+					],
+					from: SQLTable(name: SQLMetadata.grantsTableName),
+					joins: [],
+					where: filter,
+					distinct: true,
+					orders: [
+						SQLOrder(expression: .column(SQLColumn(name: "user")), direction: .ascending),
+						SQLOrder(expression: .column(SQLColumn(name: "kind")), direction: .ascending),
+						SQLOrder(expression: .column(SQLColumn(name: "table")), direction: .ascending)
+					],
+					limit: nil
+				))
+				return SQLiteBackendResult(result: try database.perform(select.sql(dialect: database.dialect)))
 
 			case .all:
 				return MemoryBackendResult(columns: SQLExecutive.showAllColumns, rows: [])
 			}
 
+		case .createDatabase(database: let d):
+			try self.context.metadata.databases.create(database: d, owner: SQLBlockchain.BlockType.IdentityType(of: self.context.invoker.data))
+			return MemoryBackendResult(columns: [], rows: [])
+
+		case .dropDatabase(database: let d):
+			if let owner = try self.context.metadata.databases.owner(for: d) {
+				// Only the owner can drop a database
+				if owner == SQLBlockchain.BlockType.IdentityType(of: self.context.invoker.data) {
+					// Are there any tables left in this table? Then deny drop
+					let res = try self.tables(in: self.context.database, context: self.context)
+					if res.hasRow {
+						throw SQLExecutionError.databaseNotEmpty
+					}
+
+					try self.context.metadata.databases.drop(database: d)
+				}
+				else {
+					throw SQLExecutionError.privilegeRequired
+				}
+			}
+			else {
+				throw SQLExecutionError.databaseDoesNotExist(d.name)
+			}
+			return MemoryBackendResult(columns: [], rows: [])
+
+		case .grant(let pr, to: let user), .revoke(let pr, to: let user):
+			let on: SQLExpression
+			let onCondition: SQLExpression
+			switch pr {
+				case .create(let table), .insert(let table), .update(let table), .delete(let table), .drop(let table), .grant(let table):
+					if let t = table {
+						on = .literalString(t.name)
+						onCondition = .binary(.column(SQLColumn(name: "table")), .equals, on)
+					}
+					else {
+						on = .null
+						onCondition =  .unary(.isNull, .column(SQLColumn(name: "table")))
+					}
+
+				case .template(hash: let h):
+					on = .literalBlob(h.hash)
+					onCondition = .binary(.column(SQLColumn(name: "table")), .equals, on)
+
+				case .never:
+					fatalError("cannot grant never privilege. This should not be allowed by the parser/validator")
+			}
+
+			if case .revoke = statement {
+				let delete = SQLStatement.delete(from: SQLTable(name: SQLMetadata.grantsTableName), where: .binary(
+					.binary(.column(SQLColumn(name: "user")), .equals, .literalBlob(user)),
+					.and,
+					onCondition
+				))
+
+				return SQLiteBackendResult(result: try database.perform(delete.sql(dialect: database.dialect)))
+			}
+			else {
+				let insert = SQLStatement.insert(SQLInsert(
+					orReplace: false,
+					into: SQLTable(name: SQLMetadata.grantsTableName),
+					columns: ["user","kind","table","database"].map { SQLColumn(name: $0) },
+					values: [[
+						.literalBlob(user),
+						.literalString(pr.privilegeName),
+						on,
+						.literalString(self.context.database.name)
+					]]
+				))
+				return SQLiteBackendResult(result: try database.perform(insert.sql(dialect: database.dialect)))
+			}
+
 		default:
+			let backendStatement = try statement.visit(backendifier)
 			try backendStatement.verify(on: database)
 			let query = backendStatement.sql(dialect: database.dialect)
+			Log.debug("[Executive] BE \(query)")
 			return SQLiteBackendResult(result: try database.perform(query))
 		}
 	}
@@ -512,10 +738,10 @@ extension SQLStatement {
 			// No statements in the block, then no columns
 			return []
 
-		case .describe(_):
+		case .describe:
 			return SQLExecutive.describeColumns.map { SQLColumn(name: $0) }
 
-		case .update(_), .insert(_), .delete(from: _, where: _), .drop(table: _), .create(table: _, schema: _), .fail, .createIndex(table: _, index: _):
+		case .update, .insert, .delete, .dropTable, .dropDatabase, .createTable, .createDatabase, .fail, .createIndex, .grant, .revoke:
 			// DML/DDL statements do not return data
 			return []
 
@@ -539,8 +765,9 @@ extension SQLStatement {
 			switch t {
 			case .tables: return SQLExecutive.showTablesColumns.map { SQLColumn(name: $0) }
 			case .all: return SQLExecutive.showAllColumns.map { SQLColumn(name: $0) }
+			case .databases: return SQLExecutive.showDatabasesColumns.map { SQLColumn(name: $0) }
+			case .grants(_): return SQLExecutive.showGrantsColumns.map { SQLColumn(name: $0) }
 			}
-
 
 		case .if(_):
 			// Can't really know without executing
@@ -620,24 +847,15 @@ extension SQLStatement {
 				try s.these.forEach { try $0.verify(on: database, context: nil, isCreating: false) }
 			}
 
-		case .create(table: let t, schema: _):
+		case .createTable(table: let t, schema: _):
 			if try database.exists(table: t.name) {
 				throw SQLExecutionError.tableAlreadyExists(t.name)
 			}
 
-		case .drop(table: let t):
+		case .dropTable(table: let t):
 			if try !database.exists(table: t.name) {
 				throw SQLExecutionError.tableDoesNotExist(t.name)
 			}
-
-		case .fail:
-			return
-
-		case .if(let sqlIf):
-			try sqlIf.branches.forEach { try $0.1.verify(on: database) }
-
-		case .block(let ss):
-			try ss.forEach { try $0.verify(on: database) }
 
 		case .insert(let i):
 			if try !database.exists(table: i.into.name) {
@@ -657,12 +875,6 @@ extension SQLStatement {
 					throw SQLExecutionError.columnDoesNotExist(col.name)
 				}
 			}
-
-		case .show(_):
-			return
-
-		case .describe(_):
-			return
 
 		case .update(let u):
 			if try !database.exists(table: u.table.name) {
@@ -697,6 +909,41 @@ extension SQLStatement {
 					throw SQLExecutionError.columnDoesNotExist(col.name)
 				}
 			}
+
+		case .fail, .show, .describe, .createDatabase, .if, .block, .dropDatabase, .grant, .revoke:
+			fatalError("this kind of statement should not be executed on the backend")
+		}
+	}
+
+	/** Whether this statement must be executed in a database (true) or can be executed outside of a
+	database context (false). Determines whether the grants table should be consulted in order to
+	find permission to execute this query. */
+	var requiresDatabaseContext: Bool {
+		switch self {
+		case .fail, .createDatabase, .dropDatabase:
+			return false
+
+		case .block(let statements):
+			// If any of the sub statements requires database context, the block requires it
+			for statement in statements {
+				if statement.requiresDatabaseContext {
+					return true
+				}
+			}
+			return false
+
+		case .if(_):
+			// TODO: allow without context depending on expression and sub statements
+			return true
+
+		case .show(let s):
+			switch s {
+			case .all, .databases: return false
+			case .tables, .grants: return true
+			}
+
+		case .createIndex, .createTable, .select, .dropTable, .insert, .update, .delete, .describe, .grant, .revoke:
+			return true
 		}
 	}
 }
@@ -741,10 +988,8 @@ extension SQLBlock {
 				return b.counter > a.counter
 			})
 
-			/* Check transaction grants (only grants from previous blocks 'count'; as transactions can potentially change
-			the grants, we need to check them up front) */
+			/* Check transaction counters */
 			var counterChanges: [PublicKey: SQLTransaction.CounterType] = [:]
-			var setEnforcingGrants = false
 
 			let privilegedTransactions = try sortedTransactions.filter { transaction -> Bool in
 				/* Does any of the privileges involve a 'special' table? If so, deny. Note: this should never happen
@@ -791,44 +1036,21 @@ extension SQLBlock {
 
 			// Write block's transactions to the database
 			for transaction in privilegedTransactions {
-				if replay || transaction.shouldAlwaysBeReplayed {
+				if replay {
 					do {
 						let transactionSavepointName = "tr-\(transaction.signature?.base58encoded ?? "unsigned")"
 						try database.transaction(name: transactionSavepointName) {
-							let context = SQLContext(metadata: meta, invoker: transaction.invoker, block: self, parameterValues: [:])
+							let context = SQLContext(
+								database: transaction.database,
+								metadata: meta,
+								invoker: transaction.invoker,
+								block: self,
+								parameterValues: [:]
+							)
 							let statement = transaction.statement
 
-							// Check if there is a template grant for this statement
-							let templateGranted = try meta.isEnforcingGrants && meta.grants.check(privileges: [SQLPrivilege.template(hash: transaction.statement.templateHash)], forUser: transaction.invoker)
-
 							let executive = SQLExecutive(context: context, database: database)
-							_ = try executive.perform(statement) { requiredPrivileges in
-								if meta.isEnforcingGrants {
-									// All parts of a template-granted statement may be executed without further checks
-									if templateGranted {
-										return true
-									}
-									// A statement in a non-templated query should be executed only when the invoker has the required privileges
-									else if try meta.grants.check(privileges: requiredPrivileges, forUser: transaction.invoker) {
-										// Grants are present
-										return true
-									}
-									else {
-										return false
-									}
-								}
-								else {
-									/* If this transaction inserts a grant, and we are currently not enforcing grants,
-									the next block starts enforcing grants */
-									if requiredPrivileges.contains(where: { pr in pr == SQLPrivilege.insert(table: SQLTable(name: SQLMetadata.grantsTableName)) }) {
-										setEnforcingGrants = true
-									}
-
-									// If grants are not enforced, allow everything
-									Log.debug("[Block] NOT checking grants for block #\(self.index) because not enforcing")
-									return true
-								}
-							}
+							_ = try executive.perform(statement)
 						}
 					}
 					catch {
@@ -843,13 +1065,6 @@ extension SQLBlock {
 
 			// Write the block itself to archive
 			try meta.archive(block: self)
-
-			// Update info
-			if setEnforcingGrants {
-				Log.debug("[SQLBlock] applying block \(self.index) sets grant enforce flag")
-				try meta.set(enforcingGrants: true)
-			}
-
 			try meta.set(head: self.signature!, index: self.index)
 		}
 	}

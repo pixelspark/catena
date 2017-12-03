@@ -21,6 +21,7 @@ public class SQLTransaction: Transaction, CustomDebugStringConvertible {
 
 	public typealias CounterType = UInt64
 	public var invoker: CatenaCore.PublicKey
+	public var database: SQLDatabase
 	public var counter: CounterType
 	public var statement: SQLStatement
 	var signature: Data? = nil
@@ -33,15 +34,17 @@ public class SQLTransaction: Transaction, CustomDebugStringConvertible {
 		case syntaxError
 	}
 
-	public init(statement: SQLStatement, invoker: CatenaCore.PublicKey, counter: CounterType = CounterType(0)) throws {
+	public init(statement: SQLStatement, invoker: CatenaCore.PublicKey, database: SQLDatabase, counter: CounterType = CounterType(0)) throws {
 		self.invoker = invoker
 		self.statement = statement
 		self.counter = counter
+		self.database = database
 	}
 
 	public required init(json: [String: Any]) throws {
 		guard let tx = json["tx"] as? [String: Any] else { throw SQLTransactionError.formatError }
 		guard let sql = tx["sql"] as? String else { throw SQLTransactionError.formatError }
+		guard let database = tx["database"] as? String else { throw SQLTransactionError.formatError }
 		guard let invoker = tx["invoker"] as? String else { throw SQLTransactionError.formatError }
 		guard let counter = tx["counter"] as? Int else { throw SQLTransactionError.formatError }
 		guard let invokerKey = PublicKey(string: invoker) else { throw SQLTransactionError.formatError }
@@ -49,6 +52,7 @@ public class SQLTransaction: Transaction, CustomDebugStringConvertible {
 		self.invoker = invokerKey
 		self.statement = try SQLStatement(sql)
 		self.counter = CounterType(counter)
+		self.database = SQLDatabase(name: database)
 
 		if let sig = json["signature"] as? String, let sigData = Data(base64Encoded: sig) {
 			self.signature = sigData
@@ -58,6 +62,7 @@ public class SQLTransaction: Transaction, CustomDebugStringConvertible {
 	private var dataForSigning: Data {
 		var d = Data()
 		d.append(self.invoker.data)
+		d.append(self.database.name.data(using: .utf8)!)
 		d.appendRaw(self.counter.littleEndian)
 		d.append(self.statement.sql(dialect: SQLStandardDialect()).data(using: .utf8)!)
 		return d
@@ -66,20 +71,6 @@ public class SQLTransaction: Transaction, CustomDebugStringConvertible {
 	@discardableResult public func sign(with privateKey: CatenaCore.PrivateKey) throws -> SQLTransaction {
 		self.signature = try self.invoker.sign(data: self.dataForSigning, with: privateKey)
 		return self
-	}
-
-	/** Whether the statement in this transaction should be executed by clients that only participate in validation and
-	metadata replay. This includes queries that modify e.g. the grants table. */
-	var shouldAlwaysBeReplayed: Bool {
-		let privs = self.statement.requiredPrivileges
-		for p in privs {
-			if let t = p.table, SQLMetadata.specialVisibleTables.contains(t.name) {
-				// Query requires a privilege to a special visible table, this should be replayed
-				return true
-			}
-		}
-
-		return false
 	}
 
 	public var isSignatureValid: Bool {
@@ -104,6 +95,7 @@ public class SQLTransaction: Transaction, CustomDebugStringConvertible {
 		var json: [String: Any] = [
 			"tx": [
 				"sql": self.statement.sql(dialect: SQLStandardDialect()),
+				"database": self.database.name,
 				"counter": NSNumber(value: self.counter),
 				"invoker": self.invoker.stringValue
 			]

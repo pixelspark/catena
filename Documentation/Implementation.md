@@ -4,19 +4,13 @@
 
 ## Metadata
 
-Catena provides an ordinary SQL database. The following system tables are defined and visible to clients:
-
-* _grants_: holds information about database privileges (see 'authentication' below).
-
-These tables are created and maintained 'on chain' (that is, the CREATE statement for it is included in the blockchain). They are also subject to the privilege system.
-
-### Internal metadata tables
-
 Internally, Catena stores metadata in the following tables that are *not* visible to (nor modifyable by) clients:
 
 * __info_: holds information about the current block hash and index. When a block transaction is executed, this contains information on the *last* block processed (i.e. not the block the transaction is part of)
 * __blocks_: holds an archive of all blocks in the chain.
 * __users_: holds the transaction counter for each transaction invoker public key (SHA-256 hashed)
+* _grants_: holds information about database privileges (see 'authentication' below).
+* _databases_: holds information about the existing databases and the hashed public keys of their owners
 
 ## Authentication
 
@@ -75,10 +69,11 @@ string and difficulty will lead to a specific genesis block and signature.
 
 ### Canonical form
 
-Transactions contain an invoker public key, a counter and an SQL statement and a signature. The signature
-is based on the public key, counter and SQL statement, serialized in a particular way. Transactions can be
-stored and transmitted in many different formats (usually JSON). In order to validate a transaction's signature,
-the 'data to be signed' is reconstructed from the data, after which the signature is verified against that data.
+Transactions contain an invoker public key, the database name, a counter and an SQL statement and a
+signature. The signature is based on the public key, counter and SQL statement, serialized in a particular
+way. Transactions can be stored and transmitted in many different formats (usually JSON). In order to
+validate a transaction's signature, the 'data to be signed' is reconstructed from the data, after which the
+signature is verified against that data.
 
 Every statement that is accepted as valid by the Catena parser maps to exactly one equivalent valid
 statement (the 'canonical form'). Transactions are required to contain only these canonical SQL statements.

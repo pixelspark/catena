@@ -81,6 +81,7 @@ public protocol SQLDialect {
 	func tableIdentifier(_ table: String) -> String
 	func columnIdentifier(_ column: String) -> String
 	func literalBlob(_ blob: Data) -> String
+	func databaseIdentifier(_ database: String) -> String
 }
 
 public struct SQLStandardDialect: SQLDialect {
@@ -108,6 +109,10 @@ public struct SQLStandardDialect: SQLDialect {
 
 	public func columnIdentifier(_ column: String) -> String {
 		return "\(identifierQualifier)\(column.replacingOccurrences(of: identifierQualifier, with: identifierQualifierEscape))\(identifierQualifier)"
+	}
+
+	public func databaseIdentifier(_ database: String) -> String {
+		return self.tableIdentifier(database)
 	}
 }
 

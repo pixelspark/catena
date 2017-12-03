@@ -19,7 +19,7 @@
 				<h2>Mutating query</h2>
 				<p>The query you have submitted is a mutating query. Do you want to submit a transaction to execute the query?</p>
 				<catena-expander title="Create transaction" icon="plus">
-					<catena-transaction :sql="formattedSQL" :agent="agent"></catena-transaction>
+					<catena-transaction :sql="formattedSQL" :agent="agent" :database="database"></catena-transaction>
 				</catena-expander>
 			</template>
 
@@ -53,6 +53,7 @@ const Agent = require("./blockchain").Agent;
 module.exports = {
 	props: {
 		sql: String,
+		database: String,
 		agent: Agent,
 		head: {type: String, default: null}
 	},
@@ -72,6 +73,10 @@ module.exports = {
 	watch: {
 		sql: function(nv) {
 			this.parameters = null;
+			this.update();
+		},
+
+		database: function(nv) {
 			this.update();
 		},
 
@@ -111,7 +116,7 @@ module.exports = {
 				self.isLoading = true;
 			}
 
-			this.agent.query(this.sql, this.parameters, function(code, res) {
+			this.agent.query(this.sql, this.parameters, this.database, function(code, res) {
 				self.isLoading = false;
 
 				if(code == 200) {

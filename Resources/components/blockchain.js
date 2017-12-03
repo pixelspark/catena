@@ -163,8 +163,9 @@ function hexEncode(str) {
 }
 
 class Transaction {
-	constructor(invoker, counter, sql) {
+	constructor(invoker, database, counter, sql) {
 		this.counter = counter;
+		this.database = database;
 		this.invoker = invoker;
 		this.sql = sql;
 		this.signature = null;
@@ -181,13 +182,19 @@ class Transaction {
 	}
 
 	get dataForSigning() {
+		let db = new TextEncoder().encode(this.database);
 		let text = new TextEncoder().encode(this.sql);
-		var buffer = new ArrayBuffer(this.invoker.publicKey.length + 8 + text.length);
+		var buffer = new ArrayBuffer(this.invoker.publicKey.length + db.length + 8 + text.length);
 		var uints = new Uint8Array(buffer);
 		
 		var idx = 0;
 		for(var a=0; a<this.invoker.publicKey.length; a++) {
 			uints[idx] = this.invoker.publicKey[a];
+			idx++;
+		}
+
+		for(var a=0; a<db.length; a++) {
+			uints[idx] = db[a];
 			idx++;
 		}
 
@@ -212,6 +219,7 @@ class Transaction {
 		var d = {
 			tx: {
 				sql: this.sql,
+				database: this.database,
 				counter: this.counter,
 				invoker: this.invoker.publicBase58
 			}
@@ -386,8 +394,8 @@ class Agent {
 	}
 
 	// Callback = function(code, res)
-	query(sql, parameters, callback) {
-		var data = {sql: sql, parameters: parameters};
+	query(sql, parameters, database, callback) {
+		var data = {sql: sql, parameters: parameters, database: database};
 
 		http.post(this.url + "api/query", data).then(function(r) {
 			return callback(200, r.body);
@@ -397,13 +405,60 @@ class Agent {
 		});
 	}
 
+	databasesIOwn(callback) {
+		var self = this;
+
+		this.query("SHOW DATABASES;", {}, "", function(code, res) {
+			if(code == 200) {
+				var databases = [];
+				if(Array.isArray(res.rows)) {
+					for(var a=0; a<res.rows.length; a++) {
+						let owner = res.rows[a][1];
+						for(var b=0; b<self.identities.length; b++) {
+							let id = self.identities[b];
+							console.log(owner, id.publicHash);
+							if(id.publicHash == owner) {
+								databases.push(res.rows[a][0]);
+								break;
+							}
+						}
+					}
+				}
+				return callback(null, databases);
+			}
+			else {
+				return callback(code, []);
+			}
+		});
+	}
+
 	// Callback = function(err, tables)
-	tables(callback) {
-		this.query("SHOW TABLES;", {}, function(code, res) {
+	databases(callback) {
+		this.query("SHOW DATABASES;", {}, "", function(code, res) {
+			if(code == 200) {
+				var databases = [];
+				if(Array.isArray(res.rows)) {
+					for(var a=0; a<res.rows.length; a++) {
+						databases.push(res.rows[a][0]);
+					}
+				}
+				return callback(null, databases);
+			}
+			else {
+				return callback(code, []);
+			}
+		});
+	}
+
+	// Callback = function(err, tables)
+	tables(database, callback) {
+		this.query("SHOW TABLES;", {}, database, function(code, res) {
 			if(code == 200) {
 				var tables = [];
-				for(var a=0; a<res.rows.length; a++) {
-					tables.push(res.rows[a][0]);
+				if(Array.isArray(res.rows)) {
+					for(var a=0; a<res.rows.length; a++) {
+						tables.push(res.rows[a][0]);
+					}
 				}
 				return callback(null, tables);
 			}

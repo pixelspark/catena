@@ -107,7 +107,7 @@ public class SQLAPIEndpoint {
 			let query = try JSONSerialization.jsonObject(with: data, options: [])
 
 			// Parse the statement
-			if let q = query as? [String: Any], let sql = q["sql"] as? String {
+			if let q = query as? [String: Any], let sql = q["sql"] as? String, let database = q["database"] as? String {
 				let rawStatement = try SQLStatement(sql)
 
 				// Did the client send parameters to fill in?
@@ -182,9 +182,15 @@ public class SQLAPIEndpoint {
                 else {
                     try self.agent.node.ledger.longest.withUnverifiedTransactions { chain in
                         let anon = try Identity()
-                        let context = SQLContext(metadata: chain.meta, invoker: anon.publicKey, block: chain.highest, parameterValues: [:])
+						let context = SQLContext(
+							database: SQLDatabase(name: database),
+							metadata: chain.meta,
+							invoker: anon.publicKey,
+							block: chain.highest,
+							parameterValues: [:]
+						)
                         let ex = SQLExecutive(context: context, database: chain.database)
-						let result = try ex.perform(statement) { _ in return true }
+						let result = try ex.perform(statement)
                         
                         var res: [String: Any] = [
                             "sql": sql

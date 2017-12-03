@@ -35,6 +35,41 @@
 
 		<main v-if="agent !== null && index !== null && error === null" >
 			<catena-tabs>
+				<catena-tab name="Welcome">
+					<article>
+						<h1>Welcome!</h1>
+						<p>To get started with Catena, take the following steps:</p>
+						<h2>
+							<i class="fa fa-check" style="color: rgb(153,204,0);" v-if="agent.identities.length &gt; 0"></i> 
+							<i class="fa fa-arrow-right" v-else></i> 
+							1. Create an identity
+						</h2>
+						<p>In order to submit transactions to a Catena database, you need an identity. This identity consists of a special 'key' that allows you to sign transactions.</p>
+
+						<h2>
+							<i class="fa fa-check" style="color: rgb(153,204,0);" v-if="ownedDatabases.length &gt; 0"></i> 
+							<i class="fa fa-arrow-right" v-else></i>
+							2. Create a database
+						</h2>
+						<p>When you create a database, you become the owner of the database. Only your key can sign transactions that make changes to this database, unless you grant privileges to other keys as well.</p>
+						<p v-if="ownedDatabases.length &gt; 0">You currently own database(s) {{ownedDatabases.join(', ')}}.</p>
+						<catena-expander title="Create a database" icon="plus">
+							<dl>
+								<dt>Name of the new database:</dt>
+								<dd><input v-model="newDatabaseName" type="text"></dd>
+							</dl>
+							<catena-transaction :sql="newDatabaseSQL" :database="newDatabaseName" :agent="agent"></catena-transaction>
+						</catena-expander>
+
+						<h2>3. Create tables and add some data</h2>
+						<p>As database owner, you can perform any operation on your freshly created database on the 'Data' tab.</p>
+						
+						<h2>4. Grant other users rights on your database</h2>
+						<p>Generate other identities on the 'Identities' tab and grant them rights to allow others to perform operations on your database.</p>
+						
+					</article>					
+				</catena-tab>
+
 				<catena-tab name="Data">
 					<catena-data :agent="agent" :head="index.highest"></catena-data>
 				</catena-tab>
@@ -100,7 +135,9 @@ module.exports = {
 			connection: null,
 			agent: null,
 			transactions: [],
-			error: null
+			error: null,
+			newDatabaseName: "foo",
+			ownedDatabases: []
 		};
 
 		try {
@@ -124,6 +161,10 @@ module.exports = {
 	computed: {
 		wsScheme: function() {
 			return this.scheme == "https" ? "wss" : "ws";
+		},
+
+		newDatabaseSQL: function() {
+			return "CREATE DATABASE \""+this.newDatabaseName+"\";";
 		}
 	},
 
@@ -148,6 +189,10 @@ module.exports = {
 				this.connection.onReceiveBlock = function(x) {
 					self.onReceiveBlock(x);
 				};
+
+				this.agent.databasesIOwn(function(err, owned) {
+					self.ownedDatabases = owned;
+				});
 			}
 			catch(e) {
 				self.error = e.getMessage();

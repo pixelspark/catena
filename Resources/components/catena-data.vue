@@ -2,6 +2,13 @@
 	<div class="catena-data">
 		<aside>
 			<transition-group name="list" tag="ul">
+				<li key="">
+					<select v-model="database">
+						<option key="" value="">Select database...</option>
+						<option v-for="db in databases" :value="db" :key="db">{{db}}</option>
+					</select>
+				</li>
+
 				<li v-for="(t, idx) in tables" @click.self="selectTable(t)" :class="{'selected': table === t}" :key="t">
 					<i class="fa fa-table"></i> {{t}}
 					<a href="javascript:void(0);" style="float:right;" @click.capture="describeTable(t)"><i class="fa fa-info"></i></a>
@@ -13,10 +20,10 @@
 				</li>
 			</transition-group>
 		</aside>
-		<article style="overflow-y: auto;">
+		<article style="overflow-y: auto;" v-if="database != ''">
 			<textarea class="catena-sql" @keyup="setQuery" :value="typedQuery" @keyup.enter="enterUp"></textarea>
 			<button @click="perform"><i class="fa fa-play"></i> Query</button>
-			<catena-query :sql="query" v-if="query != '' && query !== null " :agent="agent" :head="head"></catena-query>
+			<catena-query :sql="query" v-if="query != '' && query !== null " :agent="agent" :head="head" :database="database"></catena-query>
 		</article>
 	</div>
 </template>
@@ -33,6 +40,8 @@ module.exports = {
 	data: function() {
 		return {
 			tables: [],
+			databases: [],
+			database: "",
 			queries: ["CREATE TABLE foo(x INT);", "SELECT * FROM foo WHERE x < ?x;", "INSERT INTO foo (x) VALUES (?what);", "IF (?val*1) < 10 THEN INSERT INTO foo (x) VALUES (?val) ELSE FAIL END;"], 
 			query: "SHOW TABLES;", 
 			table: null,
@@ -43,6 +52,10 @@ module.exports = {
 	watch: {
 		head: function(nv) {
 			this.refresh();
+		},
+
+		database: function(nv) {
+			this.refreshTables();
 		}
 	},
 
@@ -84,10 +97,26 @@ module.exports = {
 		refresh: function() {
 			var self = this;
 
-			this.agent.tables(function(err, tables) {
-				tables.sort();
-				self.tables = tables;
+			this.agent.databases(function(err, databases) {
+				databases.sort();
+				self.databases = databases;
 			});
+
+			this.refreshTables();
+		},
+
+		refreshTables: function() {
+			var self = this;
+
+			if(this.database != "") {
+				this.agent.tables(this.database, function(err, tables) {
+					tables.sort();
+					self.tables = tables;
+				});
+			}
+			else {
+				self.tables = [];
+			}
 		},
 
 		remove: function(idx) {

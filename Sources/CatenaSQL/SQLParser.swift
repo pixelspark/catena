@@ -43,6 +43,30 @@ public struct SQLColumn: Equatable, Hashable {
 	}
 }
 
+public struct SQLDatabase: Equatable, Hashable {
+	var name: String
+
+	init(name: String) {
+		self.name = name
+	}
+
+	public static func ==(lhs: SQLDatabase, rhs: SQLDatabase) -> Bool {
+		return lhs.name.lowercased() == rhs.name.lowercased()
+	}
+
+	public var hashValue: Int {
+		return self.name.lowercased().hashValue
+	}
+
+	public func sql(dialect: SQLDialect) -> String {
+		return dialect.databaseIdentifier(self.name.lowercased())
+	}
+
+	internal func visit(_ visitor: SQLVisitor) throws -> SQLDatabase {
+		return try visitor.visit(database: self)
+	}
+}
+
 public struct SQLFunction: Equatable, Hashable {
 	public var name: String
 
@@ -167,9 +191,16 @@ public struct SQLUpdate {
 	}
 }
 
+public struct SQLShowGrants {
+	var forUser: Data? = nil
+	var forTable: SQLTable? = nil
+}
+
 public enum SQLShow {
 	case tables
+	case databases
 	case all
+	case grants(SQLShowGrants)
 }
 
 public struct SQLIndex {
@@ -190,9 +221,13 @@ public struct SQLIf {
 public typealias SQLIndexName = SQLColumn
 
 public enum SQLStatement {
-	case create(table: SQLTable, schema: SQLSchema)
+	case createDatabase(database: SQLDatabase)
+	case createTable(table: SQLTable, schema: SQLSchema)
 	case delete(from: SQLTable, where: SQLExpression?)
-	case drop(table: SQLTable)
+	case dropTable(table: SQLTable)
+	case dropDatabase(database: SQLDatabase)
+	case grant(SQLPrivilege, to: Data)
+	case revoke(SQLPrivilege, to: Data)
 	case insert(SQLInsert)
 	case select(SQLSelect)
 	case update(SQLUpdate)
@@ -231,7 +266,7 @@ public enum SQLStatement {
 
 	var isPotentiallyMutating: Bool {
 		switch self {
-		case .create, .drop, .delete, .update, .insert(_), .createIndex(table: _, index: _):
+		case .createTable, .createDatabase, .dropTable, .dropDatabase, .delete, .update, .insert, .createIndex, .grant, .revoke:
 			return true
 
 		/* An if statement is mutating when any of its contained statements is mutating (regardless
@@ -266,7 +301,7 @@ public enum SQLStatement {
 		let end = isTopLevel ? ";" : ""
 
 		switch self {
-		case .create(table: let table, schema: let schema):
+		case .createTable(table: let table, schema: let schema):
 			let def = schema.columns.map { (col, type) -> String in
 				let primary = (schema.primaryKey == col) ? " PRIMARY KEY" : ""
 				return "\(col.sql(dialect:dialect)) \(type.sql(dialect: dialect))\(primary)"
@@ -290,8 +325,32 @@ public enum SQLStatement {
 			}
 			return "DELETE FROM \(table.sql(dialect: dialect))\(whereSQL)\(end)"
 
-		case .drop(let table):
+		case .dropTable(let table):
 			return "DROP TABLE \(table.sql(dialect: dialect))\(end)"
+
+		case .createDatabase(database: let d):
+			return "CREATE DATABASE \(d.sql(dialect: dialect))\(end)"
+
+		case .dropDatabase(database: let d):
+			return "DROP DATABASE \(d.sql(dialect: dialect))\(end)"
+
+		case .grant(let pr, to: let user), .revoke(let pr, to: let user):
+			let on: String
+			if let t = pr.table {
+				on = "ON \(dialect.tableIdentifier(t.name)) "
+			}
+			else if case .template(hash: let h) = pr {
+				on = "\(dialect.literalBlob(h.hash)) ";
+			}
+			else {
+				on = "";
+			}
+
+			var verb = "GRANT"
+			if case .revoke = self {
+				verb = "REVOKE"
+			}
+			return "\(verb) \(pr.privilegeName) \(on)TO \(dialect.literalBlob(user))\(end)"
 
 		case .insert(let insert):
 			let colSQL = insert.columns.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
@@ -370,6 +429,17 @@ public enum SQLStatement {
 			switch s {
 			case .tables: return "SHOW TABLES\(end)"
 			case .all: return "SHOW ALL\(end)"
+			case .databases: return "SHOW DATABASES\(end)"
+			case .grants(let g):
+				var sql = "SHOW GRANTS"
+				if let u = g.forUser {
+					sql += " FOR \(dialect.literalBlob(u))"
+				}
+				if let u = g.forTable {
+					sql += " ON \(dialect.databaseIdentifier(u.name))"
+				}
+				sql += end
+				return sql
 			}
 
 		case .describe(let t):
@@ -591,8 +661,10 @@ public enum SQLFragment {
 	case tuple([SQLExpression])
 	case columnList([SQLColumn])
 	case tableIdentifier(SQLTable)
+	case databaseIdentifier(SQLDatabase)
 	case columnIdentifier(SQLColumn)
 	case functionIdentifier(SQLFunction)
+	case privilege(String, on: String?, blob: Data?)
 	case type(SQLType)
 	case columnDefinition(column: SQLColumn, type: SQLType, primary: Bool)
 	case binaryOperator(SQLBinary)
@@ -930,6 +1002,15 @@ internal class SQLParser {
 			g["id-table-wrapped"] = Parser.matchLiteral("\"") ~ ^"id-table-naked" ~ Parser.matchLiteral("\"")
 			g["id-table"] = ^"id-table-wrapped" | ^"id-table-naked"
 
+			// Database identifier
+			g["id-database-naked"] = (firstCharacter ~ followingCharacter*) => { [unowned self] parser in
+				self.stack.append(.databaseIdentifier(SQLDatabase(name: parser.text)))
+			}
+
+			g["id-database-wrapped"] = Parser.matchLiteral("\"") ~ ^"id-database-naked" ~ Parser.matchLiteral("\"")
+			g["id-database"] = ^"id-database-wrapped" | ^"id-database-naked"
+
+
 			// SELECT
 			g["tuple"] = Parser.matchList(^"ex" => { [unowned self] in
 				if case .expression(let ne) = self.stack.popLast()! {
@@ -1043,26 +1124,32 @@ internal class SQLParser {
 			g["create-ddl-statement"] = Parser.matchLiteralInsensitive("CREATE TABLE ")
 				~~ (^"id-table" => { [unowned self] in
 						guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
-						self.stack.append(.statement(.create(table: table, schema: SQLSchema())))
+						self.stack.append(.statement(.createTable(table: table, schema: SQLSchema())))
 					})
 				~~ Parser.matchLiteral("(")
 				~~ Parser.matchList(^"column-definition" => { [unowned self] in
 					guard case .columnDefinition(column: let column, type: let type, primary: let primary) = self.stack.popLast()! else { fatalError() }
 					guard case .statement(let s) = self.stack.popLast()! else { fatalError() }
-					guard case .create(table: let t, schema: let oldSchema) = s else { fatalError() }
+					guard case .createTable(table: let t, schema: let oldSchema) = s else { fatalError() }
 					var newSchema = oldSchema
 					newSchema.columns[column] = type
 					if primary {
 						newSchema.primaryKey = column
 					}
-					self.stack.append(.statement(.create(table: t, schema: newSchema)))
+					self.stack.append(.statement(.createTable(table: t, schema: newSchema)))
 				}, separator: Parser.matchLiteral(","))
 				~~ Parser.matchLiteral(")")
+
+			g["create-db-statement"] = Parser.matchLiteralInsensitive("CREATE DATABASE ")
+				~~ (^"id-database" => { [unowned self] in
+					guard case .databaseIdentifier(let database) = self.stack.popLast()! else { fatalError() }
+					self.stack.append(.statement(.createDatabase(database: database)))
+				})
 
 			g["drop-ddl-statement"] = Parser.matchLiteralInsensitive("DROP TABLE ")
 				~~ (^"id-table" => { [unowned self] in
 					guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
-					self.stack.append(.statement(.drop(table: table)))
+					self.stack.append(.statement(.dropTable(table: table)))
 				})
 
 			g["update-dml-statement"] = Parser.matchLiteralInsensitive("UPDATE ")
@@ -1152,6 +1239,31 @@ internal class SQLParser {
 				| (Parser.matchLiteralInsensitive("ALL") => { [unowned self] in
 					self.stack.append(.statement(.show(.all)))
 				})
+				| (Parser.matchLiteralInsensitive("DATABASES") => { [unowned self] in
+					self.stack.append(.statement(.show(.databases)))
+				})
+				| (
+					(Parser.matchLiteralInsensitive("GRANTS") => { [unowned self] in
+						self.stack.append(.statement(.show(.grants(SQLShowGrants()))))
+					})
+					~~ ((Parser.matchLiteralInsensitive("FOR ")) ~~ ^"lit-blob" => {
+						guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
+						guard case .literalBlob(let data) = t else { fatalError() }
+						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+						guard case .show(let showType) = st else { fatalError() }
+						guard case .grants(var sg) = showType else { fatalError() }
+						sg.forUser = data
+						self.stack.append(.statement(.show(.grants(sg))))
+						})/~
+					~~ ((Parser.matchLiteralInsensitive("ON ")) ~~ ^"id-table" => {
+						guard case .tableIdentifier(let t) = self.stack.popLast()! else { fatalError() }
+						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+						guard case .show(let showType) = st else { fatalError() }
+						guard case .grants(var sg) = showType else { fatalError() }
+						sg.forTable = t
+						self.stack.append(.statement(.show(.grants(sg))))
+					})/~
+				)
 			)
 
 			g["describe-statement"] = Parser.matchLiteralInsensitive("DESCRIBE ")
@@ -1214,9 +1326,78 @@ internal class SQLParser {
 				}), separator: Parser.matchLiteral(";"))
 				~~ Parser.matchLiteralInsensitive("END")
 
+
+			g["drop-db-statement"] = Parser.matchLiteralInsensitive("DROP DATABASE ")
+				~~ (^"id-database" => { [unowned self] in
+					guard case .databaseIdentifier(let database) = self.stack.popLast()! else { fatalError() }
+					self.stack.append(.statement(.dropDatabase(database: database)))
+				})
+
+			let privilegeType = SQLPrivilege.validPrivilegeNames.map { Parser.matchLiteralInsensitive($0) }
+
+			g["grant-statement"] = (
+				Parser.matchLiteralInsensitive("GRANT ")
+					~~ Parser.matchAnyFrom(privilegeType) => { p in
+						self.stack.append(.privilege(p.text, on: nil, blob: nil))
+					}
+					~~ ((^"lit-blob" => { p in
+						guard case .expression(let ex) = self.stack.popLast()! else { fatalError() }
+						guard case .literalBlob(let data) = ex else { fatalError() }
+						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
+						self.stack.append(.privilege(type, on: nil, blob: data))
+						})/~)
+					~~ ((Parser.matchLiteralInsensitive("ON ") ~~ (^"id-table" => { p in
+						guard case .tableIdentifier(let t) = self.stack.popLast()! else { fatalError() }
+						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
+						self.stack.append(.privilege(type, on: t.name, blob: nil))
+					}))/~)
+					~~ Parser.matchLiteralInsensitive("TO ") ~~ ^"lit-blob"
+				) => {
+					guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
+					guard case .literalBlob(let data) = t else { fatalError() }
+					guard case .privilege(let type, on: let on, blob: let blob) = self.stack.popLast()! else { fatalError() }
+					if let b = blob {
+						self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, with: b), to: data)))
+					}
+					else {
+						self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, on: on), to: data)))
+					}
+				}
+
+			g["revoke-statement"] = (
+				Parser.matchLiteralInsensitive("REVOKE ")
+					~~ Parser.matchAnyFrom(privilegeType) => { p in
+						self.stack.append(.privilege(p.text, on: nil, blob: nil))
+					}
+					~~ ((^"lit-blob" => { p in
+						guard case .expression(let ex) = self.stack.popLast()! else { fatalError() }
+						guard case .literalBlob(let data) = ex else { fatalError() }
+						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
+						self.stack.append(.privilege(type, on: nil, blob: data))
+						})/~)
+					~~ ((Parser.matchLiteralInsensitive("ON ") ~~ (^"id-table" => { p in
+						guard case .tableIdentifier(let t) = self.stack.popLast()! else { fatalError() }
+						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
+						self.stack.append(.privilege(type, on: t.name, blob: nil))
+						}))/~)
+					~~ Parser.matchLiteralInsensitive("TO ") ~~ ^"lit-blob"
+				) => {
+					guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
+					guard case .literalBlob(let data) = t else { fatalError() }
+					guard case .privilege(let type, on: let on, blob: let blob) = self.stack.popLast()! else { fatalError() }
+					if let b = blob {
+						self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, with: b), to: data)))
+					}
+					else {
+						self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, on: on), to: data)))
+					}
+			}
+
 			// Statement categories
 			g["dql-statement"] = ^"select-dql-statement"
-			g["ddl-statement"] = ^"create-ddl-statement" | ^"drop-ddl-statement" | ^"show-statement" | ^"describe-statement"
+			g["ddl-statement"] = ^"create-ddl-statement" | ^"drop-ddl-statement" | ^"show-statement"
+				| ^"describe-statement" | ^"drop-db-statement" | ^"create-db-statement" | ^"grant-statement"
+				| ^"revoke-statement"
 			g["dml-statement"] = ^"update-dml-statement" | ^"insert-dml-statement" | ^"delete-dml-statement"
 			g["control-statement"] = ^"fail-statement" | ^"if-statement" | ^"block-statement"
 
@@ -1316,6 +1497,7 @@ protocol SQLVisitor: class {
 	func visit(schema: SQLSchema) throws -> SQLSchema
 	func visit(join: SQLJoin) throws -> SQLJoin
 	func visit(index: SQLIndex) throws -> SQLIndex
+	func visit(database: SQLDatabase) throws -> SQLDatabase
 }
 
 extension SQLVisitor {
@@ -1329,6 +1511,8 @@ extension SQLVisitor {
 	func visit(schema: SQLSchema) throws -> SQLSchema { return schema }
 	func visit(join: SQLJoin) throws -> SQLJoin { return join }
 	func visit(index: SQLIndex) throws -> SQLIndex { return index }
+	func visit(database: SQLDatabase) throws -> SQLDatabase { return database }
+
 }
 
 extension SQLColumn {
@@ -1384,8 +1568,8 @@ extension SQLStatement {
 		let newSelf: SQLStatement
 
 		switch self {
-		case .create(table: let t, schema: let s):
-			newSelf = .create(table: try t.visit(visitor), schema: try s.visit(visitor))
+		case .createTable(table: let t, schema: let s):
+			newSelf = .createTable(table: try t.visit(visitor), schema: try s.visit(visitor))
 
 		case .createIndex(table: let t, index: let index):
 			newSelf = .createIndex(table: try t.visit(visitor), index: try index.visit(visitor))
@@ -1393,8 +1577,18 @@ extension SQLStatement {
 		case .delete(from: let table, where: let expr):
 			newSelf = .delete(from: try table.visit(visitor), where: try expr?.visit(visitor))
 
-		case .drop(table: let t):
-			newSelf = .drop(table: try t.visit(visitor))
+		case .dropTable(table: let t):
+			newSelf = .dropTable(table: try t.visit(visitor))
+
+		case .createDatabase(database: let d):
+			newSelf = .createDatabase(database: try d.visit(visitor))
+
+		case .dropDatabase(database: let d):
+			newSelf = .dropDatabase(database: try d.visit(visitor))
+
+		case .grant, .revoke:
+			/// FIXME: should visit (at least)table name
+			newSelf = self
 
 		case .`if`(var sqlIf):
 			if let other = sqlIf.otherwise {
@@ -1408,6 +1602,7 @@ extension SQLStatement {
 			newSelf = .if(sqlIf)
 
 		case .insert(var ins):
+			ins.into = try ins.into.visit(visitor)
 			ins.columns = try ins.columns.map { try $0.visit(visitor) }
 			ins.values = try ins.values.map { tuple in
 				return try tuple.map { expr in

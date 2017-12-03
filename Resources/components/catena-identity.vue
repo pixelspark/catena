@@ -28,7 +28,11 @@
 	</dl>
 
 	<h2>Grants</h2>
-	<catena-query v-if="agent !== null" :sql="grantsSQL" :agent="agent" :head="head"></catena-query>
+	<select v-model="database">
+		<option>Select a database...</option>
+		<option v-for="db in databases" :key="db" :value="db">{{db}}</option>
+	</select>
+	<catena-query v-if="agent !== null && database != '' " :sql="grantsSQL" :agent="agent" :head="head" :database="database"></catena-query>
 
 	<catena-expander title="Add" icon="plus">
 		<catena-granter :agent="agent" :user="identity"></catena-granter>
@@ -89,6 +93,8 @@ module.exports = {
 
 	data: function() {
 		return { 
+			database: "",
+			databases: [],
 			isPersisted: this.identity ? this.identity.isPersisted : false,
 			counter: null,
 			messageToSign: "",
@@ -103,16 +109,21 @@ module.exports = {
 	watch: {
 		identity: function(nv) {
 			this.updateCounter();
+		},
+
+		head: function() {
+			this.refreshDatabases();
 		}
 	},
 
 	created: function() {
 		this.updateCounter();
+		this.refreshDatabases();
 	},
 
 	computed: {
 		grantsSQL: function() {
-			return "SELECT table, kind FROM grants WHERE user=X'"+this.identity.publicHashHex+"' ORDER BY table ASC;";
+			return "SHOW GRANTS FOR X'"+this.identity.publicHashHex+"';";
 		},
 
 		combinedSignedMessage: function() {
@@ -121,6 +132,15 @@ module.exports = {
 	},
 
 	methods: {
+		refreshDatabases: function() {
+			var self = this;
+
+			this.agent.databases(function(err, databases) {
+				databases.sort();
+				self.databases = databases;
+			});
+		},
+
 		verifyMessage: function() {
 			if(this.verifySignature === null || this.verifySignature.length == 0) {
 				try {

@@ -19,9 +19,7 @@ let queryPortOption = IntOption(shortFlag: "q", longFlag: "query-port", helpMess
 let peersOption = MultiStringOption(shortFlag: "j", longFlag: "join", helpMessage: "Peer URL to connect to ('ws://nodeid@hostname:port')")
 let mineOption = BoolOption(shortFlag: "m", longFlag: "mine", helpMessage: "Enable mining of blocks")
 let logOption = StringOption(shortFlag: "v", longFlag: "log", helpMessage: "The log level: debug, verbose, info, warning (default: info)")
-let testOption = BoolOption(shortFlag: "t", longFlag: "test", helpMessage: "Submit test queries to the chain periodically (default: off)")
 let initializeOption = BoolOption(shortFlag: "i", longFlag: "initialize", helpMessage: "Perform all initialization steps, then exit before starting the node.")
-let configureOption = BoolOption(shortFlag: "c", longFlag: "configure", helpMessage: "Generate transactions to initialize basic database structure (default: false)")
 let noReplayOption = BoolOption(shortFlag: "n", longFlag: "no-replay", helpMessage: "Do not replay database operations, just participate and validate transactions (default: false)")
 let nodeDatabaseFileOption = StringOption(longFlag: "node-database", required: false, helpMessage: "Backing database file for instance database (default: catena-node.sqlite)")
 let noLocalPeersOption = BoolOption(longFlag: "no-local-discovery", helpMessage: "Disable local peer discovery")
@@ -30,7 +28,7 @@ let nodeUUIDOption = StringOption(longFlag: "node-uuid", required: false, helpMe
 let allowCorsDomains = StringOption(longFlag: "allow-domain", required: false, helpMessage: "Domains from which to allow HTTP API requests (set to '*' to allow all)")
 
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, testOption, initializeOption, noReplayOption, nodeDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption, nodeUUIDOption, configureOption, allowCorsDomains, noWebClient)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, initializeOption, noReplayOption, nodeDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption, nodeUUIDOption, allowCorsDomains, noWebClient)
 
 do {
 	try cli.parse()
@@ -44,10 +42,6 @@ catch {
 if helpOption.wasSet {
 	cli.printUsage()
 	exit(0)
-}
-
-if (configureOption.value || testOption.value) && initializeOption.value {
-	fatalError("The --configure and --test options cannot be set when --initialize is set")
 }
 
 // Handle SIGTERM (this ensures we can cleanly exit when running under Docker)
@@ -118,7 +112,7 @@ do {
 	Log.info("Genesis seed=\(seedValue) block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
 
 	// If the database is in a file and we are initializing or configuring, remove anything that was there before
-	if (configureOption.value || initializeOption.value) && !memoryDatabaseFileOption.value {
+	if initializeOption.value && !memoryDatabaseFileOption.value {
 		_ = unlink(databaseFile.cString(using: .utf8)!)
 	}
 
@@ -214,79 +208,13 @@ do {
 		Log.info("Node URL: \(node.url.absoluteString)")
 		Swift.print("\r\nPGPASSWORD=\(rootIdentity.privateKey.stringValue) psql -h localhost -p \(netPort+1) -U \(rootIdentity.publicKey.stringValue)\r\n")
 
-		if configureOption.value {
-			// Create grants table, etc.
-			let create = SQLStatement.create(table: SQLTable(name: SQLMetadata.grantsTableName), schema: SQLGrants.schema)
-			let createTransaction = try SQLTransaction(statement: create, invoker: rootIdentity.publicKey)
-
-			let grant = SQLStatement.insert(SQLInsert(
-				orReplace: false,
-				into: SQLTable(name: SQLMetadata.grantsTableName),
-				columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
-				values: [
-					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.create(table: nil).privilegeName), .null],
-					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.drop(table: nil).privilegeName), .null],
-					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.insert(table: nil).privilegeName), .literalString(SQLMetadata.grantsTableName)],
-					[.literalBlob(rootIdentity.publicKey.data.sha256), .literalString(SQLPrivilege.delete(table: nil).privilegeName), .literalString(SQLMetadata.grantsTableName)]
-				]
-			))
-			let grantTransaction = try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey)
-			_ = try agent.submit(transaction: createTransaction, signWith: rootIdentity.privateKey)
-			_ = try agent.submit(transaction: grantTransaction, signWith: rootIdentity.privateKey)
-		}
-
-		// Start submitting test blocks if that's what the user requested
-		if testOption.value {
-			let identity = rootIdentity
-
-			node.start(blocking: false)
-			let q = try SQLStatement("CREATE TABLE test (origin TEXT, x TEXT);");
-			let createTransaction = try SQLTransaction(statement: q, invoker: rootIdentity.publicKey)
-			_ = try agent.submit(transaction: createTransaction, signWith: rootIdentity.privateKey)
-			_ = try agent.submit(transaction: try SQLTransaction(statement: q, invoker: rootIdentity.publicKey), signWith: rootIdentity.privateKey)
-
-			// Grant to user
-			let grant = SQLStatement.insert(SQLInsert(
-				orReplace: false,
-				into: SQLTable(name: SQLMetadata.grantsTableName),
-				columns: ["user", "kind", "table"].map { SQLColumn(name: $0) },
-				values: [
-					[.literalBlob(identity.publicKey.data.sha256), .literalString(SQLPrivilege.insert(table: nil).privilegeName), .literalString("test")]
-				]
-			))
-			_ = try agent.submit(transaction: try SQLTransaction(statement: grant, invoker: rootIdentity.publicKey), signWith: rootIdentity.privateKey)
-			sleep(10)
-
-			Log.info("Start submitting demo blocks")
-			var i = 0
-
-			while true {
-				do {
-					i += 1
-					let q = try SQLStatement("INSERT INTO test (origin,x) VALUES ('\(node.uuid.uuidString)',\(i));")
-					let tr = try SQLTransaction(statement: q, invoker: identity.publicKey)
-					_ = try agent.submit(transaction: tr, signWith: identity.privateKey)
-					Log.info("[Test] submitted \(tr)")
-					sleep(2)
-				}
-				catch {
-					Log.error(error.localizedDescription)
-					break
-				}
-			}
-		}
-		else {
-			node.start(blocking: false)
-		}
+		node.start(blocking: false)
 
 		// Set up signal handler
 		signal(SIGINT, SIG_IGN)
 
 		let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
 		sigintSrc.setEventHandler {
-			if configureOption.wasSet {
-				try? node.ledger.longest.persistBlocks(upToAndIncluding: 1)
-			}
 			exit(0)
 		}
 		sigintSrc.resume()

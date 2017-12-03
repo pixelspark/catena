@@ -32,10 +32,11 @@ class CatenaSQLTests: XCTestCase {
 	}
 
 	func testTransaction() throws {
+		let dbName = SQLDatabase(name: "test")
 		let id = try Identity()
 		let otherID = try Identity()
-		let st = SQLStatement.create(table: SQLTable(name: "foo"), schema: SQLSchema(primaryKey: SQLColumn(name: "id"), columns: (SQLColumn(name: "id"), .int)))
-		let tr = try SQLTransaction(statement: st, invoker: id.publicKey, counter: 0)
+		let st = SQLStatement.createTable(table: SQLTable(name: "foo"), schema: SQLSchema(primaryKey: SQLColumn(name: "id"), columns: (SQLColumn(name: "id"), .int)))
+		let tr = try SQLTransaction(statement: st, invoker: id.publicKey, database: dbName, counter: 0)
 		XCTAssert(!tr.isSignatureValid, "transaction signature must not be valid")
 
 		// Try signing with the wrong key
@@ -63,7 +64,6 @@ class CatenaSQLTests: XCTestCase {
 		let pubHash = SHA256Hash(of: id.publicKey.data)
 		var b = try SQLBlock.template(for: pubHash)
 
-		XCTAssert(!tr.shouldAlwaysBeReplayed, "this is not a transaction that requires replaying")
 		XCTAssert(!b.isPayloadValid(), "block payload is valid (but shouldn't be because block is empty)")
 		XCTAssert(b.hasRoomFor(transaction: tr), "block can accomodate transaction")
 		XCTAssert(try b.append(transaction: tr), "block can append transaction")
@@ -90,6 +90,7 @@ class CatenaSQLTests: XCTestCase {
 	}
 
 	func testBlockchain() {
+		let databaseName = SQLDatabase(name: "test")
 		let root = try! Identity()
 		let seed = "foo".data(using: .utf8)!
 		var genesis = try! SQLBlock(version: SQLBlock.basicVersion, index: 0, nonce: 0, previous: SHA256Hash.zeroHash, miner: SHA256Hash(of: root.publicKey.data), timestamp: 0, payload: seed)
@@ -101,8 +102,8 @@ class CatenaSQLTests: XCTestCase {
 		// config block
 		var configBlock = try! SQLBlock(version: SQLBlock.basicVersion, index: 1, nonce: 0, previous: genesis.signature!, miner: SHA256Hash(of: root.publicKey.data), timestamp: 0, payload: Data())
 
-		let statement = SQLStatement.create(table: SQLTable(name: "grants"), schema: SQLGrants.schema)
-		let configTransaction = try! SQLTransaction(statement: statement, invoker: root.publicKey, counter: 0)
+		let statement = SQLStatement.createDatabase(database: databaseName)
+		let configTransaction = try! SQLTransaction(statement: statement, invoker: root.publicKey, database: databaseName, counter: 0)
 		try! configTransaction.sign(with: root.privateKey)
 		XCTAssert(configBlock.hasRoomFor(transaction: configTransaction), "hasRoomFor")
 		XCTAssert(try! configBlock.append(transaction: configTransaction), "append transaction")
@@ -117,8 +118,8 @@ class CatenaSQLTests: XCTestCase {
 		for i in 2..<b.difficultyRetargetInterval {
 			newBlock = try! SQLBlock(version: SQLBlock.basicVersion, index: i, nonce: 0, previous: newBlock.signature!, miner: SHA256Hash(of: root.publicKey.data), timestamp: 0, payload: Data())
 
-			let statement = SQLStatement.create(table: SQLTable(name: "foo_\(i)"), schema: SQLSchema(columns: (SQLColumn(name: "x"), SQLType.text)))
-			let newTransaction = try! SQLTransaction(statement: statement, invoker: root.publicKey, counter: i - 1)
+			let statement = SQLStatement.createTable(table: SQLTable(name: "foo_\(i)"), schema: SQLSchema(columns: (SQLColumn(name: "x"), SQLType.text)))
+			let newTransaction = try! SQLTransaction(statement: statement, invoker: root.publicKey, database: databaseName, counter: i - 1)
 			try! newTransaction.sign(with: root.privateKey)
 			XCTAssert(newBlock.hasRoomFor(transaction: newTransaction), "hasRoomFor")
 			XCTAssert(try! newBlock.append(transaction: newTransaction), "append transaction")
@@ -157,8 +158,8 @@ class CatenaSQLTests: XCTestCase {
 			let prev = newBlock
 			newBlock = try! SQLBlock(version: SQLBlock.basicVersion, index: i, nonce: 0, previous: prev.signature!, miner: SHA256Hash(of: root.publicKey.data), timestamp: 0, payload: Data())
 
-			let statement = SQLStatement.create(table: SQLTable(name: "bar_\(i)"), schema: SQLSchema(columns: (SQLColumn(name: "x"), SQLType.text)))
-			let newTransaction = try! SQLTransaction(statement: statement, invoker: root.publicKey, counter: i - 1)
+			let statement = SQLStatement.createTable(table: SQLTable(name: "bar_\(i)"), schema: SQLSchema(columns: (SQLColumn(name: "x"), SQLType.text)))
+			let newTransaction = try! SQLTransaction(statement: statement, invoker: root.publicKey, database: databaseName, counter: i - 1)
 			try! newTransaction.sign(with: root.privateKey)
 			XCTAssert(newBlock.hasRoomFor(transaction: newTransaction), "hasRoomFor")
 			XCTAssert(try! newBlock.append(transaction: newTransaction), "append transaction")
@@ -211,6 +212,7 @@ class CatenaSQLTests: XCTestCase {
 		let db = SQLiteDatabase()
 		try db.open(":memory:")
 
+		let databaseName = SQLDatabase(name: "testDatabase")
 		let user = try Identity()
 		let otherUser = try Identity()
 		let grantsTable = SQLTable(name: "grants")
@@ -218,16 +220,16 @@ class CatenaSQLTests: XCTestCase {
 		try g.create()
 
 		// Insert some privileges
-		let ins = SQLInsert(orReplace: false, into: grantsTable, columns: ["user","kind","table"].map { SQLColumn(name: $0) }, values: [
-			[.literalBlob(user.publicKey.data.sha256), .literalString(SQLPrivilege.insert(table: nil).privilegeName), .literalString("test")]
+		let ins = SQLInsert(orReplace: false, into: grantsTable, columns: ["user","kind","table", "database"].map { SQLColumn(name: $0) }, values: [
+			[.literalBlob(user.publicKey.data.sha256), .literalString(SQLPrivilege.insert(table: nil).privilegeName), .literalString("test"), .literalString(databaseName.name)]
 		])
 		try _ = db.perform(SQLStatement.insert(ins).sql(dialect: db.dialect))
 
 		// Check privileges
-		XCTAssert(try g.check(privileges: [SQLPrivilege.insert(table: SQLTable(name: "test"))], forUser: user.publicKey))
-		XCTAssert(try !(g.check(privileges: [SQLPrivilege.insert(table: SQLTable(name: "TEST"))], forUser: user.publicKey)))
-		XCTAssert(try !(g.check(privileges: [SQLPrivilege.create(table: SQLTable(name: "test"))], forUser: user.publicKey)))
-		XCTAssert(try !(g.check(privileges: [SQLPrivilege.insert(table: SQLTable(name: "test"))], forUser: otherUser.publicKey)))
+		XCTAssert(try g.check(privileges: [SQLPrivilege.insert(table: SQLTable(name: "test"))], forUser: user.publicKey, in: databaseName))
+		XCTAssert(try !(g.check(privileges: [SQLPrivilege.insert(table: SQLTable(name: "TEST"))], forUser: user.publicKey, in: databaseName)))
+		XCTAssert(try !(g.check(privileges: [SQLPrivilege.create(table: SQLTable(name: "test"))], forUser: user.publicKey, in: databaseName)))
+		XCTAssert(try !(g.check(privileges: [SQLPrivilege.insert(table: SQLTable(name: "test"))], forUser: otherUser.publicKey, in: databaseName)))
 	}
 
 	let validSQLStatements = [
@@ -260,6 +262,14 @@ class CatenaSQLTests: XCTestCase {
 		"SELECT 1 AND 0;",
 		"SELECT (1=1) AND (1=0) AND (1=1);",
 		"SELECT $0x;", // Variable name can start with digit (previously couldn't)
+		"CREATE DATABASE foo;",
+		"CREATE DATABASE \"foo\";",
+		"DROP DATABASE foo;",
+		"SHOW DATABASES;",
+		"GRANT template X'0ae551b518f3fc8a5edf84400078cb979888a94e0602fb5b1c15efe34d1afa68' TO X'0ae551b518f3fc8a5edf84400078cb979888a94e0602fb5b1c15efe34d1afa68';",
+		"GRANT create ON foo TO X'0ae551b518f3fc8a5edf84400078cb979888a94e0602fb5b1c15efe34d1afa68';",
+		"GRANT create TO X'0ae551b518f3fc8a5edf84400078cb979888a94e0602fb5b1c15efe34d1afa68';",
+		"REVOKE create TO X'0ae551b518f3fc8a5edf84400078cb979888a94e0602fb5b1c15efe34d1afa68';",
 	]
 
 	let invalidSQLStatements = [
@@ -281,10 +291,12 @@ class CatenaSQLTests: XCTestCase {
 		"SELECT 1 AND0;", // There must be whitespace in between
 		/// TODO: FIXME: require spaces *before* keywords
 		//"SELECT 1AND 0;", // There must be whitespace in between
-		"SELECTCASEWHEN1=1THEN1ELSE0END;" // There must be whitespace in between
+		"SELECTCASEWHEN1=1THEN1ELSE0END;", // There must be whitespace in between
+		"GRANT template 1 TO X'0ae551b518f3fc8a5edf84400078cb979888a94e0602fb5b1c15efe34d1afa68';",
 	]
 
 	let throwingSQLStatements = [
+		"GRANT template X'1' TO X'0ae551b518f3fc8a5edf84400078cb979888a94e0602fb5b1c15efe34d1afa68';",
 		"SELECT (1+((1+((1+((1+((1+((1+((1+((1+((1+((1+((1+(1))))))))))))))))))))));", // nesting depth
 		"IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN IF 1=1 THEN FAIL END END END END END END END END END END END;" // nesting depth
 	]
@@ -376,7 +388,6 @@ class CatenaSQLTests: XCTestCase {
 			"UPDATE foo SET y = 5": true,
 			"DROP TABLE foo": false,
 			"DROP TABLE bar": true,
-			"SHOW TABLES": false,
 		]
 
 		for (q, shouldThrow) in queries {
@@ -389,16 +400,6 @@ class CatenaSQLTests: XCTestCase {
 			else {
 				XCTAssertNoThrow(try st.verify(on: mem), "Should not throw: \(q)")
 			}
-
-			// Should still behave the same when wrapped inside an IF
-			let ifFrag = try! p.parse("IF 1=0 THEN \(q) ELSE FAIL END;")!
-			guard case .statement(let ifStatement) = ifFrag else { XCTFail(); return }
-			if shouldThrow {
-				XCTAssertThrowsError(try ifStatement.verify(on: mem), "Should throw: \(q) inside IF")
-			}
-			else {
-				XCTAssertNoThrow(try ifStatement.verify(on: mem), "Should not throw: \(q) inside IF")
-			}
 		}
 	}
 
@@ -406,10 +407,11 @@ class CatenaSQLTests: XCTestCase {
 		let p = SQLParser()
 		let mem = SQLiteDatabase()
 		let invoker = try Identity()
+		let databaseName = SQLDatabase(name: "testDatabase")
 		let block = try SQLBlock(version: 1, index: 1, nonce: 1, previous: SHA256Hash.zeroHash, miner: SHA256Hash(of: invoker.publicKey.data), timestamp: 1, payload: Data())
 		try mem.open(":memory:")
 		let md = try SQLMetadata(database: mem)
-		let ctx = SQLContext(metadata: md, invoker: invoker.publicKey, block: block, parameterValues: [:])
+		let ctx = SQLContext(database: databaseName, metadata: md, invoker: invoker.publicKey, block: block, parameterValues: [:])
 		let ex = SQLExecutive(context: ctx, database: mem)
 
 		// See if the backend visitor properly rejects stuff
@@ -425,7 +427,7 @@ class CatenaSQLTests: XCTestCase {
 			XCTAssert(root != nil, "Failed to parse \(f)")
 
 			if case .statement(let s) = root! {
-				XCTAssertThrowsError(try ex.perform(s) { _ in return true })
+				XCTAssertThrowsError(try ex.perform(s))
 			}
 			else {
 				XCTFail("parsing failed")
