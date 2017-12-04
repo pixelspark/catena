@@ -16,7 +16,8 @@ module.exports = {
 
 	created: function() {
 		this.$parent.tabs.push(this);
-		this.selected = this.$parent.tabs.length == 1;
+		if(this.$parent.currentTab == "") this.$parent.currentTab = this.name.toLowerCase();
+		this.selected = this.$parent.currentTab.toLowerCase() == this.name.toLowerCase();
 	},
 
 	computed: {
@@ -26,8 +27,8 @@ module.exports = {
 	},
 
 	watch: {
-		'$parent.currentTab' (index) {
-			this.selected = this.index === index;
+		'$parent.currentTab' (name) {
+			this.selected = this.name.toLowerCase() == name.toLowerCase();
 		}
 	}
 };

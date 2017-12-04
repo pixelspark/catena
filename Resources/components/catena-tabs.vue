@@ -1,10 +1,10 @@
 <template>
-	<div :class="{'catena-tabs':true, 'first-tab-selected': currentTab == 0}">
+	<div :class="{'catena-tabs':true, 'first-tab-selected': tabs.length &gt; 0 && currentTab.toLowerCase() == tabs[0].name.toLowerCase()}">
 		<ul>
 			<li 
 				v-for="(tab, index) in tabs"
 				@click="select(index)"
-				:class="{'selected': currentTab == index}" :key="index">
+				:class="{'selected': currentTab.toLowerCase() == tab.name.toLowerCase()}" :key="index">
 				{{tab.name}}
 			</li>
 		</ul>
@@ -22,7 +22,7 @@ module.exports = {
 	},
 
 	props: {
-		value: {type: Number, default: 0}
+		value: {type: String, default: ""}
 	},
 
 	watch: {
@@ -33,8 +33,9 @@ module.exports = {
 	
 	methods: {
 		select: function(idx) {
-			this.currentTab = idx;
-			this.$emit('input',idx);
+			let name = this.tabs[idx].name.toLowerCase();
+			this.currentTab = name;
+			this.$emit('input',name);
 		}
 	}
 };

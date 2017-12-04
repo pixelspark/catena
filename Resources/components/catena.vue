@@ -34,7 +34,7 @@
 		</main>
 
 		<main v-if="agent !== null && index !== null && error === null" >
-			<catena-tabs>
+			<catena-tabs v-model="route.mainTab">
 				<catena-tab name="Welcome">
 					<article style="overflow-y: auto;">
 						<h1>Welcome!</h1>
@@ -44,7 +44,7 @@
 							<i class="fa fa-arrow-right" v-else></i> 
 							1. Create an identity
 						</h2>
-						<p>In order to submit transactions to a Catena database, you need an identity. This identity consists of a special 'key' that allows you to sign transactions.</p>
+						<p>In order to submit transactions to a Catena database, you need an identity. This identity consists of a special 'key' that allows you to sign transactions. You can manage identities on the <a href="#identities">'Identities' tab</a>.</p>
 
 						<h2>
 							<i class="fa fa-check" style="color: rgb(153,204,0);" v-if="ownedDatabases.length &gt; 0"></i> 
@@ -62,10 +62,10 @@
 						</catena-expander>
 
 						<h2>3. Create tables and add some data</h2>
-						<p>As database owner, you can perform any operation on your freshly created database on the 'Data' tab.</p>
+						<p>As database owner, you can perform any operation on your freshly created database on the <a href="#data">'Data' tab</a>.</p>
 						
 						<h2>4. Grant other users rights on your database</h2>
-						<p>Generate other identities on the 'Identities' tab and grant them rights to allow others to perform operations on your database.</p>
+						<p>Generate other identities on the <a href="#identities">'Identities' tab</a> and grant them rights to allow others to perform operations on your database.</p>
 						
 					</article>					
 				</catena-tab>
@@ -85,11 +85,33 @@
 		</main>
 	</div>
 </template>
-
 <script>
 const Connection = require("./blockchain").Connection;
 const generateUUID = require("./blockchain").generateUUID;
 const Agent = require("./blockchain").Agent;
+
+class Route {
+	constructor() {
+		this._mainTab = "";
+		var self = this;
+		window.onhashchange = function() { self.parse(); }
+		this.parse();
+	}
+
+	get mainTab() { return this._mainTab; }
+	set mainTab(nv) { this._mainTab = nv; this.update(); }
+
+	parse() {
+		let parsed = window.location.hash.substr(1).split("/");
+		if(parsed.length>0) {
+			this._mainTab = parsed[0];
+		}
+	}
+
+	update() {
+		window.location.hash = "#" + [this._mainTab].join("/");
+	}
+};
 
 module.exports = {
 	data: function() {
@@ -128,6 +150,7 @@ module.exports = {
 		}
 
 		var initial = {
+			route: new Route(),
 			url: host + path,
 			scheme: scheme,
 			uuid: generateUUID(),
