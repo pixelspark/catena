@@ -1,10 +1,10 @@
 <template>
 	<div>
-		<dl>
+		<dl v-if="database === null">
 			<dt>Database</dt>
 			<dd>
-				<select v-model="database">
-					<option value="">Select...</option>
+				<select v-model="selectedDatabase">
+					<option value="" key="">Select...</option>
 					<option v-for="db in databases" :value="db" :key="db">{{db}}</option>
 				</select>
 			</dd>
@@ -39,7 +39,7 @@
 			</dd>
 		</dl>
 
-		<catena-transaction :sql="sql" v-if="(table !== null || templateHash !== null) && kind !== null" :agent="agent" :database="database"></catena-transaction>
+		<catena-transaction :sql="sql" v-if="(table !== null || templateHash !== null) && kind !== null" :agent="agent" :database="selectedDatabase"></catena-transaction>
 	</div>
 </template>
 
@@ -51,6 +51,7 @@ module.exports = {
 	props: {
 		agent: Agent,
 		user: Identity,
+		database: {type: String, default: null},
 		kinds: {default: function() { return {
 			"insert": "Insert",
 			"delete": "Delete",
@@ -66,7 +67,7 @@ module.exports = {
 		return { 
 			kind: "insert",
 			tables: [],
-			database: "",
+			selectedDatabase: this.database,
 			databases: [],
 			table: null,
 			templateQuery: "",
@@ -77,9 +78,13 @@ module.exports = {
 	},
 
 	watch: {
-		database: function() {
+		selectedDatabase: function() {
 			this.refresh();
-		}
+		},
+		database: function(nv) {
+			this.selectedDatabase = nv;
+			this.refresh();
+		},
 	},
 
 	created: function() {
@@ -148,7 +153,7 @@ module.exports = {
 			});
 
 			if(self.database != "") {
-				this.agent.tables(self.database, function(code, tbls) {
+				this.agent.tables(self.selectedDatabase, function(code, tbls) {
 					self.tables = tbls;
 				});
 			}

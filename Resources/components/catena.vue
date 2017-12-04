@@ -36,7 +36,7 @@
 		<main v-if="agent !== null && index !== null && error === null" >
 			<catena-tabs>
 				<catena-tab name="Welcome">
-					<article>
+					<article style="overflow-y: auto;">
 						<h1>Welcome!</h1>
 						<p>To get started with Catena, take the following steps:</p>
 						<h2>

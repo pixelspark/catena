@@ -28,14 +28,19 @@
 	</dl>
 
 	<h2>Grants</h2>
-	<select v-model="database">
-		<option>Select a database...</option>
-		<option v-for="db in databases" :key="db" :value="db">{{db}}</option>
-	</select>
-	<catena-query v-if="agent !== null && database != '' " :sql="grantsSQL" :agent="agent" :head="head" :database="database"></catena-query>
+	<dl>
+		<dt>Show grants in database:</dt>
+		<dd>
+			<select v-model="database">
+				<option key="" value="">Select a database...</option>
+				<option v-for="db in databases" :key="db" :value="db">{{db}}</option>
+			</select>
+		</dd>
+	</dl>
 
-	<catena-expander title="Add" icon="plus">
-		<catena-granter :agent="agent" :user="identity"></catena-granter>
+	<catena-query v-if="agent !== null && database != '' " :sql="grantsSQL" :agent="agent" :head="head" :database="database"></catena-query>
+	<catena-expander title="Grant privileges" icon="plus" v-if="database != '' ">
+		<catena-granter :agent="agent" :user="identity" :database="database"></catena-granter>
 	</catena-expander>
 
 	<template v-if="identity !== null">

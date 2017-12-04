@@ -1,26 +1,19 @@
 <template>
 	<div class="catena-transaction">
 		<dl>
-			<dt>Query</dt>
+			<dt>Statement to be executed on database '<code>{{database}}</code>':</dt>
 			<dd><code>{{sql}}</code></dd>
 
-			<dt>Database</dt>
-			<dd><code>{{database}}</code></dd>
-		
 			<dt>Invoker</dt>
 			<dd>
 				<select @change="updateInvoker" :value="invoker" :disabled="submitting || submitted">
 					<option :value="null">Select...</option>
 					<option v-for="(identity, idx) in agent.identities" :value="idx" :key="identity.publicHash">{{identity.publicHash}}</option>
-				</select>
+				</select><br/>
+				<template v-if="counter !== null">
+					<template>This will be transaction #{{counter}} for this invoker.</template>
+				</template>
 			</dd>
-		
-		<template v-if="counter !== null">
-			<dt>Counter</dt>
-			<dd>
-				{{counter}}
-			</dd>
-		</template>
 
 		<template v-if="counter !== null && !submitted">
 			<dt></dt>

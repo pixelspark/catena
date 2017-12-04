@@ -1,6 +1,6 @@
 <template>
 	<div :class="{'catena-expander':true, 'expanded': expanded}">
-		<button class="handle" @click="expand(!expanded)"><i :class="iconClass" v-if="icon !== null"></i> {{title}}<template v-if="!expanded">&hellip;</template></button>
+		<button class="handle" @click="expand(!expanded)"><i :class="iconClass" v-if="icon !== null"></i> {{title}}&hellip;</button>
 		<div v-if="expanded">
 			<slot/>
 		</div>
