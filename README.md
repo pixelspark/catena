@@ -81,7 +81,7 @@ The following command starts Catena and initializes a new chain (replace 'debug'
 a release version):
 
 ````
-./.build/debug/Catena -p 8338 -m -c -s 'my seed string'
+./.build/debug/Catena -p 8338 -m -i -s 'my seed string'
 ````
 
 The -i switch tells Catena to initialize a chain (this deletes any persisted data, which is stored by default in catena.sqlite in the current directory). The -s switch provides Catena with a string that tells it which genesis block to accept. To enable block mining, add the '-m' command line switch.
@@ -127,14 +127,7 @@ you to use to connect as root.
 
 ### Permissions
 
-By default, only the 'root' user created during initialization has any rights on the database. Add rows to the 'grants' table to
-create more 'users' (identified by public key). For example (as root):
-
-````
-CREATE TABLE test(foo INT);
-INSERT INTO grants(kind, user, table) VALUES ('insert', $invoker, 'test');
-INSERT INTO test(foo) VALUES (1337);
-````
+By default, any user can execute a `CREATE DATABASE` statement; this creates a database, of which the invoker becomes the owner. The invoker can subsequently use `GRANT` and `REVOKE` statements to grant other users rights on the database.
 
 More granular permissions can be granted by using *template* grants. These grant a user the permission to execute
 a certain parametrized query with self-chosen parameter values. The template query is hashed and stored in the

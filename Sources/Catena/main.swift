@@ -19,7 +19,7 @@ let queryPortOption = IntOption(shortFlag: "q", longFlag: "query-port", helpMess
 let peersOption = MultiStringOption(shortFlag: "j", longFlag: "join", helpMessage: "Peer URL to connect to ('ws://nodeid@hostname:port')")
 let mineOption = BoolOption(shortFlag: "m", longFlag: "mine", helpMessage: "Enable mining of blocks")
 let logOption = StringOption(shortFlag: "v", longFlag: "log", helpMessage: "The log level: debug, verbose, info, warning (default: info)")
-let initializeOption = BoolOption(shortFlag: "i", longFlag: "initialize", helpMessage: "Perform all initialization steps, then exit before starting the node.")
+let initializeOption = BoolOption(shortFlag: "i", longFlag: "initialize", helpMessage: "Re-initialize the node before starting it.")
 let noReplayOption = BoolOption(shortFlag: "n", longFlag: "no-replay", helpMessage: "Do not replay database operations, just participate and validate transactions (default: false)")
 let nodeDatabaseFileOption = StringOption(longFlag: "node-database", required: false, helpMessage: "Backing database file for instance database (default: catena-node.sqlite)")
 let noLocalPeersOption = BoolOption(longFlag: "no-local-discovery", helpMessage: "Disable local peer discovery")
@@ -180,49 +180,47 @@ do {
 	}
 
 	// Query server
-	if !initializeOption.value {
-		let queryServerV4 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv4)
-		let queryServerV6 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv6)
-		queryServerV6.run()
-		queryServerV4.run()
+	let queryServerV4 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv4)
+	let queryServerV6 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv6)
+	queryServerV6.run()
+	queryServerV4.run()
 
-		node.miner.isEnabled = mineOption.value
+	node.miner.isEnabled = mineOption.value
 
-		// Check whether local discovery should be enabled
-		if !noLocalPeersOption.value {
-			var hostname = Data(count: 255)
-			let hostnameString = try hostname.withUnsafeMutableBytes { (bytes: UnsafeMutablePointer<CChar>) -> String in
-				try posix(gethostname(bytes, 255))
-				return String(cString: bytes)
-			}
-
-			if !hostnameString.hasSuffix(".local") {
-				Log.info("[LocalDiscovery] Not enabling local discovery as host (\(hostnameString)) is not in local domain.")
-			}
-			else {
-				node.announceLocally = true
-				node.discoverLocally = true
-			}
+	// Check whether local discovery should be enabled
+	if !noLocalPeersOption.value {
+		var hostname = Data(count: 255)
+		let hostnameString = try hostname.withUnsafeMutableBytes { (bytes: UnsafeMutablePointer<CChar>) -> String in
+			try posix(gethostname(bytes, 255))
+			return String(cString: bytes)
 		}
 
-		Log.info("Node URL: \(node.url.absoluteString)")
-		Swift.print("\r\nPGPASSWORD=\(rootIdentity.privateKey.stringValue) psql -h localhost -p \(netPort+1) -U \(rootIdentity.publicKey.stringValue)\r\n")
-
-		node.start(blocking: false)
-
-		// Set up signal handler
-		signal(SIGINT, SIG_IGN)
-
-		let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-		sigintSrc.setEventHandler {
-			exit(0)
+		if !hostnameString.hasSuffix(".local") {
+			Log.info("[LocalDiscovery] Not enabling local discovery as host (\(hostnameString)) is not in local domain.")
 		}
-		sigintSrc.resume()
-
-		// Run
-		withExtendedLifetime(node) {
-			RunLoop.main.run()
+		else {
+			node.announceLocally = true
+			node.discoverLocally = true
 		}
+	}
+
+	Log.info("Node URL: \(node.url.absoluteString)")
+	Swift.print("\r\nPGPASSWORD=\(rootIdentity.privateKey.stringValue) psql -h localhost -p \(netPort+1) -U \(rootIdentity.publicKey.stringValue)\r\n")
+
+	node.start(blocking: false)
+
+	// Set up signal handler
+	signal(SIGINT, SIG_IGN)
+
+	let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+	sigintSrc.setEventHandler {
+		exit(0)
+	}
+	sigintSrc.resume()
+
+	// Run
+	withExtendedLifetime(node) {
+		RunLoop.main.run()
 	}
 }
 catch {
