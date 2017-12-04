@@ -1,4 +1,4 @@
-<template id="catena-tab">
+<template>
 	<div :class="{'catena-tab':true, 'selected': selected}">
 		<slot></slot>
 	</div>
@@ -6,7 +6,6 @@
 
 <script>
 module.exports = {
-	template: '#catena-tab',
 	props: {
 		name: String
 	},

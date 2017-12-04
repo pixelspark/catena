@@ -137,7 +137,7 @@ module.exports = {
 			transactions: [],
 			error: null,
 			newDatabaseName: "foo",
-			ownedDatabases: []
+			ownedDatabases: [],
 		};
 
 		try {

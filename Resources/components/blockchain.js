@@ -416,7 +416,6 @@ class Agent {
 						let owner = res.rows[a][1];
 						for(var b=0; b<self.identities.length; b++) {
 							let id = self.identities[b];
-							console.log(owner, id.publicHash);
 							if(id.publicHash == owner) {
 								databases.push(res.rows[a][0]);
 								break;

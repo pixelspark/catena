@@ -495,6 +495,7 @@ main center i {
 
 p.info, p.error {
 	display: block;
+	max-width: 100%;
 	border: solid 1px rgba(153,204,0,0.7);
 	border-radius: 3px;
 	margin-top: 5px;
