@@ -9,22 +9,22 @@
 				</li>
 			</transition-group>
 
-			<button style="float: right; margin: 5px;" @click="generate"><i class="fa fa-plus"></i> Generate new identity</button>
-			<button style="float: right; margin: 5px;" @click="load"><i class="fa fa-download"></i> Import identity</button>
+			<button style="float: right; margin: 5px;" @click="generate"><i class="fa fa-plus"></i> {{$t('generateIdentity')}}</button>
+			<button style="float: right; margin: 5px;" @click="load"><i class="fa fa-download"></i> {{$t('importIdentity')}}</button>
 		</aside>
 		<article style="overflow-y: auto;">
 			<div v-if="identity === null">
-				<h1>Load a key...</h1>
+				<h1>{{$t('loadAKey')}}</h1>
 				
 				<dl>
-					<dt>Public key</dt>
+					<dt>{{$t('publicKey')}}</dt>
 					<dd><input type="text" style="width: 100%;" :value="newPublic" @keyup="updatePublic"></dd>
 
-					<dt>Private key</dt>
+					<dt>{{$t('privateKey')}}</dt>
 					<dd><input type="text" style="width: 100%;" :value="newPrivate" @keyup="updatePrivate"></dd>
 
 					<dt></dt>
-					<dd><button @click="loadKey"><i class="fa fa-check"></i> Load</button></dd>
+					<dd><button @click="loadKey"><i class="fa fa-check"></i> {{$t('load')}}</button></dd>
 				</dl>
 			</div>
 			<catena-identity v-if="identity !== null" :identity="identity" :agent="agent" :head="head"></catena-identity>
@@ -94,6 +94,25 @@ module.exports = {
 			this.identity = id;
 			
 		}
-	}
+	},
+
+	i18n: { messages: {
+		en: {
+			loadAkey: "Load an identity...",
+			load: "Load",
+			generateIdentity: "Generate new identity",
+			importIdentity: "Import identity",
+			privateKey: "Secret key",
+			publicKey: "Public key",
+		},
+		nl: {
+			loadAKey: "Laad een identiteit...",
+			load: "Laad",
+			generateIdentity: "Genereer een nieuwe identiteit",
+			importIdentity: "Importeer identiteit",
+			privateKey: "Geheime sleutel",
+			publicKey: "Publieke sleutel",
+		}
+	} }
 };
 </script>

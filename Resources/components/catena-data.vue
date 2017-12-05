@@ -5,25 +5,25 @@
 				<li key="">
 					<a title="Show grants" href="javascript:void(0);" v-if="database != ''" style="float:right;" @click.capture="describeDatabase(t)"><i class="fa fa-users"></i></a>
 					<select v-model="database">
-						<option key="" value="">Select database...</option>
+						<option key="" value="">{{$t('selectDatabase')}}</option>
 						<option v-for="db in databases" :value="db" :key="db">{{db}}</option>
 					</select>
 				</li>
 
 				<li v-for="(t, idx) in tables" @click.self="selectTable(t)" :class="{'selected': table === t}" :key="t">
 					<i class="fa fa-table"></i> {{t}}
-					<a title="Show table schema information" href="javascript:void(0);" style="float:right;" @click.capture="describeTable(t)"><i class="fa fa-info"></i></a>
+					<a :title="$t('showTableSchema')" href="javascript:void(0);" style="float:right;" @click.capture="describeTable(t)"><i class="fa fa-info"></i></a>
 				</li>
 
 				<li v-for="(q, idx) in queries" @click="select(q)" :class="{'selected': query == q}" :key="idx">
-					<a title="Remove" href="javascript:void(0);" style="float:right;" @click.capture="remove(idx)"><i class="fa fa-times"></i></a>
+					<a :title="$t('removeQuery')" href="javascript:void(0);" style="float:right;" @click.capture="remove(idx)"><i class="fa fa-times"></i></a>
 					<code>{{q}}</code>
 				</li>
 			</transition-group>
 		</aside>
 		<article style="overflow-y: auto;" v-if="database != ''">
 			<textarea class="catena-sql" @keyup="setQuery" :value="typedQuery" @keyup.enter="enterUp"></textarea>
-			<button @click="perform"><i class="fa fa-play"></i> Query</button>
+			<button @click="perform"><i class="fa fa-play"></i> {{$t('perform')}}</button>
 			<catena-query :sql="query" v-if="query != '' && query !== null " :agent="agent" :head="head" :database="database"></catena-query>
 		</article>
 	</div>
@@ -147,6 +147,21 @@ module.exports = {
 				this.queries.push(this.query);
 			}
 		}
-	}
+	},
+
+	i18n: { messages: {
+		en: {
+			selectDatabase: "Select database...",
+			showTableSchema: "Show table schema...",
+			removeQuery: "Forget query",
+			perform: "Execute",
+		},
+		nl: {
+			selectDatabase: "Selecteer database...",
+			showTableSchema: "Toon tabelschema...",
+			removeQuery: "Vergeet query",
+			perform: "Uitvoeren",
+		}
+	} }
 };
 </script>
