@@ -67,6 +67,9 @@
 						<h2>4. Grant other users rights on your database</h2>
 						<p>Generate other identities on the <a href="#identities">'Identities' tab</a> and grant them rights to allow others to perform operations on your database.</p>
 						
+						<catena-expander title="Submit a raw transaction" icon="paper-plane">
+							<catena-raw-transaction :agent="agent"></catena-raw-transaction>
+						</catena-expander>
 					</article>					
 				</catena-tab>
 

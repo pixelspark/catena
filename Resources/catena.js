@@ -19,6 +19,7 @@ Vue.component('catena-tabs', require('./components/catena-tabs.vue'));
 Vue.component('catena-tab', require('./components/catena-tab.vue'));
 Vue.component('catena-timestamp', require('./components/catena-timestamp.vue'));
 Vue.component('catena-transaction', require('./components/catena-transaction.vue'));
+Vue.component('catena-raw-transaction', require('./components/catena-raw-transaction.vue'));
 
 var app = new Vue({
 	el: '#app',

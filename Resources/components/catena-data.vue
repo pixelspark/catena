@@ -3,7 +3,7 @@
 		<aside>
 			<transition-group name="list" tag="ul">
 				<li key="">
-					<a href="javascript:void(0);" v-if="database != ''" style="float:right;" @click.capture="describeDatabase(t)"><i class="fa fa-users"></i></a>
+					<a title="Show grants" href="javascript:void(0);" v-if="database != ''" style="float:right;" @click.capture="describeDatabase(t)"><i class="fa fa-users"></i></a>
 					<select v-model="database">
 						<option key="" value="">Select database...</option>
 						<option v-for="db in databases" :value="db" :key="db">{{db}}</option>
@@ -12,11 +12,11 @@
 
 				<li v-for="(t, idx) in tables" @click.self="selectTable(t)" :class="{'selected': table === t}" :key="t">
 					<i class="fa fa-table"></i> {{t}}
-					<a href="javascript:void(0);" style="float:right;" @click.capture="describeTable(t)"><i class="fa fa-info"></i></a>
+					<a title="Show table schema information" href="javascript:void(0);" style="float:right;" @click.capture="describeTable(t)"><i class="fa fa-info"></i></a>
 				</li>
 
 				<li v-for="(q, idx) in queries" @click="select(q)" :class="{'selected': query == q}" :key="idx">
-					<a href="javascript:void(0);" style="float:right;" @click.capture="remove(idx)"><i class="fa fa-times"></i></a>
+					<a title="Remove" href="javascript:void(0);" style="float:right;" @click.capture="remove(idx)"><i class="fa fa-times"></i></a>
 					<code>{{q}}</code>
 				</li>
 			</transition-group>
