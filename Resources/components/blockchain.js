@@ -20,18 +20,21 @@ class Identity {
 		return new Identity(kp.publicKey, kp.secretKey);
 	}
 
+	/** Secret key is optional (can be null) */
 	static loadBase58(pub, sec) {
 		let pubData = base58check.decode(pub);
-		let secData = base58check.decode(sec);
+		let secData = sec !== null ? base58check.decode(sec) : null;
 		if(pubData.prefix[0] != 88) throw new Error("Invalid public key version");
-		if(secData.prefix[0] != 11) throw new Error("Invalid private key version");
+		if(sec!== null && secData.prefix[0] != 11) throw new Error("Invalid private key version");
 
-		let id = new Identity(pubData.data, secData.data);
+		let id = new Identity(pubData.data, sec === null ? null : secData.data);
 		
 		// Test signing
-		let msg = new Buffer('hello there');
-		if(!id.verify(msg, id.sign(msg))) {
-			throw new Error("Invalid public/private key combination (sign/verify failed)");
+		if(sec !== null) {
+			let msg = new Buffer('hello there');
+			if(!id.verify(msg, id.sign(msg))) {
+				throw new Error("Invalid public/private key combination (sign/verify failed)");
+			}
 		}
 		
 		return id;
@@ -213,6 +216,17 @@ class Transaction {
 			realBuffer[a] = uints[a];
 		}
 		return realBuffer;
+	}
+
+	static fromJSON(json) {
+		if(!("tx" in json)) throw new Error("invalid transaction JSON format");
+		let tx = json.tx;
+		if(!("sql" in tx && "counter" in tx && "database" in tx && "invoker" in tx)) throw new Error("invalid transaction JSON format");
+		let tr = new Transaction(Identity.loadBase58(tx.invoker, null), tx.database, tx.counter, tx.sql);
+		if("signature" in json) {
+			tr.signature = base64.toByteArray(json.signature);
+		}
+		return tr;
 	}
 
 	get jsonObject() {
