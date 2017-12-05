@@ -31,7 +31,7 @@
 				</thead>
 
 				<tbody>
-					<tr v-if="!result.rows || result.rows.length == 0" ><td>(No data)</td></tr>
+					<tr v-if="!result.rows || result.rows.length == 0" ><td>{{noData}}</td></tr>
 
 					<tr v-for="(row, idx) in result.rows" :key="idx">
 						<td v-for="(cell, idx) in row" :key="idx">
@@ -55,7 +55,8 @@ module.exports = {
 		sql: String,
 		database: String,
 		agent: Agent,
-		head: {type: String, default: null}
+		head: {type: String, default: null},
+		noData: {type: String, default: "(No data)"}
 	},
 
 	data: function() {

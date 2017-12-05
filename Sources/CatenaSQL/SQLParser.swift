@@ -196,9 +196,13 @@ public struct SQLShowGrants {
 	var forTable: SQLTable? = nil
 }
 
+public struct SQLShowDatabases {
+	var forUser: Data? = nil
+}
+
 public enum SQLShow {
 	case tables
-	case databases
+	case databases(SQLShowDatabases)
 	case all
 	case grants(SQLShowGrants)
 }
@@ -440,7 +444,13 @@ public enum SQLStatement {
 			switch s {
 			case .tables: return "SHOW TABLES\(end)"
 			case .all: return "SHOW ALL\(end)"
-			case .databases: return "SHOW DATABASES\(end)"
+			case .databases(let g):
+				var forUser = ""
+				if let u = g.forUser {
+					forUser = " FOR \(dialect.literalBlob(u))"
+				}
+				return "SHOW DATABASES\(forUser)\(end)"
+
 			case .grants(let g):
 				var sql = "SHOW GRANTS"
 				if let u = g.forUser {
@@ -1243,6 +1253,8 @@ internal class SQLParser {
 						}, separator: Parser.matchLiteral(","))
 				)
 
+			g["lit-user"] = ^"lit-blob"
+
 			g["show-statement"] = Parser.matchLiteralInsensitive("SHOW ") ~~ (
 				(Parser.matchLiteralInsensitive("TABLES") => { [unowned self] in
 					self.stack.append(.statement(.show(.tables)))
@@ -1250,14 +1262,25 @@ internal class SQLParser {
 				| (Parser.matchLiteralInsensitive("ALL") => { [unowned self] in
 					self.stack.append(.statement(.show(.all)))
 				})
-				| (Parser.matchLiteralInsensitive("DATABASES") => { [unowned self] in
-					self.stack.append(.statement(.show(.databases)))
-				})
+				| (
+					(Parser.matchLiteralInsensitive("DATABASES") => { [unowned self] in
+						self.stack.append(.statement(.show(.databases(SQLShowDatabases()))))
+					})
+					~~ ((Parser.matchLiteralInsensitive("FOR ")) ~~ ^"lit-user" => {
+						guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
+						guard case .literalBlob(let data) = t else { fatalError() }
+						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
+						guard case .show(let showType) = st else { fatalError() }
+						guard case .databases(var sg) = showType else { fatalError() }
+						sg.forUser = data
+						self.stack.append(.statement(.show(.databases(sg))))
+					})/~
+				)
 				| (
 					(Parser.matchLiteralInsensitive("GRANTS") => { [unowned self] in
 						self.stack.append(.statement(.show(.grants(SQLShowGrants()))))
 					})
-					~~ ((Parser.matchLiteralInsensitive("FOR ")) ~~ ^"lit-blob" => {
+					~~ ((Parser.matchLiteralInsensitive("FOR ")) ~~ ^"lit-user" => {
 						guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
 						guard case .literalBlob(let data) = t else { fatalError() }
 						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }

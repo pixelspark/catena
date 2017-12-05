@@ -27,6 +27,9 @@
 		</template>
 	</dl>
 
+	<h2>Owned databases</h2>
+	<catena-query v-if="agent !== null" :sql="ownedSQL" :agent="agent" :head="head" :database="database" no-data="This user does not currently own any databases."></catena-query>
+
 	<h2>Grants</h2>
 	<dl>
 		<dt>Show grants in database:</dt>
@@ -38,7 +41,7 @@
 		</dd>
 	</dl>
 
-	<catena-query v-if="agent !== null && database != '' " :sql="grantsSQL" :agent="agent" :head="head" :database="database"></catena-query>
+	<catena-query v-if="agent !== null && database != '' " :sql="grantsSQL" :agent="agent" :head="head" :database="database" no-data="This user was not granted any privileges for this database."></catena-query>
 	<catena-expander title="Grant privileges" icon="plus" v-if="database != '' ">
 		<catena-granter :agent="agent" :user="identity" :database="database"></catena-granter>
 	</catena-expander>
@@ -129,6 +132,10 @@ module.exports = {
 	computed: {
 		grantsSQL: function() {
 			return "SHOW GRANTS FOR X'"+this.identity.publicHashHex+"';";
+		},
+
+		ownedSQL: function() {
+			return "SHOW DATABASES FOR X'"+this.identity.publicHashHex+"';";
 		},
 
 		combinedSignedMessage: function() {

@@ -601,8 +601,8 @@ class SQLExecutive {
 			case .tables:
 				return try self.tables(in: self.context.database, context: self.context)
 
-			case .databases:
-				let data = try self.context.metadata.databases.list()
+			case .databases(let sg):
+				let data = try self.context.metadata.databases.list(for: sg.forUser)
 				let rows = data.map({ (key, value) -> [Value] in
 					return [.text(key.name), .blob(value.data)]
 				})
@@ -783,7 +783,7 @@ extension SQLStatement {
 			switch t {
 			case .tables: return SQLExecutive.showTablesColumns.map { SQLColumn(name: $0) }
 			case .all: return SQLExecutive.showAllColumns.map { SQLColumn(name: $0) }
-			case .databases: return SQLExecutive.showDatabasesColumns.map { SQLColumn(name: $0) }
+			case .databases(_): return SQLExecutive.showDatabasesColumns.map { SQLColumn(name: $0) }
 			case .grants(_): return SQLExecutive.showGrantsColumns.map { SQLColumn(name: $0) }
 			}
 

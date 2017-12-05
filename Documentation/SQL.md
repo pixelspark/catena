@@ -100,7 +100,14 @@ Currently unimplemented; returns connection settings. The columns are named 'nam
 
 #### SHOW DATABASES
 
-Returns a list of databases. This statement can be executed outside of database context.
+Returns a list of databases and their owner public key hashes. This statement can be executed outside
+of database context (as well as inside, it does not make a difference).
+
+Optionally, you can specifiy a public key hash for which the owned databases should be returned:
+
+````sql
+SHOW DATABASES FOR X'1ac71735e59106b72e0a9d2e4795b5f29077c02ed61a4af46e6e311f88b63e7b';
+````
 
 #### SHOW GRANTS
 

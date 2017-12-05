@@ -431,11 +431,17 @@ public class SQLDatabasesTable {
 	}
 
 	/** Returns a list of databases with their owners */
-	public func list() throws -> [SQLDatabase: PublicKey] {
+	public func list(for user: Data? = nil) throws -> [SQLDatabase: PublicKey] {
+		var filter: SQLExpression? = nil
+		if let u = user {
+			filter = .binary(.column(self.ownerColumn), .equals, .literalBlob(u))
+		}
+
 		let selectStatement = SQLStatement.select(SQLSelect(
 			these: [.column(self.nameColumn), .column(self.ownerColumn)],
 			from: self.table,
 			joins: [],
+			where: filter,
 			distinct: false,
 			orders: []
 		))
