@@ -30,16 +30,20 @@
 		</dl>
 
 		<dl v-if="kind != 'template'">
-			<dt>Table</dt>
-			<dd>
+			<dt><input type="radio" value="all" v-model="tableType"> All tables in the database</dt>
+			<dt><input type="radio" value="existing" v-model="tableType"> Existing table</dt>
+			<dd v-if="tableType == 'existing'">
 				<select v-model="table">
 					<option :value="null">Select...</option>
 					<option v-for="t in tables" :value="t" :key="t">{{t}}</option>
 				</select>
 			</dd>
+
+			<dt><input type="radio" value="other" v-model="tableType"> Other table</dt>
+			<dd v-if="tableType == 'other'"><input type="text" v-model="table" placeholder="table"></dd>
 		</dl>
 
-		<catena-transaction :sql="sql" v-if="(table !== null || templateHash !== null) && kind !== null" :agent="agent" :database="selectedDatabase"></catena-transaction>
+		<catena-transaction :sql="sql" v-if="tableType !== null && kind !== null" :agent="agent" :database="selectedDatabase"></catena-transaction>
 	</div>
 </template>
 
@@ -70,6 +74,7 @@ module.exports = {
 			selectedDatabase: this.database,
 			databases: [],
 			table: null,
+			tableType: null,
 			templateQuery: "",
 			templateHash: null,
 			templateError: null,
@@ -97,7 +102,12 @@ module.exports = {
 				return "GRANT template X'"+this.templateHash+"' TO X'"+this.user.publicHashHex+"';";
 			}
 			else {
-				return "GRANT "+this.kind+" ON \""+this.table+"\" TO X'"+this.user.publicHashHex+"';";
+				if(this.table === null || this.tableType == 'all') {
+					return "GRANT "+this.kind+" TO X'"+this.user.publicHashHex+"';";
+				}
+				else {
+					return "GRANT "+this.kind+" ON \""+this.table+"\" TO X'"+this.user.publicHashHex+"';";
+				}
 			}
 		},
 

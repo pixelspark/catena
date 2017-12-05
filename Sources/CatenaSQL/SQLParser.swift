@@ -1379,7 +1379,7 @@ internal class SQLParser {
 						guard case .literalBlob(let data) = ex else { fatalError() }
 						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
 						self.stack.append(.privilege(type, on: nil, blob: data))
-						})/~)
+					})/~)
 					~~ ((Parser.matchLiteralInsensitive("ON ") ~~ (^"id-table" => { p in
 						guard case .tableIdentifier(let t) = self.stack.popLast()! else { fatalError() }
 						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
