@@ -3,6 +3,7 @@
 		<aside>
 			<transition-group name="list" tag="ul">
 				<li key="">
+					<a href="javascript:void(0);" v-if="database != ''" style="float:right;" @click.capture="describeDatabase(t)"><i class="fa fa-users"></i></a>
 					<select v-model="database">
 						<option key="" value="">Select database...</option>
 						<option v-for="db in databases" :value="db" :key="db">{{db}}</option>
@@ -73,6 +74,12 @@ module.exports = {
 		selectTable: function(t) {
 			this.table = t;
 			this.typedQuery = "SELECT * FROM \""+t+"\" LIMIT 50;";
+			this.query = this.typedQuery;
+		},
+
+		describeDatabase: function(t) {
+			this.table = null;
+			this.typedQuery = "SHOW GRANTS;";
 			this.query = this.typedQuery;
 		},
 
