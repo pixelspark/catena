@@ -270,6 +270,9 @@ class CatenaSQLTests: XCTestCase {
 		"GRANT create ON foo TO X'0ae551b518f3fc8a5edf84400078cb979888a94e0602fb5b1c15efe34d1afa68';",
 		"GRANT create TO X'0ae551b518f3fc8a5edf84400078cb979888a94e0602fb5b1c15efe34d1afa68';",
 		"REVOKE create TO X'0ae551b518f3fc8a5edf84400078cb979888a94e0602fb5b1c15efe34d1afa68';",
+		"GRANT create ON foo TO ALL;",
+		"GRANT create TO ALL;",
+		"REVOKE create TO ALL;",
 	]
 
 	let invalidSQLStatements = [

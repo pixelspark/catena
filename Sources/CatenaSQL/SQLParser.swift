@@ -226,8 +226,8 @@ public enum SQLStatement {
 	case delete(from: SQLTable, where: SQLExpression?)
 	case dropTable(table: SQLTable)
 	case dropDatabase(database: SQLDatabase)
-	case grant(SQLPrivilege, to: Data)
-	case revoke(SQLPrivilege, to: Data)
+	case grant(SQLPrivilege, to: Data?)
+	case revoke(SQLPrivilege, to: Data?)
 	case insert(SQLInsert)
 	case select(SQLSelect)
 	case update(SQLUpdate)
@@ -335,6 +335,7 @@ public enum SQLStatement {
 			return "DROP DATABASE \(d.sql(dialect: dialect))\(end)"
 
 		case .grant(let pr, to: let user), .revoke(let pr, to: let user):
+			// ON "table" or ON X'hash'
 			let on: String
 			if let t = pr.table {
 				on = "ON \(dialect.tableIdentifier(t.name)) "
@@ -346,11 +347,21 @@ public enum SQLStatement {
 				on = "";
 			}
 
+			// TO [user] or TO ALL
+			let to: String
+			if let u = user {
+				to = "TO \(dialect.literalBlob(u))"
+			}
+			else {
+				to = "TO ALL"
+			}
+
+			// Either GRANT or REVOKE
 			var verb = "GRANT"
 			if case .revoke = self {
 				verb = "REVOKE"
 			}
-			return "\(verb) \(pr.privilegeName) \(on)TO \(dialect.literalBlob(user))\(end)"
+			return "\(verb) \(pr.privilegeName) \(on)\(to)\(end)"
 
 		case .insert(let insert):
 			let colSQL = insert.columns.map { $0.sql(dialect: dialect) }.joined(separator: ", ")
@@ -1351,18 +1362,29 @@ internal class SQLParser {
 						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
 						self.stack.append(.privilege(type, on: t.name, blob: nil))
 					}))/~)
-					~~ Parser.matchLiteralInsensitive("TO ") ~~ ^"lit-blob"
-				) => {
-					guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
-					guard case .literalBlob(let data) = t else { fatalError() }
-					guard case .privilege(let type, on: let on, blob: let blob) = self.stack.popLast()! else { fatalError() }
-					if let b = blob {
-						self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, with: b), to: data)))
-					}
-					else {
-						self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, on: on), to: data)))
-					}
-				}
+					~~ Parser.matchLiteralInsensitive("TO ")
+					~~ (((^"lit-blob") => {
+							guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
+							guard case .literalBlob(let data) = t else { fatalError() }
+							guard case .privilege(let type, on: let on, blob: let blob) = self.stack.popLast()! else { fatalError() }
+							if let b = blob {
+								self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, with: b), to: data)))
+							}
+							else {
+								self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, on: on), to: data)))
+							}
+						})
+						| (Parser.matchLiteralInsensitive("ALL") => {
+							guard case .privilege(let type, on: let on, blob: let blob) = self.stack.popLast()! else { fatalError() }
+							if let b = blob {
+								self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, with: b), to: nil)))
+							}
+							else {
+								self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, on: on), to: nil)))
+							}
+						})
+					)
+				)
 
 			g["revoke-statement"] = (
 				Parser.matchLiteralInsensitive("REVOKE ")
@@ -1380,18 +1402,29 @@ internal class SQLParser {
 						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
 						self.stack.append(.privilege(type, on: t.name, blob: nil))
 						}))/~)
-					~~ Parser.matchLiteralInsensitive("TO ") ~~ ^"lit-blob"
-				) => {
-					guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
-					guard case .literalBlob(let data) = t else { fatalError() }
-					guard case .privilege(let type, on: let on, blob: let blob) = self.stack.popLast()! else { fatalError() }
-					if let b = blob {
-						self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, with: b), to: data)))
-					}
-					else {
-						self.stack.append(.statement(.grant(try SQLPrivilege.privilege(name: type, on: on), to: data)))
-					}
-			}
+					~~ Parser.matchLiteralInsensitive("TO ")
+					~~ (((^"lit-blob") => {
+						guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
+						guard case .literalBlob(let data) = t else { fatalError() }
+						guard case .privilege(let type, on: let on, blob: let blob) = self.stack.popLast()! else { fatalError() }
+						if let b = blob {
+							self.stack.append(.statement(.revoke(try SQLPrivilege.privilege(name: type, with: b), to: data)))
+						}
+						else {
+							self.stack.append(.statement(.revoke(try SQLPrivilege.privilege(name: type, on: on), to: data)))
+						}
+						})
+						| (Parser.matchLiteralInsensitive("ALL") => {
+							guard case .privilege(let type, on: let on, blob: let blob) = self.stack.popLast()! else { fatalError() }
+							if let b = blob {
+								self.stack.append(.statement(.revoke(try SQLPrivilege.privilege(name: type, with: b), to: nil)))
+							}
+							else {
+								self.stack.append(.statement(.revoke(try SQLPrivilege.privilege(name: type, on: on), to: nil)))
+							}
+						})
+				)
+			)
 
 			// Statement categories
 			g["dql-statement"] = ^"select-dql-statement"

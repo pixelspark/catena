@@ -691,8 +691,17 @@ class SQLExecutive {
 			}
 
 			if case .revoke = statement {
+				// Revoke user: either a key or 'NULL' (all users))
+				let toExpression: SQLExpression
+				if let u = user {
+					toExpression = .binary(.column(SQLColumn(name: "user")), .equals, .literalBlob(u))
+				}
+				else {
+					toExpression = .unary(.isNull, .column(SQLColumn(name: "user")))
+				}
+
 				let delete = SQLStatement.delete(from: SQLTable(name: SQLMetadata.grantsTableName), where: .binary(
-					.binary(.column(SQLColumn(name: "user")), .equals, .literalBlob(user)),
+					toExpression,
 					.and,
 					onCondition
 				))
@@ -700,12 +709,21 @@ class SQLExecutive {
 				return SQLiteBackendResult(result: try database.perform(delete.sql(dialect: database.dialect)))
 			}
 			else {
+				// Grant user: either a key or 'NULL' (all users))
+				let toExpression: SQLExpression
+				if let u = user {
+					toExpression = .literalBlob(u)
+				}
+				else {
+					toExpression = .null
+				}
+
 				let insert = SQLStatement.insert(SQLInsert(
 					orReplace: false,
 					into: SQLTable(name: SQLMetadata.grantsTableName),
 					columns: ["user","kind","table","database"].map { SQLColumn(name: $0) },
 					values: [[
-						.literalBlob(user),
+						toExpression,
 						.literalString(pr.privilegeName),
 						on,
 						.literalString(self.context.database.name)
