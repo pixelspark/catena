@@ -1,32 +1,32 @@
 <template>
 	<div class="catena-transaction">
 		<dl>
-			<dt>Statement to be executed on database '<code>{{database}}</code>':</dt>
+			<dt>{{$t('statement', {database: database})}}</dt>
 			<dd><code>{{sql}}</code></dd>
 
-			<dt>Invoker</dt>
+			<dt>{{$t('invoker')}}</dt>
 			<dd>
 				<select @change="updateInvoker" :value="invoker" :disabled="submitting || submitted">
-					<option :value="null">Select...</option>
+					<option :value="null">{{$t('select')}}</option>
 					<option v-for="(identity, idx) in agent.identities" :value="idx" :key="identity.publicHash">{{identity.publicHash}}</option>
 				</select><br/>
 				<template v-if="counter !== null">
-					<template>This will be transaction #{{counter}} for this invoker.</template>
+					<template>{{$t('count', {counter: counter})}}</template>
 				</template>
 			</dd>
 
 		<template v-if="counter !== null && !submitted">
 			<dt></dt>
 			<dd>
-				<button @click="submit" :disabled="submitting || submitted"><i class="fa fa-check"></i> Sign and submit</button>
-				<button @click="sign" :disabled="submitting || submitted || transaction !== null"><i class="fa fa-check"></i> Sign</button>
+				<button @click="submit" :disabled="submitting || submitted"><i class="fa fa-check"></i> {{$t('signAndSubmit')}}</button>
+				<button @click="sign" :disabled="submitting || submitted || transaction !== null"><i class="fa fa-check"></i> {{$t('sign')}}</button>
 			</dd>
 		</template>
 
 		<template v-if="submitted">
 			<dt></dt>
 			<dd>
-				<strong>Submitted!</strong>
+				<strong>{{$t('submitted')}}</strong>
 				<button @click="reset"><i class="fa fa-restart"></i> Restart</button>
 			</dd>
 		</template>
@@ -54,6 +54,28 @@ module.exports = {
 	data: function() {
 		return {invoker: null, counter: null, submitting: false, submitted: false, transaction: null };
 	},
+
+	i18n: { messages: {
+		en: {
+			submitted: "Submitted!",
+			sign: "Sign",
+			signAndSubmit: "Sign and submit",
+			invoker: "Invoker",
+			statement: "Statement to be executed on database '{database}':",
+			select: "Select...",
+			count: "This will be transaction #{counter} for this invoker."
+		},
+
+		nl: {
+			submitted: "Verzonden!",
+			sign: "Onderteken",
+			signAndSubmit: "Onderteken en verzend",
+			invoker: "Uitvoerder",
+			statement: "Statement dat dient te worden uitgevoerd op database '{database}':",
+			select: "Selecteer...",
+			count: "Dit wordt transactie #{counter} voor deze uitvoerder."
+		}
+	} },
 
 	watch: {
 		sql: function(nv) {

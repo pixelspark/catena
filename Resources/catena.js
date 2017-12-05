@@ -1,5 +1,7 @@
 const Vue = require('vue');
+const VueInt = require('vue-i18n');
 Vue.use(require('vue-resource'));
+Vue.use(VueInt);
 
 const App = require('./components/catena.vue');
 Vue.component('catena-block', require('./components/catena-block.vue'));
@@ -21,7 +23,29 @@ Vue.component('catena-timestamp', require('./components/catena-timestamp.vue'));
 Vue.component('catena-transaction', require('./components/catena-transaction.vue'));
 Vue.component('catena-raw-transaction', require('./components/catena-raw-transaction.vue'));
 
+const messages = {
+	en: {
+		app: {
+			name: "Catena"
+		}
+	},
+
+	nl: {
+		app: {
+			name: "Catena"
+		}
+	}
+};
+
+let lang = (Vue.config.lang || window.navigator.userLanguage || window.navigator.language || "en").substr(0,2);
+
 var app = new Vue({
 	el: '#app',
+	i18n: new VueInt({
+		locale: lang,
+		fallbackLocale: 'en', 
+		messages: messages,
+		silentTranslationWarn: true
+	}),
 	render: h => h(App)
 });

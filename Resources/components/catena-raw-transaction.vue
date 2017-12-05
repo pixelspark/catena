@@ -2,7 +2,7 @@
 	<div>
 		<textarea class="catena-code" v-model="transaction"></textarea>
 		<p class="error" v-if="error !== null">{{error}}</p>
-		<button @click="submit"><i class="fa fa-check"></i> Submit</button>
+		<button @click="submit"><i class="fa fa-check"></i> {{$t('submit')}}</button>
 	</div>
 </template>
 
@@ -20,6 +20,16 @@ module.exports = {
 			error: null
 		};
 	},
+
+	i18n: { messages: {
+		en: {
+			submit: "Submit"
+		},
+
+		nl: {
+			submit: "Verzend"
+		}
+	} },
 
 	methods: {
 		submit: function() {

@@ -3,22 +3,22 @@
 		<nav>
 			<ul>
 				<li>
-					<img src="static/logo.png" class="logo" alt="Catena"/>
+					<img src="static/logo.png" class="logo" :alt="$t('app.name')"/>
 				</li>
 
 				<li v-if="connection == null">
-					Address: <input :value="url" placholder="address:port" v-on:keyup="set('url', $event.target.value)">
-					<button @click="connect">Connect</button>
+					{{$t('address')}}: <input :value="url" placholder="address:port" v-on:keyup="set('url', $event.target.value)">
+					<button @click="connect">{{$t('connect')}}</button>
 				</li> 
 				<li v-else>
 					{{url}}
-						<button @click="disconnect">Disconnect</button>
+						<button @click="disconnect">{{$t('disconnect')}}</button>
 				</li>
 				
 				<li v-if="index !== null">
-					<span>{{index.peers.length}} peers</span>,
-					<span>{{index.height}} blocks</span>
-					<span>(last updated at <catena-timestamp :timestamp="index.time"></catena-timestamp>)</span>
+					<span>{{$tc('peers', index.peers.length, {count: index.peers.length})}}</span>,
+					<span>{{$tc('blocks', index.height, {count: index.height})}}</span>
+					<span>({{$t('lastUpdatedAt')}} <catena-timestamp :timestamp="index.time"></catena-timestamp>)</span>
 				</li>
 			</ul>
 		</nav>
@@ -35,53 +35,53 @@
 
 		<main v-if="agent !== null && index !== null && error === null" >
 			<catena-tabs v-model="route.mainTab">
-				<catena-tab name="Welcome">
+				<catena-tab :name="$t('tab.welcome')">
 					<article style="overflow-y: auto;">
-						<h1>Welcome!</h1>
-						<p>To get started with Catena, take the following steps:</p>
+						<h1>{{$t('start.welcome')}}</h1>
+						<p>{{$t('start.intro')}}</p>
 						<h2>
 							<i class="fa fa-check" style="color: rgb(153,204,0);" v-if="agent.identities.length &gt; 0"></i> 
 							<i class="fa fa-arrow-right" v-else></i> 
-							1. Create an identity
+							{{$t('start.identity')}}
 						</h2>
-						<p>In order to submit transactions to a Catena database, you need an identity. This identity consists of a special 'key' that allows you to sign transactions. You can manage identities on the <a href="#identities">'Identities' tab</a>.</p>
+						<i18n tag="p" path="start.identityDescription"><a place="url" :href="'#'+$t('tab.identities').toLowerCase()">'{{$t('tab.identities')}}'</a></i18n>
 
 						<h2>
 							<i class="fa fa-check" style="color: rgb(153,204,0);" v-if="ownedDatabases.length &gt; 0"></i> 
 							<i class="fa fa-arrow-right" v-else></i>
-							2. Create a database
+							{{$t('start.database')}}
 						</h2>
-						<p>When you create a database, you become the owner of the database. Only your key can sign transactions that make changes to this database, unless you grant privileges to other keys as well.</p>
-						<p v-if="ownedDatabases.length &gt; 0">You currently own database(s) {{ownedDatabases.join(', ')}}.</p>
-						<catena-expander title="Create a database" icon="plus">
+						<p>{{$t('start.databaseDescription')}}</p>
+						<p v-if="ownedDatabases.length &gt; 0">{{$tc('start.owned', ownedDatabases.length, {databases: ownedDatabases.join(', ')})}}</p>
+						<catena-expander :title="$t('start.createDatabase')" icon="plus">
 							<dl>
-								<dt>Name of the new database:</dt>
+								<dt>{{$t('start.newDatabaseName')}}</dt>
 								<dd><input v-model="newDatabaseName" type="text"></dd>
 							</dl>
 							<catena-transaction :sql="newDatabaseSQL" :database="newDatabaseName" :agent="agent"></catena-transaction>
 						</catena-expander>
 
-						<h2>3. Create tables and add some data</h2>
-						<p>As database owner, you can perform any operation on your freshly created database on the <a href="#data">'Data' tab</a>.</p>
+						<h2>{{$t('start.data')}}</h2>
+						<i18n path="start.dataDescription" tag="p"><a place="url" :href="'#'+$t('tab.data').toLowerCase()">'{{$t('tab.data')}}'</a></i18n>
 						
-						<h2>4. Grant other users rights on your database</h2>
-						<p>Generate other identities on the <a href="#identities">'Identities' tab</a> and grant them rights to allow others to perform operations on your database.</p>
+						<h2>{{$t('start.grants')}}</h2>
+						<i18n path="start.grantsDescription" tag="p"><a place="url" :href="'#'+$t('tab.identities').toLowerCase()">'{{$t('tab.identities')}}'</a></i18n>
 						
-						<catena-expander title="Submit a raw transaction" icon="paper-plane">
+						<catena-expander :title="$t('start.submitRaw')" icon="paper-plane">
 							<catena-raw-transaction :agent="agent"></catena-raw-transaction>
 						</catena-expander>
 					</article>					
 				</catena-tab>
 
-				<catena-tab name="Data">
+				<catena-tab :name="$t('tab.data')">
 					<catena-data :agent="agent" :head="index.highest"></catena-data>
 				</catena-tab>
 
-				<catena-tab name="Identities">
+				<catena-tab :name="$t('tab.identities')">
 					<catena-identities :agent="agent" :head="index.highest"></catena-identities>
 				</catena-tab>
 
-				<catena-tab name="Blocks">
+				<catena-tab :name="$t('tab.blocks')">
 					<catena-blocks :agent="agent" :index="index"></catena-blocks>
 				</catena-tab>
 			</catena-tabs>
@@ -259,6 +259,74 @@ module.exports = {
 			});
 			window.localStorage.catena = JSON.stringify(data);
 		}
-	}
+	},
+
+	i18n: { messages: {
+		nl: {
+			address: "Adres",
+			connect: "Verbind",
+			disconnect: "Verbreek verbinding",
+			peers: "geen peers | 1 peer | {count} peers",
+			blocks: "geen blokken | 1 blok | {count} blokken",
+			lastUpdatedAt: "laatst bijgewerkt om",
+
+			tab: {
+				welcome: "Welkom",
+				data: "Data",
+				identities: "Identiteiten",
+				blocks: "Blokken"
+			},
+
+			start: {
+				welcome: "Welkom!",
+				intro: "Om te beginnen met Catena neem je de volgende stappen:",
+				identity: "1. Maak een identiteit",
+				database: "2. Maak een database",
+				data: "3. Maak tabellen en voeg data toe",
+				grants: "4. Geef andere gebruikers rechten op je database",
+				submitRaw: "Ruwe transactie inzenden",
+				newDatabaseName: "Naam van de nieuwe database:",
+				createDatabase: "Maak een nieuwe database",
+				dataDescription: "Als eigenaar van een database kun je alle operaties op je vers gemaakte database uitvoeren op de {url}-tab.",
+				grantsDescription: "Genereer andere identiteiten op de {url} tab en verleen deze rechten om andere gebruikers toe te staan wijzigingen door te voeren in de database.",
+				databaseDescription: "Wanneer je een nieuwe database aanmaakt wordt je daarvan automatisch de eigenaar. Alleen jij kunt met je sleutel transacties ondertekenen die wijzigingen aanbrengen in deze database, tenzij je privileges daarvoor verleent aan andere gebruikers.",
+				identityDescription: "Om transacties te kunnen versturen naar een Catena-database heb je een identiteit nodig. Een identiteit bestaat uit een speciale 'sleutel' waarmee je transacties kunt ondertekenen. Je kunt je identiteiten beheren op de {url}-tab.",
+				owned: "Je bent op dit moment geen eigenaar van een database. | Je bent op dit moment eigenaar van de database {databases}. | Je bent op dit moment eigenaar van de databases {databases}.",
+			}
+		},
+
+		en: {
+			address: "Address",
+			connect: "Connect",
+			disconnect: "Disconnect",
+			peers: "no peers | 1 peer | {count} peers",
+			blocks: "no blocks | 1 block | {count} blocks",
+			lastUpdatedAt: "last updated at",
+
+			tab: {
+				welcome: "Welcome",
+				data: "Data",
+				identities: "Identities",
+				blocks: "Blocks"
+			},
+
+			start: {
+				welcome: "Welcome!",
+				intro: "To get started with Catena, take the following steps:",
+				identity: "1. Create an identity",
+				database: "2. Create a database",
+				data: "3. Create tables and add some data",
+				grants: "4. Grant other users rights on your database",
+				submitRaw: "Submit a raw transaction",
+				newDatabaseName: "Name of the new database:",
+				createDatabase: "Create a database",
+				dataDescription: "As database owner, you can perform any operation on your freshly created database on the {url} tab.",
+				grantsDescription: "Generate other identities on the {url} tab and grant them rights to allow others to perform operations on your database.",
+				databaseDescription: "When you create a database, you become the owner of the database. Only your key can sign transactions that make changes to this database, unless you grant privileges to other keys as well.",
+				identityDescription: "In order to submit transactions to a Catena database, you need an identity. This identity consists of a special 'key' that allows you to sign transactions. You can manage identities on the {{url}} tab.",
+				owned: "You currently own no databases. | You currently own the database {databases}. | You currently own the databases {databases}.",
+			}
+		}
+	} }
 };
 </script>
