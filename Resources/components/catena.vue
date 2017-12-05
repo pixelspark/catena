@@ -218,7 +218,7 @@ module.exports = {
 				});
 			}
 			catch(e) {
-				self.error = e.getMessage();
+				self.error = e.toLocaleString();
 			}	
 		},
 
