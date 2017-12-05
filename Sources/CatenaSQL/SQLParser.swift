@@ -1489,7 +1489,7 @@ fileprivate extension Parser {
 		return ParserRule { (parser: Parser, reader: Reader) -> Bool in
 			let pos = reader.position
 
-			for ch in string.characters {
+			for ch in string {
 				let flag = (String(ch).caseInsensitiveCompare(String(reader.read())) == ComparisonResult.orderedSame)
 
 				if !flag {
@@ -1505,7 +1505,7 @@ fileprivate extension Parser {
 		return ParserRule { (parser: Parser, reader: Reader) -> Bool in
 			let pos = reader.position
 
-			for ch in string.characters {
+			for ch in string {
 				if ch != reader.read() {
 					reader.seek(pos)
 					return false

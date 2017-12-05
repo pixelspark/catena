@@ -191,7 +191,7 @@ internal extension Array where Element == Double {
 extension String {
 	public var hexDecoded: Data? {
 		var error = false
-		let s = Array(self.characters)
+		let s = Array(self)
 		let numbers = stride(from: 0, to: s.count, by: 2).map() { (idx: Int) -> UInt8 in
 			let res = strtoul(String(s[idx ..< Swift.min(idx + 2, s.count)]), nil, 16)
 			if res > UInt(UInt8.max) {
