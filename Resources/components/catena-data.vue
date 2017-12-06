@@ -1,5 +1,5 @@
 <template>
-	<div class="catena-data">
+	<div class="catena-data" @drop.prevent="dropFile">
 		<aside>
 			<transition-group name="list" tag="ul">
 				<li key="">
@@ -73,15 +73,23 @@ module.exports = {
 			let input = document.createElement('input');
 			input.type = 'file';
 			input.onchange = function() {
-				// Read the file
-				var reader = new FileReader();
-        		reader.onload = function() {
-					self.typedQuery = reader.result;
-					self.query = self.typedQuery;
-        		};
-        		reader.readAsText(input.files[0]);
+				self.readFile(input.files[0]);
 			};
 			input.click();
+		},
+
+		dropFile: function(event) {
+			this.readFile(event.dataTransfer.files[0]);
+		},
+
+		readFile: function(file) {
+			var self = this;
+			var reader = new FileReader();
+			reader.onload = function() {
+				self.typedQuery = reader.result;
+				self.query = self.typedQuery;
+			};
+			reader.readAsText(file);
 		},
 
 		select: function(q) {
