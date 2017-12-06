@@ -273,6 +273,11 @@ class CatenaSQLTests: XCTestCase {
 		"GRANT create ON foo TO ALL;",
 		"GRANT create TO ALL;",
 		"REVOKE create TO ALL;",
+		"CREATE\nTABLE foo(x INT);",
+		"DELETE\rFROM foo;",
+		"DELETE\r\n\tFROM\tfoo\r\n;",
+		"SHOW\tTABLES;",
+		"SHOW\rDATABASES;",
 	]
 
 	let invalidSQLStatements = [
@@ -296,6 +301,7 @@ class CatenaSQLTests: XCTestCase {
 		//"SELECT 1AND 0;", // There must be whitespace in between
 		"SELECTCASEWHEN1=1THEN1ELSE0END;", // There must be whitespace in between
 		"GRANT template 1 TO X'0ae551b518f3fc8a5edf84400078cb979888a94e0602fb5b1c15efe34d1afa68';",
+		"SE\tLECT 1;",
 	]
 
 	let throwingSQLStatements = [

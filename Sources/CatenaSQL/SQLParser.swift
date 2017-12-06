@@ -734,6 +734,7 @@ internal class SQLParser {
 
 	public var grammar: Grammar {
 		return Grammar { g in
+			let keyword = g.keyword
 			g.nestingDepthLimit = 10
 
 			// Literals
@@ -865,13 +866,9 @@ internal class SQLParser {
 			/* The logic operators must be followed by at least one space, as otherwise they are
 			ambiguous in queries like "SELECT x FROM y WHERE a=b ORDER BY z;"; Here, 'b OR ..'
 			would match. */
-			g["ex-logic-operator"] = Parser.matchAnyFrom(["AND ", "OR "].map { Parser.matchLiteralInsensitive($0) }) => { [unowned self] parser in
-				switch parser.text.lowercased() {
-				case "and ": self.stack.append(.binaryOperator(.and))
-				case "or ": self.stack.append(.binaryOperator(.or))
-				default: fatalError()
-				}
-			}
+			g["ex-logic-operator"] =
+				(keyword("AND") => { [unowned self] _ in self.stack.append(.binaryOperator(.and)) })
+				| (keyword("OR") => { [unowned self] _ in self.stack.append(.binaryOperator(.or)) })
 
 			g["ex-prefix-operator"] = Parser.matchAnyFrom(["-"].map { Parser.matchLiteral($0) }) => { [unowned self] parser in
 				switch parser.text {
@@ -952,10 +949,10 @@ internal class SQLParser {
 			})*
 
 			g["ex-case-when"] =
-				Parser.matchLiteralInsensitive("CASE ") => { [unowned self] in
+				keyword("CASE") => { [unowned self] in
 					self.stack.append(.expression(SQLExpression.when([], else: nil)))
 				}
-				~~ ((Parser.matchLiteralInsensitive("WHEN ") ~~ ^"ex-logic" ~~ Parser.matchLiteralInsensitive("THEN ") ~~ ^"ex-logic") => { [unowned self] parser in
+				~~ ((keyword("WHEN") ~~ ^"ex-logic" ~~ keyword("THEN") ~~ ^"ex-logic") => { [unowned self] parser in
 					guard case .expression(let then) = self.stack.popLast()! else { fatalError() }
 					guard case .expression(let when) = self.stack.popLast()! else { fatalError() }
 					guard case .expression(let caseExpression) = self.stack.popLast()! else { fatalError() }
@@ -963,7 +960,7 @@ internal class SQLParser {
 					whens.append(SQLWhen(when: when, then: then))
 					self.stack.append(.expression(SQLExpression.when(whens, else: nil)))
 				})+
-				~~ (((Parser.matchLiteralInsensitive("ELSE ") ~~ ^"ex-logic") => { [unowned self] in
+				~~ (((keyword("ELSE") ~~ ^"ex-logic") => { [unowned self] in
 					guard case .expression(let then) = self.stack.popLast()! else { fatalError() }
 					guard case .expression(let caseExpression) = self.stack.popLast()! else { fatalError() }
 					guard case .when(let whens, else: _) = caseExpression else { fatalError() }
@@ -1064,10 +1061,10 @@ internal class SQLParser {
 
 			// Statement types
 			g["select-dql-statement"] =
-				Parser.matchLiteralInsensitive("SELECT ") => { [unowned self] in
+				keyword("SELECT") => { [unowned self] in
 					self.stack.append(.statement(.select(SQLSelect())))
 				}
-				~~ ((Parser.matchLiteralInsensitive("DISTINCT ") => { [unowned self] in
+				~~ ((keyword("DISTINCT") => { [unowned self] in
 					guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 					guard case .select(var select) = st else { fatalError() }
 					select.distinct = true
@@ -1081,14 +1078,14 @@ internal class SQLParser {
 					self.stack.append(.statement(.select(select)))
 				})
 				~~ (
-						Parser.matchLiteralInsensitive("FROM ") ~~ ^"id-table" => { [unowned self] in
+						keyword("FROM") ~~ ^"id-table" => { [unowned self] in
 							guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
 							guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 							guard case .select(var select) = st else { fatalError() }
 							select.from = table
 							self.stack.append(.statement(.select(select)))
 						}
-						~~ ((Parser.matchLiteralInsensitive("LEFT JOIN ") => { [unowned self] in
+						~~ ((keyword("LEFT JOIN") => { [unowned self] in
 								self.stack.append(.join(.left(table: SQLTable(name: ""), on: SQLExpression.null)))
 							}
 							~~ ^"id-table" => { [unowned self] in
@@ -1097,7 +1094,7 @@ internal class SQLParser {
 								guard case .left(table: _, on: _) = join else { fatalError() }
 								self.stack.append(.join(.left(table: table, on: SQLExpression.null)))
 							}
-							~~ Parser.matchLiteralInsensitive("ON ")
+							~~ keyword("ON")
 							~~ ^"ex" => { [unowned self] in
 								guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
 								guard case .join(let join) = self.stack.popLast()! else { fatalError() }
@@ -1110,7 +1107,7 @@ internal class SQLParser {
 								select.joins.append(join)
 								self.stack.append(.statement(.select(select)))
 							})*
-						~~ (Parser.matchLiteralInsensitive("WHERE ") ~~ ^"ex" => { [unowned self] in
+						~~ (keyword("WHERE") ~~ ^"ex" => { [unowned self] in
 							guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
 							guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 							guard case .select(var select) = st else { fatalError() }
@@ -1118,7 +1115,7 @@ internal class SQLParser {
 							self.stack.append(.statement(.select(select)))
 						})/~
 						~~ (
-							(Parser.matchLiteralInsensitive("ORDER BY ") => { [unowned self] in
+							(keyword("ORDER BY") => { [unowned self] in
 								self.stack.append(.orders([]))
 							})
 							~~ ^"orders" => { [unowned self] in
@@ -1130,7 +1127,7 @@ internal class SQLParser {
 							}
 						)/~
 						~~ (
-							Parser.matchLiteralInsensitive("LIMIT ")
+							keyword("LIMIT")
 							~~ ^"lit-positive-int" => { [unowned self] in
 								guard case .expression(let ex) = self.stack.popLast()! else { fatalError() }
 								guard case .literalInteger(let i) = ex else { fatalError() }
@@ -1142,7 +1139,7 @@ internal class SQLParser {
 						)/~
 					)/~
 
-			g["create-ddl-statement"] = Parser.matchLiteralInsensitive("CREATE TABLE ")
+			g["create-ddl-statement"] = keyword("CREATE") ~~ keyword("TABLE")
 				~~ (^"id-table" => { [unowned self] in
 						guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
 						self.stack.append(.statement(.createTable(table: table, schema: SQLSchema())))
@@ -1161,25 +1158,25 @@ internal class SQLParser {
 				}, separator: Parser.matchLiteral(","))
 				~~ Parser.matchLiteral(")")
 
-			g["create-db-statement"] = Parser.matchLiteralInsensitive("CREATE DATABASE ")
+			g["create-db-statement"] = keyword("CREATE") ~~ keyword("DATABASE")
 				~~ (^"id-database" => { [unowned self] in
 					guard case .databaseIdentifier(let database) = self.stack.popLast()! else { fatalError() }
 					self.stack.append(.statement(.createDatabase(database: database)))
 				})
 
-			g["drop-ddl-statement"] = Parser.matchLiteralInsensitive("DROP TABLE ")
+			g["drop-ddl-statement"] = keyword("DROP") ~~ keyword("TABLE")
 				~~ (^"id-table" => { [unowned self] in
 					guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
 					self.stack.append(.statement(.dropTable(table: table)))
 				})
 
-			g["update-dml-statement"] = Parser.matchLiteralInsensitive("UPDATE ")
+			g["update-dml-statement"] = keyword("UPDATE")
 				~~ (^"id-table" => { [unowned self] in
 					guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
 					let update = SQLUpdate(table: table)
 					self.stack.append(.statement(.update(update)))
 				})
-				~~ Parser.matchLiteralInsensitive("SET ")
+				~~ keyword("SET")
 				~~ Parser.matchList(^"lit-column"
 					~~ Parser.matchLiteral("=")
 					~~ ^"ex" => { [unowned self] in
@@ -1194,7 +1191,7 @@ internal class SQLParser {
 						update.set[col] = expression
 						self.stack.append(.statement(.update(update)))
 					}, separator: Parser.matchLiteral(","))
-				~~ (Parser.matchLiteralInsensitive("WHERE ") ~~ (^"ex" => { [unowned self] in
+				~~ (keyword("WHERE") ~~ (^"ex" => { [unowned self] in
 					guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
 					guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 					guard case .update(var update) = st else { fatalError() }
@@ -1202,12 +1199,12 @@ internal class SQLParser {
 					self.stack.append(.statement(.update(update)))
 				}))/~
 
-			g["delete-dml-statement"] = Parser.matchLiteralInsensitive("DELETE FROM ")
+			g["delete-dml-statement"] = keyword("DELETE") ~~ keyword("FROM")
 				~~ (^"id-table" => { [unowned self] in
 					guard case .tableIdentifier(let table) = self.stack.popLast()! else { fatalError() }
 					self.stack.append(.statement(.delete(from: table, where: nil)))
 				})
-				~~ (Parser.matchLiteralInsensitive("WHERE") ~~ ^"ex" => { [unowned self] in
+				~~ (keyword("WHERE") ~~ ^"ex" => { [unowned self] in
 					guard case .expression(let expression) = self.stack.popLast()! else { fatalError() }
 					guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 					guard case .delete(from: let table, where: _) = st else { fatalError() }
@@ -1215,16 +1212,16 @@ internal class SQLParser {
 				})/~
 
 			g["insert-dml-statement"] = (
-					Parser.matchLiteralInsensitive("INSERT ") => { [unowned self] in
+					keyword("INSERT") => { [unowned self] in
 						self.stack.append(.statement(.insert(SQLInsert(orReplace: false, into: SQLTable(name: ""), columns: [], values: []))))
 					}
-					~~ ((Parser.matchLiteralInsensitive("OR REPLACE ") => { [unowned self] in
+					~~ ((keyword("OR REPLACE") => { [unowned self] in
 						guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
 						guard case .insert(var insert) = statement else { fatalError() }
 						insert.orReplace = true
 						self.stack.append(.statement(.insert(insert)))
 					})/~)
-					~~ Parser.matchLiteralInsensitive("INTO ")
+					~~ keyword("INTO")
 					~~ (^"id-table" )
 					~~ ((Parser.matchLiteral("(") => { [unowned self] in
 						self.stack.append(.columnList([]))
@@ -1255,7 +1252,7 @@ internal class SQLParser {
 
 			g["lit-user"] = ^"lit-blob"
 
-			g["show-statement"] = Parser.matchLiteralInsensitive("SHOW ") ~~ (
+			g["show-statement"] = keyword("SHOW") ~~ (
 				(Parser.matchLiteralInsensitive("TABLES") => { [unowned self] in
 					self.stack.append(.statement(.show(.tables)))
 				})
@@ -1266,7 +1263,7 @@ internal class SQLParser {
 					(Parser.matchLiteralInsensitive("DATABASES") => { [unowned self] in
 						self.stack.append(.statement(.show(.databases(SQLShowDatabases()))))
 					})
-					~~ ((Parser.matchLiteralInsensitive("FOR ")) ~~ ^"lit-user" => {
+					~~ ((keyword("FOR")) ~~ ^"lit-user" => {
 						guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
 						guard case .literalBlob(let data) = t else { fatalError() }
 						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
@@ -1280,7 +1277,7 @@ internal class SQLParser {
 					(Parser.matchLiteralInsensitive("GRANTS") => { [unowned self] in
 						self.stack.append(.statement(.show(.grants(SQLShowGrants()))))
 					})
-					~~ ((Parser.matchLiteralInsensitive("FOR ")) ~~ ^"lit-user" => {
+					~~ ((keyword("FOR")) ~~ ^"lit-user" => {
 						guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
 						guard case .literalBlob(let data) = t else { fatalError() }
 						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
@@ -1289,7 +1286,7 @@ internal class SQLParser {
 						sg.forUser = data
 						self.stack.append(.statement(.show(.grants(sg))))
 						})/~
-					~~ ((Parser.matchLiteralInsensitive("ON ")) ~~ ^"id-table" => {
+					~~ ((keyword("ON")) ~~ ^"id-table" => {
 						guard case .tableIdentifier(let t) = self.stack.popLast()! else { fatalError() }
 						guard case .statement(let st) = self.stack.popLast()! else { fatalError() }
 						guard case .show(let showType) = st else { fatalError() }
@@ -1300,7 +1297,7 @@ internal class SQLParser {
 				)
 			)
 
-			g["describe-statement"] = Parser.matchLiteralInsensitive("DESCRIBE ")
+			g["describe-statement"] = keyword("DESCRIBE")
 				~~ (^"id-table") => { [unowned self] in
 					guard case .tableIdentifier(let t) = self.stack.popLast()! else { fatalError() }
 					self.stack.append(.statement(.describe(t)))
@@ -1318,7 +1315,7 @@ internal class SQLParser {
 					sqlIf.branches.append((condition, .fail))
 					self.stack.append(.statement(.`if`(sqlIf)))
 				}
-				~~ Parser.matchLiteralInsensitive("THEN ")
+				~~ keyword("THEN")
 				~~ nest(^"statement" => { [unowned self] in
 					guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
 					guard case .statement(let ifStatement) = self.stack.popLast()! else { fatalError() }
@@ -1330,13 +1327,13 @@ internal class SQLParser {
 				})
 
 			g["if-statement"] =
-				Parser.matchLiteralInsensitive("IF ") => { [unowned self] in
+				keyword("IF") => { [unowned self] in
 					self.stack.append(.statement(.`if`(SQLIf(branches: [], otherwise: nil))))
 				}
 				~~ ^"condition-then"
-				~~ (Parser.matchLiteralInsensitive("ELSE IF ") ~~ ^"condition-then")*
+				~~ (keyword("ELSE IF") ~~ ^"condition-then")*
 				~~ (
-					Parser.matchLiteralInsensitive("ELSE ")
+					keyword("ELSE")
 					~~ nest(^"statement" => { [unowned self] in
 						guard case .statement(let statement) = self.stack.popLast()! else { fatalError() }
 						guard case .statement(let ifStatement) = self.stack.popLast()! else { fatalError() }
@@ -1348,7 +1345,7 @@ internal class SQLParser {
 				~~ Parser.matchLiteralInsensitive("END")
 
 			g["block-statement"] =
-				Parser.matchLiteralInsensitive("DO ") => {
+				keyword("DO") => {
 					self.stack.append(.statement(.block([])))
 				}
 				~~ Parser.matchList(nest(^"statement" => {
@@ -1361,7 +1358,7 @@ internal class SQLParser {
 				~~ Parser.matchLiteralInsensitive("END")
 
 
-			g["drop-db-statement"] = Parser.matchLiteralInsensitive("DROP DATABASE ")
+			g["drop-db-statement"] = keyword("DROP DATABASE")
 				~~ (^"id-database" => { [unowned self] in
 					guard case .databaseIdentifier(let database) = self.stack.popLast()! else { fatalError() }
 					self.stack.append(.statement(.dropDatabase(database: database)))
@@ -1370,7 +1367,7 @@ internal class SQLParser {
 			let privilegeType = SQLPrivilege.validPrivilegeNames.map { Parser.matchLiteralInsensitive($0) }
 
 			g["grant-statement"] = (
-				Parser.matchLiteralInsensitive("GRANT ")
+				keyword("GRANT")
 					~~ Parser.matchAnyFrom(privilegeType) => { p in
 						self.stack.append(.privilege(p.text, on: nil, blob: nil))
 					}
@@ -1380,12 +1377,12 @@ internal class SQLParser {
 						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
 						self.stack.append(.privilege(type, on: nil, blob: data))
 					})/~)
-					~~ ((Parser.matchLiteralInsensitive("ON ") ~~ (^"id-table" => { p in
+					~~ ((keyword("ON") ~~ (^"id-table" => { p in
 						guard case .tableIdentifier(let t) = self.stack.popLast()! else { fatalError() }
 						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
 						self.stack.append(.privilege(type, on: t.name, blob: nil))
 					}))/~)
-					~~ Parser.matchLiteralInsensitive("TO ")
+					~~ keyword("TO")
 					~~ (((^"lit-blob") => {
 							guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
 							guard case .literalBlob(let data) = t else { fatalError() }
@@ -1410,7 +1407,7 @@ internal class SQLParser {
 				)
 
 			g["revoke-statement"] = (
-				Parser.matchLiteralInsensitive("REVOKE ")
+				keyword("REVOKE")
 					~~ Parser.matchAnyFrom(privilegeType) => { p in
 						self.stack.append(.privilege(p.text, on: nil, blob: nil))
 					}
@@ -1420,12 +1417,12 @@ internal class SQLParser {
 						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
 						self.stack.append(.privilege(type, on: nil, blob: data))
 						})/~)
-					~~ ((Parser.matchLiteralInsensitive("ON ") ~~ (^"id-table" => { p in
+					~~ ((keyword("ON") ~~ (^"id-table" => { p in
 						guard case .tableIdentifier(let t) = self.stack.popLast()! else { fatalError() }
 						guard case .privilege(let type, on: _, blob: _) = self.stack.popLast()! else { fatalError() }
 						self.stack.append(.privilege(type, on: t.name, blob: nil))
 						}))/~)
-					~~ Parser.matchLiteralInsensitive("TO ")
+					~~ keyword("TO")
 					~~ (((^"lit-blob") => {
 						guard case .expression(let t) = self.stack.popLast()! else { fatalError() }
 						guard case .literalBlob(let data) = t else { fatalError() }
@@ -1462,6 +1459,12 @@ internal class SQLParser {
 
 			return (^"statement") ~~ Parser.matchLiteral(";")*!*
 		}
+	}
+}
+
+fileprivate extension Grammar {
+	func keyword(_ string: String) -> ParserRule {
+		return Parser.matchLiteralInsensitive(string) ~ (" " | "\t" | "\r\n" | "\r" | "\n")
 	}
 }
 
