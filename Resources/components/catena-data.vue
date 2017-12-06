@@ -24,6 +24,7 @@
 		<article style="overflow-y: auto;" v-if="database != ''">
 			<textarea class="catena-sql" @keyup="setQuery" :value="typedQuery" @keyup.enter="enterUp"></textarea>
 			<button @click="perform"><i class="fa fa-play"></i> {{$t('perform')}}</button>
+			<button @click="loadFile"><i class="fa fa-play"></i> {{$t('loadFile')}}</button>
 			<catena-query :sql="query" v-if="query != '' && query !== null " :agent="agent" :head="head" :database="database"></catena-query>
 		</article>
 	</div>
@@ -65,6 +66,24 @@ module.exports = {
 	},
 
 	methods: {
+		loadFile: function() {
+			var self = this;
+
+			// Show open file dialog
+			let input = document.createElement('input');
+			input.type = 'file';
+			input.onchange = function() {
+				// Read the file
+				var reader = new FileReader();
+        		reader.onload = function() {
+					self.typedQuery = reader.result;
+					self.query = self.typedQuery;
+        		};
+        		reader.readAsText(input.files[0]);
+			};
+			input.click();
+		},
+
 		select: function(q) {
 			this.query = q;
 			this.table = null;
@@ -155,12 +174,14 @@ module.exports = {
 			showTableSchema: "Show table schema...",
 			removeQuery: "Forget query",
 			perform: "Execute",
+			loadFile: "Load script...",
 		},
 		nl: {
 			selectDatabase: "Selecteer database...",
 			showTableSchema: "Toon tabelschema...",
 			removeQuery: "Vergeet query",
 			perform: "Uitvoeren",
+			loadFile: "Laad script...",
 		}
 	} }
 };

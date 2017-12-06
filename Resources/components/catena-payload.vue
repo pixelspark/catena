@@ -6,7 +6,7 @@
 				<th>{{$t('database')}}</th>
 				<th>{{$t('invoker')}}</th>
 			</tr>
-			<tr v-for="tr in transactions" :key="tr.signature">
+			<tr v-for="(tr,idx) in transactions" :key="idx">
 				<td><code>{{tr.sql}}</code></td>
 				<td><code>{{tr.database}}</code></td>
 				<td><catena-hash :hash="tr.invoker.publicHash" format="base64"></catena-hash> ({{tr.counter}})</td>
