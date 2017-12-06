@@ -2,9 +2,9 @@
 	<div>
 		<table v-if="data.length &gt; 0">
 			<tr>
-				<th>SQL</th>
-				<th>Database</th>
-				<th>Invoker</th>
+				<th>{{$t('sql')}}</th>
+				<th>{{$t('database')}}</th>
+				<th>{{$t('invoker')}}</th>
 			</tr>
 			<tr v-for="tr in transactions" :key="tr.signature">
 				<td><code>{{tr.sql}}</code></td>
@@ -23,6 +23,19 @@ module.exports = {
 	props: {
 		payload: {type: String}
 	},
+
+	i18n: { messages: {
+		en: {
+			sql: "SQL",
+			invoker: "Invoker",
+			database: "Database",
+		},
+		nl: {
+			sql: "SQL",
+			invoker: "Opdrachtgever",
+			database: "Database",
+		}
+	} },
 
 	computed: {
 		seed: function() {

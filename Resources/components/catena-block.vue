@@ -6,9 +6,9 @@
 
 		<h3>
 			<i class="fa fa-cube" aria-hidden="true"></i>
-			Block #{{block.index}}:
+			{{$t('title', {index: block.index})}}
 			<template v-if="isGenesis">
-				(Genesis)
+				{{$t('isGenesis')}}
 			</template>
 			<catena-hash :hash="block.hash" :expandable="false"></catena-hash><br/>
 		</h3>
@@ -22,6 +22,17 @@ module.exports = {
 	  props: {
 		  block: {type: Object}
 	  },
+
+	  i18n: { messages: {
+		  en: {
+			  title: "Block #{index}",
+			  isGenesis: "(Genesis)"
+		  },
+		  nl: {
+			  title: "Blok #{index}",
+			  isGenesis: "(Genesis)"
+		  }
+	  } },
 
 	  computed: {
 		  isGenesis: function() {

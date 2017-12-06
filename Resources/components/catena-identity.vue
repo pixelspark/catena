@@ -1,62 +1,62 @@
 <template>
 	<div v-if="identity !== null">
-	<h1><i class="fa fa-user"></i> Identity <catena-hash :hash="identity.publicHash" format="base64"></catena-hash></h1>
+	<h1><i class="fa fa-user"></i>{{$t('identity')}} <catena-hash :hash="identity.publicHash" format="base64"></catena-hash></h1>
 	<dl>
 		<template v-if="identity !== null">
-			<dt>Public key</dt>
+			<dt>{{$t('publicKey')}}</dt>
 			<dd><code>{{identity.publicBase58}}</code></dd>
 		</template>
 
 		<template v-if="identity !== null">
-			<dt>Public hash (hex)</dt>
+			<dt>{{$t('publicHashHex')}}</dt>
 			<dd><code>X'{{identity.publicHashHex}}'</code></dd>
 		</template>
 
 		<template v-if="identity !== null">
-			<dt>Counter</dt>
-			<dd>{{counter}} <button @click="updateCounter">Refresh</button></dd>
+			<dt>{{$t('counter')}}</dt>
+			<dd>{{counter}} <button @click="updateCounter">{{$t('refresh')}}</button></dd>
 		</template>
 
 		<template v-if="identity !== null">
-			<dt>Private key</dt>
+			<dt>{{$t('privateKey')}}</dt>
 			<dd>
-				<catena-expander title="Show" icon="key">
+				<catena-expander :title="$t('showPrivateKey')" icon="key">
 					<code>{{identity.privateBase58}}</code>
 				</catena-expander>
 			</dd>
 		</template>
 	</dl>
 
-	<h2>Owned databases</h2>
-	<catena-query v-if="agent !== null" :sql="ownedSQL" :agent="agent" :head="head" :database="database" no-data="This user does not currently own any databases."></catena-query>
+	<h2>{{$t('ownedDatabases')}}</h2>
+	<catena-query v-if="agent !== null" :sql="ownedSQL" :agent="agent" :head="head" :database="database" :no-data="$t('noOwnedDatabases')"></catena-query>
 
-	<h2>Grants</h2>
+	<h2>{{$t('grants')}}</h2>
 	<dl>
-		<dt>Show grants in database:</dt>
+		<dt>{{$t('showGrantsInDatabase')}}</dt>
 		<dd>
 			<select v-model="database">
-				<option key="" value="">Select a database...</option>
+				<option key="" value="">{{$t('selectDatabase')}}</option>
 				<option v-for="db in databases" :key="db" :value="db">{{db}}</option>
 			</select>
 		</dd>
 	</dl>
 
-	<catena-query v-if="agent !== null && database != '' " :sql="grantsSQL" :agent="agent" :head="head" :database="database" no-data="This user was not granted any privileges for this database."></catena-query>
-	<catena-expander title="Grant privileges" icon="plus" v-if="database != '' ">
+	<catena-query v-if="agent !== null && database != '' " :sql="grantsSQL" :agent="agent" :head="head" :database="database" :no-data="$t('noPrivileges')"></catena-query>
+	<catena-expander :title="$t('grantPrivileges')" icon="plus" v-if="database != '' ">
 		<catena-granter :agent="agent" :user="identity" :database="database"></catena-granter>
 	</catena-expander>
 
 	<template v-if="identity !== null">
-		<h2>Messaging</h2>
+		<h2>{{$t('messaging')}}</h2>
 		<catena-expander title="Sign a message" icon="hand-spock-o">
 			<textarea class="catena-code" v-model="messageToSign" @keyup="clearSignature"></textarea>
-			<button @click="signMessage">Sign</button> <button @click="clearSignMessage">Clear</button>
+			<button @click="signMessage">{{$t('sign')}}</button> <button @click="clearSignMessage">{{$t('clearMessage')}}</button>
 
 			<dl v-if="messageSignature !== null">
-				<dt>Signature</dt>
+				<dt>{{$t('signature')}}</dt>
 				<dd><input type="text" style="width: 100%;" readonly disabled :value="messageSignature"/></dd>
 
-				<dt>Combined</dt>
+				<dt>{{$t('combined')}}</dt>
 				<dd><input type="text" style="width: 100%;" readonly disabled :value="combinedSignedMessage"/></dd>
 			</dl>
 		</catena-expander>
@@ -65,24 +65,24 @@
 			<textarea class="catena-code" v-model="messageToVerify" @keyup="clearVerify" placeholder="Message (may be combined)"></textarea>
 			<input type="text" style="width: 100%;" :placeholder="'Public key (leave empty to use '+identity.publicBase58+')' " v-model="verifyPublicKey" @keyup="clearVerify"/>
 			<input type="text" style="width: 100%;" placeholder="Signature" v-model="verifySignature" @keyup="clearVerify"/>
-			<button @click="verifyMessage">Verify</button> <button @click="clearVerifyMessage">Clear</button>
+			<button @click="verifyMessage">{{$t('verify')}}</button> <button @click="clearVerifyMessage">{{$t('clearMessage')}}</button>
 
 			<template v-if="messageVerified !== null">
 				<p class="info" v-if="messageVerified">
-					<i class="fa fa-check"></i> The message verified successfully
+					<i class="fa fa-check"></i> {{$t('messageVerified')}}
 				</p>
 				<p class="error" v-else>
-					<i class="fa fa-times"></i> The message did not verify
+					<i class="fa fa-times"></i> {{$t('messageDidNotVerify')}}
 				</p>
 			</template>
 		</catena-expander>
 	</template>
 
-	<h2>Storage</h2>
-	<p v-if="!isPersisted">Save this identity in this browser's local storage.</p>
-	<p v-if="isPersisted">This identity is saved in the local storage of this browser.</p>
-	<button @click="persist" v-if="!isPersisted"><i class="fa fa-bookmark-o"></i>Persist</button>
-	<button @click="forget" v-if="isPersisted"><i class="fa fa-eraser"></i> Forget</button>
+	<h2>{{$t('storage')}}</h2>
+	<p v-if="!isPersisted">{{$t('storeDescription')}}</p>
+	<p v-if="isPersisted">{{$t('storedDescription')}}</p>
+	<button @click="persist" v-if="!isPersisted"><i class="fa fa-bookmark-o"></i>{{$t('persist')}}</button>
+	<button @click="forget" v-if="isPersisted"><i class="fa fa-eraser"></i> {{$t('forget')}}</button>
 	</div>
 </template>
 
@@ -113,6 +113,68 @@ module.exports = {
 			verifyPublicKey: null,
 		};
 	},
+
+	i18n: { messages: {
+		en: {
+			privateKey: "Secret key",
+			publicKey: "Public key",
+			showPrivateKey: "Show",
+			counter: "Counter",
+			publicHashHex: "Public key hash (hex)",
+			refresh: "Refresh",
+			storage: "Storage",
+			storeDescription: "Save this identity in this browser's local storage.",
+			storedDescription: "This identity is saved in the local storage of this browser.",
+			persist: "Persist",
+			forget: "Forget",
+			messageDidNotVerify: "The message did not verify",
+			messageVerified: "The message verified successfully",
+			clearMessage: "Clear",
+			messaging: "Messaging",
+			signature: "Signature",
+			combined: "Combined",
+			noPrivileges: "This user was not granted any privileges for this database.",
+			grants: "Grants",
+			ownedDatabases: "Owned databases",
+			showGrantsInDatabase: "Show grants in database:",
+			selectDatabase: "Select a database...",
+			sign: "Sign",
+			verify: "Verify",
+			noOwnedDatabases: "This user does not currently own any databases.",
+			grantPrivileges: "Grant privileges",
+			identity: "Identity",
+		},
+
+		nl: {
+			privateKey: "Geheime sleutel",
+			publicKey: "Publieke sleutel",
+			showPrivateKey: "Toon",
+			counter: "Teller",
+			publicHashHex: "Hash van publieke sleutel (hex)",
+			refresh: "Vernieuw",
+			storage: "Opslag",
+			storeDescription: "Sla deze identiteit in de browser op deze computer op.",
+			storedDescription: "Deze identiteit is opgeslagen in de browser op deze computer.",
+			persist: "Onthoud",
+			forget: "Vergeet",
+			messageDidNotVerify: "Het bericht kon niet worden geverifieerd",
+			messageVerified: "Het bericht is met succes geverifieerd",
+			clearMessage: "Wis",
+			messaging: "Berichtuitwisseling",
+			signature: "Handtekening",
+			combined: "Gecombineerd",
+			noPrivileges: "Aan deze gebruiker zijn geen privileges verleend in deze database.",
+			grants: "Verleende privileges",
+			ownedDatabases: "Databases waarvan deze gebruiker eigenaar is",
+			showGrantsInDatabase: "Toon aan deze gebruiker verleende privileges in database:",
+			selectDatabase: "Selecteer een database...",
+			sign: "Onderteken",
+			verify: "Verifieer",
+			noOwnedDatabases: "Er zijn geen databases waarvan deze gebruiker eigenaar is.",
+			grantPrivileges: "Verleen privileges",
+			identity: "Identiteit",
+		}
+	} },
 
 	watch: {
 		identity: function(nv) {
