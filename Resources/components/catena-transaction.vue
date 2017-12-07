@@ -71,7 +71,7 @@ module.exports = {
 			sign: "Onderteken",
 			signAndSubmit: "Onderteken en verzend",
 			invoker: "Opdrachtgever",
-			statement: "Statement dat dient te worden uitgevoerd op database '{database}':",
+			statement: "Opdracht die dient te worden uitgevoerd op database '{database}':",
 			select: "Selecteer...",
 			count: "Dit wordt transactie #{counter} voor deze uitvoerder."
 		}

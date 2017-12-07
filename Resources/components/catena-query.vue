@@ -1,11 +1,11 @@
 <template>
 	<div class="catena-query">
-		<p class="error" v-if="error !== null"><i class="fa fa-warning"></i> Error: {{error}}</p>
-		<catena-spinner v-else-if="isLoading" fill="rgb(0,55,100)">Loading...</catena-spinner>
+		<p class="error" v-if="error !== null"><i class="fa fa-warning"></i> {{$t('error')}} {{error}}</p>
+		<catena-spinner v-else-if="isLoading" fill="rgb(0,55,100)">{{$t('loading')}}</catena-spinner>
 		<div v-else>
 			<dl v-if="hasParameters">
-				<h2>Parameterized query</h2>
-				<p class="info" v-if="isUnbound"><i class="fa fa-info"></i> Set these parameters first!</p>
+				<h2>{{$t('parametrizedQuery')}}</h2>
+				<p class="info" v-if="isUnbound"><i class="fa fa-info"></i> {{$t('parameterDescription')}}</p>
 
 				<template v-for="(v, k) in parameters">
 					<dt :key="k">{{k}}</dt>
@@ -16,9 +16,9 @@
 			<button v-if="hasParameters" @click="update"><i class="fa fa-check"></i> Apply</button>
 
 			<template v-if="isMutating">
-				<h2>Mutating query</h2>
-				<p>The query you have submitted is a mutating query. Do you want to submit a transaction to execute the query?</p>
-				<catena-expander title="Create transaction" icon="plus">
+				<h2>{{$t('mutatingQuery')}}</h2>
+				<p>{{$t('mutatingQueryDescription')}}</p>
+				<catena-expander :title="$t('createTransaction')" icon="plus">
 					<catena-transaction :sql="formattedSQL" :agent="agent" :database="database"></catena-transaction>
 				</catena-expander>
 			</template>
@@ -31,7 +31,7 @@
 				</thead>
 
 				<tbody>
-					<tr v-if="!result.rows || result.rows.length == 0" ><td>{{noData}}</td></tr>
+					<tr v-if="!result.rows || result.rows.length == 0" ><td>{{noDataText()}}</td></tr>
 
 					<tr v-for="(row, idx) in result.rows" :key="idx">
 						<td v-for="(cell, idx) in row" :key="idx">
@@ -55,8 +55,8 @@ module.exports = {
 		sql: String,
 		database: String,
 		agent: Agent,
-		head: {type: String, default: null},
-		noData: {type: String, default: "(No data)"}
+		head: { type: String, default: null },
+		noData: { type: String, default: null }
 	},
 
 	data: function() {
@@ -105,6 +105,13 @@ module.exports = {
 	},
 
 	methods: {
+		noDataText: function() {
+			if(this.noData !== null) {
+				return this.noData;
+			}
+			return this.$t('noData');
+		},
+
 		setParameter: function(k, v) {
 			this.parameters[k] = v;
 		},
@@ -150,6 +157,30 @@ module.exports = {
 				}
 			});
 		}
-	}
+	},
+
+	i18n: { messages: {
+		en: {
+			mutatingQuery: "Mutating query",
+			mutatingQueryDescription: "The query you have submitted is a mutating query. Do you want to submit a transaction to execute the query?",
+			createTransaction: "Create transaction",
+			parametrizedQuery: "Parameterized query",
+			parameterDescription: "Set these parameters first!",
+			loading: "Loading...",
+			error: "Error:",
+			noData: "(No data)",
+		},
+
+		nl: {
+			mutatingQuery: "Wijzigingsopdracht",
+			mutatingQueryDescription: "De opdracht die is ingevoerd wijzigt (mogelijk) gegevens. Om de wijzigingen te kunnen doervoeren dient de opdracht als transactie te worden ingezonden.",
+			createTransaction: "Maak transactie",
+			parametrizedQuery: "Opdractparameters",
+			parameterDescription: "Om deze opdracht uit te kunnen voeren, dienen eerst de volgende parameters te worden gekozen.",
+			loading: "Bezig met laden...",
+			error: "Fout:",
+			noData: "(Geen gegevens)",
+		}
+	} },
 };
 </script>

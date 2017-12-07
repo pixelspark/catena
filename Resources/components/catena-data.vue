@@ -3,7 +3,7 @@
 		<aside>
 			<transition-group name="list" tag="ul">
 				<li key="">
-					<a title="Show grants" href="javascript:void(0);" v-if="database != ''" style="float:right;" @click.capture="describeDatabase(t)"><i class="fa fa-users"></i></a>
+					<a :title="$t('showGrants')" href="javascript:void(0);" v-if="database != ''" style="float:right;" @click.capture="describeDatabase(t)"><i class="fa fa-users"></i></a>
 					<select v-model="database">
 						<option key="" value="">{{$t('selectDatabase')}}</option>
 						<option v-for="db in databases" :value="db" :key="db">{{db}}</option>
@@ -183,6 +183,7 @@ module.exports = {
 			removeQuery: "Forget query",
 			perform: "Execute",
 			loadFile: "Load script...",
+			showGrants: "Show grants"
 		},
 		nl: {
 			selectDatabase: "Selecteer database...",
@@ -190,6 +191,7 @@ module.exports = {
 			removeQuery: "Vergeet query",
 			perform: "Uitvoeren",
 			loadFile: "Laad script...",
+			showGrants: "Toon verleende privileges"
 		}
 	} }
 };
