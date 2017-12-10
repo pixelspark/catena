@@ -143,7 +143,7 @@ public class SQLBlockchain: Blockchain {
 		// Load chain from storage
 		if let hh = self.meta.headHash {
 			self.highest = try self.meta.get(block: hh)!
-			Log.info("[SQLLedger] Get highest: \(self.highest.signature!.stringValue)")
+			Log.debug("[SQLLedger] Get highest: \(self.highest.signature!.stringValue)")
 		}
 		else {
 			try self.meta.database.transaction {

@@ -23,12 +23,14 @@ let initializeOption = BoolOption(shortFlag: "i", longFlag: "initialize", helpMe
 let noReplayOption = BoolOption(shortFlag: "n", longFlag: "no-replay", helpMessage: "Do not replay database operations, just participate and validate transactions (default: false)")
 let nodeDatabaseFileOption = StringOption(longFlag: "node-database", required: false, helpMessage: "Backing database file for instance database (default: catena-node.sqlite)")
 let noLocalPeersOption = BoolOption(longFlag: "no-local-discovery", helpMessage: "Disable local peer discovery")
-let noWebClient = BoolOption(longFlag: "no-web-client", helpMessage: "Disable serving of the web client")
+let noWebClientOption = BoolOption(longFlag: "no-web-client", helpMessage: "Disable serving of the web client")
+let noPQServerOption = BoolOption(longFlag: "no-pq-server", helpMessage: "Disable the pq query server interface")
+let showIdentityOption = BoolOption(longFlag: "show-identity", helpMessage: "Show the identity information, then exit")
 let nodeUUIDOption = StringOption(longFlag: "node-uuid", required: false, helpMessage: "Set the node's UUID (default: a randomly generated UUID)")
-let allowCorsDomains = StringOption(longFlag: "allow-domain", required: false, helpMessage: "Domains from which to allow HTTP API requests (set to '*' to allow all)")
+let allowCorsDomainsOption = StringOption(longFlag: "allow-domain", required: false, helpMessage: "Domains from which to allow HTTP API requests (set to '*' to allow all)")
 
 let cli = CommandLineKit.CommandLine()
-cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, initializeOption, noReplayOption, nodeDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption, nodeUUIDOption, allowCorsDomains, noWebClient)
+cli.addOptions(databaseFileOption, helpOption, seedOption, netPortOption, queryPortOption, peersOption, mineOption, logOption, initializeOption, noReplayOption, nodeDatabaseFileOption, memoryDatabaseFileOption, noLocalPeersOption, nodeUUIDOption, allowCorsDomainsOption, noWebClientOption, noPQServerOption, showIdentityOption)
 
 do {
 	try cli.parse()
@@ -109,7 +111,7 @@ do {
 	// Find genesis block
 	var genesisBlock = try SQLBlock.genesis(seed: seedValue, version: 1)
 	genesisBlock.mine(difficulty: 10)
-	Log.info("Genesis seed=\(seedValue) block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
+	Log.debug("Genesis seed=\(seedValue) block=\(genesisBlock.debugDescription)) \(genesisBlock.isSignatureValid)")
 
 	// If the database is in a file and we are initializing or configuring, remove anything that was there before
 	if initializeOption.value && !memoryDatabaseFileOption.value {
@@ -155,14 +157,31 @@ do {
 	}
 	try configurationTable?.set(key: "uuid", value: uuid.uuidString)
 
+	// When --show-identity is set, only display identity information
+	if showIdentityOption.wasSet {
+		Swift.print("")
+		Swift.print("\t\tNode UUID:\t\(uuid.uuidString)")
+		Swift.print("Miner identity public key:\t\(rootIdentity.publicKey.stringValue)")
+		Swift.print("Miner identity secret key:\t\(rootIdentity.privateKey.stringValue)")
+		Swift.print("")
+		exit(0)
+	}
+
+	// Start node
 	let ledger = try SQLLedger(genesis: genesisBlock, database: databaseFile, replay: !noReplayOption.value)
 	let netPort = netPortOption.value ?? 8338
 	let node = try Node<SQLLedger>(ledger: ledger, port: netPort, miner: SHA256Hash(of: rootIdentity.publicKey.data), uuid: uuid)
 	let agent = SQLAgent(node: node)
     
-    if(!noWebClient.wasSet) {
-        let _ = SQLAPIEndpoint(agent: agent, router: node.server.router, allowCorsOrigin: allowCorsDomains.value)
+    if noWebClientOption.wasSet {
+		if allowCorsDomainsOption.wasSet {
+			Log.error("The --allow-cors-domains option cannot be set when the web client is disabled")
+			exit(1)
+		}
     }
+	else {
+		let _ = SQLAPIEndpoint(agent: agent, router: node.server.router, allowCorsOrigin: allowCorsDomainsOption.value)
+	}
 
 	// Add peers from database
 	if let pd = peerTable {
@@ -180,10 +199,12 @@ do {
 	}
 
 	// Query server
-	let queryServerV4 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv4)
-	let queryServerV6 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv6)
-	queryServerV6.run()
-	queryServerV4.run()
+	if !noPQServerOption.wasSet {
+		let queryServerV4 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv4)
+		let queryServerV6 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv6)
+		queryServerV6.run()
+		queryServerV4.run()
+	}
 
 	node.miner.isEnabled = mineOption.value
 
@@ -204,8 +225,23 @@ do {
 		}
 	}
 
-	Log.info("Node URL: \(node.url.absoluteString)")
-	Swift.print("\r\nPGPASSWORD=\(rootIdentity.privateKey.stringValue) psql -h localhost -p \(netPort+1) -U \(rootIdentity.publicKey.stringValue)\r\n")
+	// Print info
+	Swift.print("")
+	Swift.print("Node UUID:\t\(uuid.uuidString)")
+	Swift.print("Node URL:\t\(node.url.absoluteString)")
+	if !noWebClientOption.wasSet {
+		Swift.print("Web client:\thttp://localhost:\(netPort)")
+	}
+
+	if !noPQServerOption.wasSet {
+		Swift.print("PQ interface:\tpsql -h localhost -p \(netPort+1) -U <publicKey> <databaseName>")
+	}
+
+	if mineOption.wasSet {
+		Swift.print("Miner pubkey:\t\(rootIdentity.publicKey.stringValue). Start with --show-identity to show the private key.")
+	}
+
+	Swift.print("")
 
 	node.start(blocking: false)
 
