@@ -92,7 +92,6 @@ public class SQLAPIEndpoint {
 
 		// Debug APIs
 		router.get("/debug/block/:hash", handler: self.handleGetBlock)
-		router.get("/debug/head", handler: self.handleGetLast)
 		router.get("/debug/journal", handler: self.handleGetJournal)
 		router.get("/debug/pool", handler: self.handleGetPool)
 		router.get("/debug/users", handler: self.handleGetUsers)
@@ -352,29 +351,6 @@ public class SQLAPIEndpoint {
 			}
 			next()
 		}
-	}
-
-	private func handleGetLast(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {
-		let chain = self.agent.node.ledger.longest
-		var b: SQLBlock? = chain.highest
-		var data: [[String: Any]] = []
-		for _ in 0..<10 {
-			if let block = b {
-				data.append([
-					"index": NSNumber(value: block.index),
-					"hash": block.signature!.stringValue
-					])
-				b = try chain.get(block: block.previous)
-			}
-			else {
-				break
-			}
-		}
-
-		response.send(json: [
-			"blocks": data
-		])
-		next()
 	}
 
 	private func handleGetJournal(request: RouterRequest, response: RouterResponse, next: @escaping () -> Void) throws {

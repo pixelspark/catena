@@ -41,12 +41,20 @@ class Identity {
 	}
 
 	get jsonObject() {
-		return {publicKey: this.publicBase58, secretKey: this.privateBase58};
+		let p = {publicKey: this.publicBase58};
+		if(this.privateKey !== null) {
+			p.secretKey = this.privateBase58;
+		}
+		return p;
 	}
 
 	static fromJSON(js) {
-		return Identity.loadBase58(js.publicKey, js.secretKey);
-	}	
+		let sk = null;
+		if("secretKey" in js) {
+			sk = js.secretKey;
+		}
+		return Identity.loadBase58(js.publicKey, sk);
+	}
 
 	persist(b) {
 		let ids = {};

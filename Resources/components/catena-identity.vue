@@ -1,6 +1,9 @@
 <template>
 	<div v-if="identity !== null">
-	<h1><i class="fa fa-user"></i>{{$t('identity')}} <catena-hash :hash="identity.publicHash" format="base64"></catena-hash></h1>
+	<h1>
+		<i v-if="identity.privateKey !== null" class="fa fa-key"></i> 
+		<i v-else class="fa fa-user"></i>
+		{{$t('identity')}} <catena-hash :hash="identity.publicHash" format="base64"></catena-hash></h1>
 	<dl>
 		<template v-if="identity !== null">
 			<dt>{{$t('publicKey')}}</dt>
@@ -17,7 +20,7 @@
 			<dd>{{counter}} <button @click="updateCounter">{{$t('refresh')}}</button></dd>
 		</template>
 
-		<template v-if="identity !== null">
+		<template v-if="identity !== null && identity.privateKey !== null">
 			<dt>{{$t('privateKey')}}</dt>
 			<dd>
 				<catena-expander :title="$t('showPrivateKey')" icon="key">
@@ -48,7 +51,7 @@
 
 	<template v-if="identity !== null">
 		<h2>{{$t('messaging')}}</h2>
-		<catena-expander title="Sign a message" icon="hand-spock-o">
+		<catena-expander title="Sign a message" icon="hand-spock-o" v-if="identity.privateKey !== null">
 			<textarea class="catena-code" v-model="messageToSign" @keyup="clearSignature"></textarea>
 			<button @click="signMessage">{{$t('sign')}}</button> <button @click="clearSignMessage">{{$t('clearMessage')}}</button>
 

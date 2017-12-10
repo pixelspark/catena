@@ -8,7 +8,7 @@
 			<dd>
 				<select @change="updateInvoker" :value="invoker" :disabled="submitting || submitted">
 					<option :value="null">{{$t('select')}}</option>
-					<option v-for="(identity, idx) in agent.identities" :value="idx" :key="identity.publicHash">{{identity.publicHash}}</option>
+					<option v-for="(identity, idx) in agent.identities" v-if="identity.privateKey !== null" :value="idx" :key="identity.publicHash">{{identity.publicHash}}</option>
 				</select><br/>
 				<template v-if="counter !== null">
 					<template>{{$t('count', {counter: counter})}}</template>

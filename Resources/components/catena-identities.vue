@@ -4,7 +4,8 @@
 			<transition-group name="list" tag="ul">
 				<li v-for="(q, idx) in agent.identities" @click="select(q)" :class="{'selected': identity == q}" :key="idx">
 					<a href="javascript:void(0);" style="float:right;" @click="remove(idx)"><i class="fa fa-times"></i></a>
-					<i class="fa fa-user"></i>
+					<i v-if="q.privateKey !== null" class="fa fa-key"></i>
+					<i v-else class="fa fa-user"></i>
 					<catena-hash :hash="q.publicHash" format="base64" :expandable="false"></catena-hash>
 				</li>
 			</transition-group>
@@ -69,7 +70,7 @@ module.exports = {
 
 		loadKey: function() {
 			try {
-				this.identity = Identity.loadBase58(this.newPublic, this.newPrivate);
+				this.identity = Identity.loadBase58(this.newPublic, this.newPrivate == "" ? null : this.newPrivate);
 				this.agent.identities.push(this.identity);
 			}
 			catch(e) {
