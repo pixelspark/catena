@@ -131,12 +131,6 @@ do {
 		rootIdentity = try Identity()
 		try configurationTable?.set(key: "publicKey", value: rootIdentity.publicKey.stringValue)
 		try configurationTable?.set(key: "privateKey", value: rootIdentity.privateKey.stringValue)
-
-		if initializeOption.value {
-			Log.info("Root private key: \(rootIdentity.privateKey.stringValue)")
-			Log.info("Root public key: \(rootIdentity.publicKey.stringValue)")
-			Log.info("Root identity: \(SHA256Hash(of: rootIdentity.publicKey.data).stringValue)")
-		}
 	}
 
 	// Determine node UUID
@@ -161,6 +155,7 @@ do {
 	if showIdentityOption.wasSet {
 		Swift.print("")
 		Swift.print("\t\tNode UUID:\t\(uuid.uuidString)")
+		Swift.print("\tMiner identity:\t\(SHA256Hash(of: rootIdentity.publicKey.data).stringValue)")
 		Swift.print("Miner identity public key:\t\(rootIdentity.publicKey.stringValue)")
 		Swift.print("Miner identity secret key:\t\(rootIdentity.privateKey.stringValue)")
 		Swift.print("")
@@ -227,10 +222,12 @@ do {
 
 	// Print info
 	Swift.print("")
-	Swift.print("Node UUID:\t\(uuid.uuidString)")
-	Swift.print("Node URL:\t\(node.url.absoluteString)")
+	Swift.print("Genesis block:\t\(genesisBlock.signature!.stringValue) (#0)")
+	Swift.print("Highest block:\t\(ledger.longest.highest.signature!.stringValue) (#\(ledger.longest.highest.index))")
+	Swift.print("Node UUID:\t\t\(uuid.uuidString)")
+	Swift.print("Node URL:\t\t\(node.url.absoluteString)")
 	if !noWebClientOption.wasSet {
-		Swift.print("Web client:\thttp://localhost:\(netPort)")
+		Swift.print("Web client:\t\thttp://localhost:\(netPort)")
 	}
 
 	if !noPQServerOption.wasSet {
@@ -238,6 +235,7 @@ do {
 	}
 
 	if mineOption.wasSet {
+		Swift.print("Miner identity:\t\(SHA256Hash(of: rootIdentity.publicKey.data).stringValue)")
 		Swift.print("Miner pubkey:\t\(rootIdentity.publicKey.stringValue). Start with --show-identity to show the private key.")
 	}
 
