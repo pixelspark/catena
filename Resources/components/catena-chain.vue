@@ -46,7 +46,7 @@ module.exports = {
 			
 			var blocks = [];
 			var count = 0;
-			var limit = 100;
+			var limit = 25;
 			var selectedSeen = false;
 			function fetch(h) {
 				self.connection.fetch(h, function(b) {
@@ -57,7 +57,7 @@ module.exports = {
 					count++;
 
 					blocks.push(b);
-					if(b.index > self.first && count < limit) {
+					if(b.index > 0 && count < limit) {
 						fetch(b.previous);
 					}
 					else {
