@@ -244,7 +244,9 @@ do {
 
 	Swift.print("")
 
-	node.start(blocking: false)
+	withExtendedLifetime((apiEndpoint, queryServerV4, queryServerV6)) {
+		node.start(blocking: false)
+	}
 
 	// Set up signal handler
 	signal(SIGINT, SIG_IGN)
