@@ -60,9 +60,7 @@ module.exports = {
 					if(b.index > 0 && count < limit) {
 						fetch(b.previous);
 					}
-					else {
-						self.blocks = blocks;
-					}
+					self.blocks = blocks;
 				});
 			}
 
