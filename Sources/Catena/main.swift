@@ -167,15 +167,17 @@ do {
 	let netPort = netPortOption.value ?? 8338
 	let node = try Node<SQLLedger>(ledger: ledger, port: netPort, miner: SHA256Hash(of: rootIdentity.publicKey.data), uuid: uuid)
 	let agent = SQLAgent(node: node)
-    
+
+	let apiEndpoint: SQLAPIEndpoint?
     if noWebClientOption.wasSet {
 		if allowCorsDomainsOption.wasSet {
 			Log.error("The --allow-cors-domains option cannot be set when the web client is disabled")
 			exit(1)
 		}
+		apiEndpoint = nil
     }
 	else {
-		let _ = SQLAPIEndpoint(agent: agent, router: node.server.router, allowCorsOrigin: allowCorsDomainsOption.value)
+		apiEndpoint = SQLAPIEndpoint(agent: agent, router: node.server.router, allowCorsOrigin: allowCorsDomainsOption.value)
 	}
 
 	// Add peers from database
@@ -194,9 +196,10 @@ do {
 	}
 
 	// Query server
+	let queryServerV4 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv4)
+	let queryServerV6 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv6)
+
 	if !noPQServerOption.wasSet {
-		let queryServerV4 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv4)
-		let queryServerV6 = NodeQueryServer(agent: agent, port: queryPortOption.value ?? (netPort+1), family: .ipv6)
 		queryServerV6.run()
 		queryServerV4.run()
 	}
