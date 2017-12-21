@@ -8,7 +8,6 @@
 /*.xcodeproj
 /Package.pins
 /docs
-/Package.resolved
 /Resources/node_modules
 /Resources/package-lock.json
 

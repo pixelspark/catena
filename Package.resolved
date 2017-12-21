@@ -1,0 +1,214 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "Base58",
+        "repositoryURL": "https://github.com/pixelspark/base58.git",
+        "state": {
+          "branch": null,
+          "revision": "c4049fcf182665176b1c5b7f1be5ab09ebeda62e",
+          "version": "1.0.6"
+        }
+      },
+      {
+        "package": "CCurl",
+        "repositoryURL": "https://github.com/IBM-Swift/CCurl.git",
+        "state": {
+          "branch": null,
+          "revision": "f481bd86e58787824cc1c1ec1786e03b67831f38",
+          "version": "0.4.1"
+        }
+      },
+      {
+        "package": "CommandLine",
+        "repositoryURL": "https://github.com/jatoben/CommandLine",
+        "state": {
+          "branch": null,
+          "revision": "73048b666be97d122109276a1b8a69ec407cdb13",
+          "version": "3.0.0-pre1"
+        }
+      },
+      {
+        "package": "CommonCrypto",
+        "repositoryURL": "https://github.com/IBM-Swift/CommonCrypto.git",
+        "state": {
+          "branch": null,
+          "revision": "9156d238dbc4c15455b77b45e721b2bb0b995e31",
+          "version": "0.1.5"
+        }
+      },
+      {
+        "package": "Cryptor",
+        "repositoryURL": "https://github.com/IBM-Swift/BlueCryptor.git",
+        "state": {
+          "branch": null,
+          "revision": "16f9c7ddcbe11bbd32106a791ebef2108a4e9183",
+          "version": "0.8.21"
+        }
+      },
+      {
+        "package": "DNS",
+        "repositoryURL": "https://github.com/Bouke/DNS.git",
+        "state": {
+          "branch": null,
+          "revision": "6156e4f2c814e62b091b0f67ba7fbdadac5959d0",
+          "version": "0.3.3"
+        }
+      },
+      {
+        "package": "Ed25519",
+        "repositoryURL": "https://github.com/vzsg/ed25519.git",
+        "state": {
+          "branch": null,
+          "revision": "0d2cfe8ce5e55cb3df77a846def37071b0b6ff91",
+          "version": "0.2.0"
+        }
+      },
+      {
+        "package": "HeliumLogger",
+        "repositoryURL": "https://github.com/IBM-Swift/HeliumLogger.git",
+        "state": {
+          "branch": null,
+          "revision": "2afeb4c02f5a48a7fbd081fe8607b91eeebd7ecb",
+          "version": "1.7.1"
+        }
+      },
+      {
+        "package": "Kitura",
+        "repositoryURL": "https://github.com/IBM-Swift/Kitura.git",
+        "state": {
+          "branch": null,
+          "revision": "57a46cc4a12b368208c0572eb6172cf3cb95991b",
+          "version": "2.0.2"
+        }
+      },
+      {
+        "package": "Kitura-TemplateEngine",
+        "repositoryURL": "https://github.com/IBM-Swift/Kitura-TemplateEngine.git",
+        "state": {
+          "branch": null,
+          "revision": "8e75a213bf4dd7b5effd03848335e344535969aa",
+          "version": "1.7.2"
+        }
+      },
+      {
+        "package": "Kitura-WebSocket",
+        "repositoryURL": "https://github.com/IBM-Swift/Kitura-WebSocket",
+        "state": {
+          "branch": null,
+          "revision": "312fd9a6f126be1befd8373a263669491b373188",
+          "version": "0.9.1"
+        }
+      },
+      {
+        "package": "Kitura-net",
+        "repositoryURL": "https://github.com/IBM-Swift/Kitura-net.git",
+        "state": {
+          "branch": null,
+          "revision": "96c196ef01533f199642e7d39cff51dd50c05faf",
+          "version": "1.7.20"
+        }
+      },
+      {
+        "package": "KituraContracts",
+        "repositoryURL": "https://github.com/IBM-Swift/KituraContracts.git",
+        "state": {
+          "branch": null,
+          "revision": "385c5698b5c6ffb3416f810dd71c317be40076cc",
+          "version": "0.0.15"
+        }
+      },
+      {
+        "package": "LoggerAPI",
+        "repositoryURL": "https://github.com/IBM-Swift/LoggerAPI.git",
+        "state": {
+          "branch": null,
+          "revision": "6b62fe66da9b8794d6581e5c341710eea3173cd4",
+          "version": "1.7.1"
+        }
+      },
+      {
+        "package": "NetService",
+        "repositoryURL": "https://github.com/Bouke/NetService.git",
+        "state": {
+          "branch": null,
+          "revision": "d793820658e7048185c0094fb0f4e5673212e839",
+          "version": "0.3.0"
+        }
+      },
+      {
+        "package": "PostgresWireServer",
+        "repositoryURL": "https://github.com/pixelspark/postgres-wire-server.git",
+        "state": {
+          "branch": null,
+          "revision": "e34100e120a51ea203e141193e14011cea55534c",
+          "version": "1.0.2"
+        }
+      },
+      {
+        "package": "SQLite",
+        "repositoryURL": "https://github.com/pixelspark/sqlite.git",
+        "state": {
+          "branch": null,
+          "revision": "56bf320fa24f57fba45233ff53c078081cc4935f",
+          "version": "3.19.2"
+        }
+      },
+      {
+        "package": "SSCZLib",
+        "repositoryURL": "https://github.com/daltoniam/zlib-spm.git",
+        "state": {
+          "branch": null,
+          "revision": "83ac8d719a2f3aa775dbdf116a57f56fb2c49abb",
+          "version": "1.1.0"
+        }
+      },
+      {
+        "package": "SSCommonCrypto",
+        "repositoryURL": "https://github.com/daltoniam/common-crypto-spm",
+        "state": {
+          "branch": null,
+          "revision": "2eb3aff0fb57f92f5722fac5d6d20bf64669ca66",
+          "version": "1.1.0"
+        }
+      },
+      {
+        "package": "SSLService",
+        "repositoryURL": "https://github.com/IBM-Swift/BlueSSLService.git",
+        "state": {
+          "branch": null,
+          "revision": "7f08ff22d8f50b2c25c2bb969a683cdf279a6af4",
+          "version": "0.12.67"
+        }
+      },
+      {
+        "package": "Socket",
+        "repositoryURL": "https://github.com/IBM-Swift/BlueSocket.git",
+        "state": {
+          "branch": null,
+          "revision": "f33e2d3e6da0b5b286073e7091eefd0ca56ebc63",
+          "version": "0.12.78"
+        }
+      },
+      {
+        "package": "Starscream",
+        "repositoryURL": "https://github.com/daltoniam/Starscream.git",
+        "state": {
+          "branch": null,
+          "revision": "44ce58956fae7db22fb0106cb4ce3dbef3d06d00",
+          "version": "3.0.2"
+        }
+      },
+      {
+        "package": "SwiftParser",
+        "repositoryURL": "https://github.com/pixelspark/swift-parser-generator.git",
+        "state": {
+          "branch": null,
+          "revision": "6324b866de8b6bfccdae895ffec6cd1f17e55738",
+          "version": "2.0.2"
+        }
+      }
+    ]
+  },
+  "version": 1
+}
