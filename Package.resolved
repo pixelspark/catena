@@ -42,8 +42,8 @@
         "repositoryURL": "https://github.com/IBM-Swift/BlueCryptor.git",
         "state": {
           "branch": null,
-          "revision": "16f9c7ddcbe11bbd32106a791ebef2108a4e9183",
-          "version": "0.8.21"
+          "revision": "de20ec9af166d779a08c16f05146f4b9124478d0",
+          "version": "0.8.27"
         }
       },
       {
@@ -78,8 +78,8 @@
         "repositoryURL": "https://github.com/IBM-Swift/Kitura.git",
         "state": {
           "branch": null,
-          "revision": "57a46cc4a12b368208c0572eb6172cf3cb95991b",
-          "version": "2.0.2"
+          "revision": "3d42897fa83537b97592512a7a85af61e9ce53ea",
+          "version": "2.2.0"
         }
       },
       {
@@ -96,8 +96,8 @@
         "repositoryURL": "https://github.com/IBM-Swift/Kitura-WebSocket",
         "state": {
           "branch": null,
-          "revision": "312fd9a6f126be1befd8373a263669491b373188",
-          "version": "0.9.1"
+          "revision": "8474fc22b5901409d859b4fb19315734c750877c",
+          "version": "1.0.1"
         }
       },
       {
@@ -105,8 +105,8 @@
         "repositoryURL": "https://github.com/IBM-Swift/Kitura-net.git",
         "state": {
           "branch": null,
-          "revision": "96c196ef01533f199642e7d39cff51dd50c05faf",
-          "version": "1.7.20"
+          "revision": "d781655dcee403504e4f1eeaf3f62b12d78d8230",
+          "version": "2.0.1"
         }
       },
       {
@@ -114,8 +114,8 @@
         "repositoryURL": "https://github.com/IBM-Swift/KituraContracts.git",
         "state": {
           "branch": null,
-          "revision": "385c5698b5c6ffb3416f810dd71c317be40076cc",
-          "version": "0.0.15"
+          "revision": "4195ce3e6748420ff5c659d5ebba7b5dd4434df0",
+          "version": "0.0.18"
         }
       },
       {
@@ -177,8 +177,8 @@
         "repositoryURL": "https://github.com/IBM-Swift/BlueSSLService.git",
         "state": {
           "branch": null,
-          "revision": "7f08ff22d8f50b2c25c2bb969a683cdf279a6af4",
-          "version": "0.12.67"
+          "revision": "712913404fe70ac78f0b7452671659b2b6afe1ae",
+          "version": "0.12.81"
         }
       },
       {
@@ -186,8 +186,8 @@
         "repositoryURL": "https://github.com/IBM-Swift/BlueSocket.git",
         "state": {
           "branch": null,
-          "revision": "f33e2d3e6da0b5b286073e7091eefd0ca56ebc63",
-          "version": "0.12.78"
+          "revision": "57d7e388dfc985a2fc301ed810752b707462294c",
+          "version": "0.12.91"
         }
       },
       {
@@ -195,8 +195,8 @@
         "repositoryURL": "https://github.com/daltoniam/Starscream.git",
         "state": {
           "branch": null,
-          "revision": "44ce58956fae7db22fb0106cb4ce3dbef3d06d00",
-          "version": "3.0.2"
+          "revision": "6e10c04c8387d00f41a17450fa45b51427971022",
+          "version": "3.0.4"
         }
       },
       {
