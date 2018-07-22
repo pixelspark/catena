@@ -284,7 +284,7 @@ public struct Index<BlockType: Block>: Equatable {
 
 			self.genesis = genesis
 			self.highest = highest
-			self.peers = peers.flatMap { return URL(string: $0) }
+			self.peers = peers.compactMap { return URL(string: $0) }
 
 			if let height = json["height"] as? NSNumber, let timestamp = json["time"] as? NSNumber {
 				// Darwin

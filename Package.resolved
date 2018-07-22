@@ -11,21 +11,57 @@
         }
       },
       {
+        "package": "Cryptor",
+        "repositoryURL": "https://github.com/IBM-Swift/BlueCryptor.git",
+        "state": {
+          "branch": null,
+          "revision": "de20ec9af166d779a08c16f05146f4b9124478d0",
+          "version": "0.8.27"
+        }
+      },
+      {
+        "package": "Socket",
+        "repositoryURL": "https://github.com/IBM-Swift/BlueSocket.git",
+        "state": {
+          "branch": null,
+          "revision": "26c8f4e4e3000421a0c97aaf0c7b5e9aa5475222",
+          "version": "0.12.94"
+        }
+      },
+      {
+        "package": "SSLService",
+        "repositoryURL": "https://github.com/IBM-Swift/BlueSSLService.git",
+        "state": {
+          "branch": null,
+          "revision": "3a87b64a97fb8e923f52f2a68e31e7bd4fc46b42",
+          "version": "0.12.84"
+        }
+      },
+      {
         "package": "CCurl",
         "repositoryURL": "https://github.com/IBM-Swift/CCurl.git",
         "state": {
           "branch": null,
-          "revision": "f481bd86e58787824cc1c1ec1786e03b67831f38",
-          "version": "0.4.1"
+          "revision": "2a431e3a5fb8d004aa7d4d1bebb5d511f568c43e",
+          "version": "1.0.0"
         }
       },
       {
         "package": "CommandLine",
-        "repositoryURL": "https://github.com/jatoben/CommandLine",
+        "repositoryURL": "https://github.com/jatoben/CommandLine.git",
         "state": {
           "branch": null,
           "revision": "73048b666be97d122109276a1b8a69ec407cdb13",
           "version": "3.0.0-pre1"
+        }
+      },
+      {
+        "package": "SSCommonCrypto",
+        "repositoryURL": "https://github.com/daltoniam/common-crypto-spm",
+        "state": {
+          "branch": null,
+          "revision": "2eb3aff0fb57f92f5722fac5d6d20bf64669ca66",
+          "version": "1.1.0"
         }
       },
       {
@@ -35,15 +71,6 @@
           "branch": null,
           "revision": "9156d238dbc4c15455b77b45e721b2bb0b995e31",
           "version": "0.1.5"
-        }
-      },
-      {
-        "package": "Cryptor",
-        "repositoryURL": "https://github.com/IBM-Swift/BlueCryptor.git",
-        "state": {
-          "branch": null,
-          "revision": "de20ec9af166d779a08c16f05146f4b9124478d0",
-          "version": "0.8.27"
         }
       },
       {
@@ -78,8 +105,17 @@
         "repositoryURL": "https://github.com/IBM-Swift/Kitura.git",
         "state": {
           "branch": null,
-          "revision": "3d42897fa83537b97592512a7a85af61e9ce53ea",
-          "version": "2.2.0"
+          "revision": "30b8d3156a63e69bf5229c61f8c343cc909d3d68",
+          "version": "2.2.1"
+        }
+      },
+      {
+        "package": "Kitura-net",
+        "repositoryURL": "https://github.com/IBM-Swift/Kitura-net.git",
+        "state": {
+          "branch": null,
+          "revision": "9b4221e7378f76e0c5e04acaf30cdee99594aed3",
+          "version": "2.0.4"
         }
       },
       {
@@ -87,8 +123,8 @@
         "repositoryURL": "https://github.com/IBM-Swift/Kitura-TemplateEngine.git",
         "state": {
           "branch": null,
-          "revision": "8e75a213bf4dd7b5effd03848335e344535969aa",
-          "version": "1.7.2"
+          "revision": "d432d61cd9dfb66bc9741fec44434bbbcad676cd",
+          "version": "1.7.3"
         }
       },
       {
@@ -101,21 +137,12 @@
         }
       },
       {
-        "package": "Kitura-net",
-        "repositoryURL": "https://github.com/IBM-Swift/Kitura-net.git",
-        "state": {
-          "branch": null,
-          "revision": "d781655dcee403504e4f1eeaf3f62b12d78d8230",
-          "version": "2.0.1"
-        }
-      },
-      {
         "package": "KituraContracts",
         "repositoryURL": "https://github.com/IBM-Swift/KituraContracts.git",
         "state": {
           "branch": null,
-          "revision": "4195ce3e6748420ff5c659d5ebba7b5dd4434df0",
-          "version": "0.0.18"
+          "revision": "8821f72962c369f4941bcd006437f966972ed53d",
+          "version": "0.0.20"
         }
       },
       {
@@ -123,8 +150,8 @@
         "repositoryURL": "https://github.com/IBM-Swift/LoggerAPI.git",
         "state": {
           "branch": null,
-          "revision": "6b62fe66da9b8794d6581e5c341710eea3173cd4",
-          "version": "1.7.1"
+          "revision": "ee0084cbb8bace59b3409cec05bedc5d2e97f8b7",
+          "version": "1.7.2"
         }
       },
       {
@@ -155,48 +182,12 @@
         }
       },
       {
-        "package": "SSCZLib",
-        "repositoryURL": "https://github.com/daltoniam/zlib-spm.git",
-        "state": {
-          "branch": null,
-          "revision": "83ac8d719a2f3aa775dbdf116a57f56fb2c49abb",
-          "version": "1.1.0"
-        }
-      },
-      {
-        "package": "SSCommonCrypto",
-        "repositoryURL": "https://github.com/daltoniam/common-crypto-spm",
-        "state": {
-          "branch": null,
-          "revision": "2eb3aff0fb57f92f5722fac5d6d20bf64669ca66",
-          "version": "1.1.0"
-        }
-      },
-      {
-        "package": "SSLService",
-        "repositoryURL": "https://github.com/IBM-Swift/BlueSSLService.git",
-        "state": {
-          "branch": null,
-          "revision": "712913404fe70ac78f0b7452671659b2b6afe1ae",
-          "version": "0.12.81"
-        }
-      },
-      {
-        "package": "Socket",
-        "repositoryURL": "https://github.com/IBM-Swift/BlueSocket.git",
-        "state": {
-          "branch": null,
-          "revision": "57d7e388dfc985a2fc301ed810752b707462294c",
-          "version": "0.12.91"
-        }
-      },
-      {
         "package": "Starscream",
         "repositoryURL": "https://github.com/daltoniam/Starscream.git",
         "state": {
           "branch": null,
-          "revision": "6e10c04c8387d00f41a17450fa45b51427971022",
-          "version": "3.0.4"
+          "revision": "114e5df9b6251970a069e8f1c0cbb5802759f0a9",
+          "version": "3.0.5"
         }
       },
       {
@@ -206,6 +197,15 @@
           "branch": null,
           "revision": "6324b866de8b6bfccdae895ffec6cd1f17e55738",
           "version": "2.0.2"
+        }
+      },
+      {
+        "package": "SSCZLib",
+        "repositoryURL": "https://github.com/daltoniam/zlib-spm.git",
+        "state": {
+          "branch": null,
+          "revision": "83ac8d719a2f3aa775dbdf116a57f56fb2c49abb",
+          "version": "1.1.0"
         }
       }
     ]

@@ -127,7 +127,7 @@ public class SQLAPIEndpoint {
 
 				// Collect parameter information
 				let parameters = statement.parameters
-				let unboundParameters = parameters.flatMap({ (k, v) -> String? in
+				let unboundParameters = parameters.compactMap({ (k, v) -> String? in
 					if case .unboundParameter(_) = v {
 						return k
 					}

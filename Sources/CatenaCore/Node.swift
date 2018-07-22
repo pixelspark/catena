@@ -57,7 +57,7 @@ public class Node<LedgerType: Ledger> {
 
 	/** The list of peers that can be advertised to other nodes for peer exchange. */
 	var validPeers: Set<URL> {
-		return Set(peers.flatMap { (uuid, peer) -> URL? in
+		return Set(peers.compactMap { (uuid, peer) -> URL? in
 			return peer.mutex.locked {
 				switch peer.state {
 				case .failed(_), .querying(_), .new, .ignored, .connected, .connecting(_), .passive:
